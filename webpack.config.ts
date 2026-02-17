@@ -260,6 +260,7 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
                 "net": false,
                 "tls": false,
                 "crypto": false,
+                "async_hooks": false,
 
                 // Polyfill needed by counterpart
                 "util": import.meta.resolve("util/"),
