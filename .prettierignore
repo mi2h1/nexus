@@ -51,3 +51,4 @@ packages/shared-components/src/i18n/i18nKeys.d.ts
 packages/shared-components/typedoc/
 packages/shared-components/storybook-static/
 
+/.nx/
