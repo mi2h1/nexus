@@ -12,6 +12,9 @@ catalogs:
     '@element-hq/element-web-playwright-common':
       specifier: 2.2.7
       version: 2.2.7
+    '@fontsource/inter':
+      specifier: 5.2.8
+      version: 5.2.8
     '@playwright/test':
       specifier: 1.58.2
       version: 1.58.2
@@ -96,7 +99,7 @@ importers:
         specifier: ^5
         version: 5.2.7
       '@fontsource/inter':
-        specifier: ^5
+        specifier: 'catalog:'
         version: 5.2.8
       '@formatjs/intl-segmenter':
         specifier: ^12.0.0
@@ -775,6 +778,9 @@ importers:
       '@fetch-mock/vitest':
         specifier: ^0.2.18
         version: 0.2.18(vitest@4.0.18)
+      '@fontsource/inter':
+        specifier: 'catalog:'
+        version: 5.2.8
       '@matrix-org/react-sdk-module-api':
         specifier: ^2.5.0
         version: 2.5.0(patch_hash=016146c9cc96e6363609d2b2ac0896ccef567882eb1d73b75a77b8a30929de96)(react@19.2.4)
