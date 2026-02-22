@@ -16,7 +16,10 @@
     "brand": "Nexus",
     "default_country_code": "JP",
     "show_labs_settings": false,
-    "features": {},
+    "features": {
+        "feature_video_rooms": true,
+        "feature_element_call_video_rooms": true
+    },
     "default_federate": false,
     "default_theme": "dark",
     "enable_presence_by_hs_url": {

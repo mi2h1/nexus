@@ -88,13 +88,7 @@ export const RoomListView: React.FC<RoomListViewProps> = ({ vm, renderAvatar, on
 
     return (
         <>
-            <div>
-                <RoomListPrimaryFilters
-                    filterIds={snapshot.filterIds}
-                    activeFilterId={snapshot.activeFilterId}
-                    onToggleFilter={vm.onToggleFilter}
-                />
-            </div>
+            {/* Nexus: フィルター (Unreads/People/Rooms等) 非表示 */}
             {listBody}
         </>
     );

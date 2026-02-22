@@ -6,11 +6,7 @@
  */
 
 import React, { useCallback, type JSX, type ReactNode } from "react";
-import {
-    RoomListView as SharedRoomListView,
-    useCreateAutoDisposedViewModel,
-    type Room as SharedRoom,
-} from "@element-hq/web-shared-components";
+import { useCreateAutoDisposedViewModel, type Room as SharedRoom } from "@element-hq/web-shared-components";
 import { type Room } from "matrix-js-sdk/src/matrix";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
@@ -19,9 +15,10 @@ import { getKeyBindingsManager } from "../../../../KeyBindingsManager";
 import { KeyBindingAction } from "../../../../accessibility/KeyboardShortcuts";
 import { Landmark, LandmarkNavigation } from "../../../../accessibility/LandmarkNavigation";
 import { RoomListViewViewModel } from "../../../../viewmodels/room-list/RoomListViewViewModel";
+import { NexusChannelListView } from "./NexusChannelListView";
 
 /**
- * RoomListView component using shared components with proper MVVM pattern.
+ * RoomListView component using Nexus channel list with text/voice separation.
  */
 export function RoomListView(): JSX.Element {
     const matrixClient = useMatrixClientContext();
@@ -47,5 +44,5 @@ export function RoomListView(): JSX.Element {
         }
     }, []);
 
-    return <SharedRoomListView vm={vm} renderAvatar={renderAvatar} onKeyDown={onKeyDown} />;
+    return <NexusChannelListView vm={vm} renderAvatar={renderAvatar} onKeyDown={onKeyDown} />;
 }
