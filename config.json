@@ -32,7 +32,10 @@
         "UIFeature.identityServer": false,
         "UIFeature.thirdPartyId": false,
         "UIFeature.allowCreatingPublicRooms": false,
-        "UIFeature.allowCreatingPublicSpaces": false
+        "UIFeature.allowCreatingPublicSpaces": false,
+        "showJoinLeaves": false,
+        "showAvatarChanges": false,
+        "showDisplaynameChanges": false
     },
     "element_call": {
         "url": "https://call.element.io",

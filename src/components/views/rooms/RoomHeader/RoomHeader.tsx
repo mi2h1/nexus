@@ -317,14 +317,7 @@ function RoomHeaderButtons({
 
             {isViewingCall && <CallGuestLinkButton room={room} />}
 
-            {activeCallSessionType && !isConnectedToCall && !isViewingCall ? (
-                joinCallButton
-            ) : (
-                <>
-                    {!isVideoRoom && videoCallButton}
-                    {!isVideoRoom && voiceCallButton}
-                </>
-            )}
+            {/* Nexus: 通話ボタン非表示（将来テキスト/VCチャンネル分離で対応） */}
 
             {showChatButton && <VideoRoomChatButton room={room} />}
 
