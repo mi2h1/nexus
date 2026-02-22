@@ -1,28 +1,28 @@
-/* Nexus Discord-style dark theme */
+/* Colors from Figma Compound https://www.figma.com/file/X4XTH9iS2KGJ2wFKDqkyed/Compound?node-id=559%3A741 */
 /* ******************** */
-$primary-content: #dcddde;
-$secondary-content: #b9bec6;
-$tertiary-content: #8e9297;
-$quaternary-content: #72767d;
-$quinary-content: #4f545c;
+$primary-content: var(--cpd-color-text-primary);
+$secondary-content: var(--cpd-color-text-secondary);
+$tertiary-content: var(--cpd-color-gray-800);
+$quaternary-content: var(--cpd-color-gray-600);
+$quinary-content: var(--cpd-color-gray-400);
 
-$system: #2f3136;
-$system-transparent: #2f313600;
-$background: #36393f;
-$overlay-background: rgba(0, 0, 0, 0.85);
+$system: var(--cpd-color-bg-subtle-primary);
+$system-transparent: #e1e6ec00;
+$background: var(--cpd-color-bg-canvas-default);
+$overlay-background: var(--cpd-color-alpha-gray-1300);
 
-$panels: #2f3136;
-$panel-actions: rgba(79, 84, 92, 0.3);
+$panels: var(--cpd-color-bg-subtle-secondary);
+$panel-actions: var(--cpd-color-alpha-gray-300);
 
-$separator: #40444b;
+$separator: var(--cpd-color-gray-400);
 
 /* ******************** */
 
 /* RoomList */
 /* ******************** */
-$roomlist-bg-color: #2f3136;
-$roomsublist-skeleton-ui-bg: linear-gradient(180deg, #2f3136 0%, #2f313600 100%);
-$roomtile-default-badge-bg-color: #b9bec6;
+$roomlist-bg-color: rgba(38, 40, 45, 0.9);
+$roomsublist-skeleton-ui-bg: linear-gradient(180deg, $background 0%, #ffffff00 100%);
+$roomtile-default-badge-bg-color: var(--cpd-color-icon-secondary);
 /* ******************** */
 
 /**
@@ -35,55 +35,54 @@ $roomtile-default-badge-bg-color: #b9bec6;
  * To use under very rare circumstances, always prefer the semantics defined
  * in https://compound.element.io/?path=/docs /tokens-semantic-colors--docs
  */
-/* Discord Blurple accent scale */
-$accent-100: #eef0fb;
-$accent-200: #dde1f7;
-$accent-300: #c5cbf2;
-$accent-400: #a8b1ec;
-$accent-500: #8b97e6;
-$accent-600: #7289da;
-$accent-700: #5865f2;
-$accent-800: #4752c4;
-$accent-900: #3c45a5;
-$accent-1000: #2d3480;
-$accent-1100: #23286b;
-$accent-1200: #1a1e56;
-$accent-1300: #121541;
-$accent-1400: #0b0d2c;
+$accent-100: var(--cpd-color-green-100);
+$accent-200: var(--cpd-color-green-200);
+$accent-300: var(--cpd-color-green-300);
+$accent-400: var(--cpd-color-green-400);
+$accent-500: var(--cpd-color-green-500);
+$accent-600: var(--cpd-color-green-600);
+$accent-700: var(--cpd-color-green-700);
+$accent-800: var(--cpd-color-green-800);
+$accent-900: var(--cpd-color-green-900);
+$accent-1000: var(--cpd-color-green-1000);
+$accent-1100: var(--cpd-color-green-1100);
+$accent-1200: var(--cpd-color-green-1200);
+$accent-1300: var(--cpd-color-green-1300);
+$accent-1400: var(--cpd-color-green-1400);
 
 /* Reused Figma non-compound colors */
 /* ******************** */
-$inverted-bg-color: #5865f2;
-$header-panel-bg-color: #2f3136;
-$header-panel-bg-hover: #40444b;
+$inverted-bg-color: var(--cpd-color-bg-action-primary-rest);
+$header-panel-bg-color: var(--cpd-color-bg-subtle-secondary);
+$header-panel-bg-hover: var(--cpd-color-bg-action-secondary-hovered);
 /* ******************** */
 
 /* Theme specific colors */
 /* ******************** */
-$icon-button-color: #b9bec6;
+$icon-button-color: var(--cpd-color-icon-tertiary);
 /* ******************** */
 
 /* Colors that aren't in Figma and are theme specific - we need to get rid of these */
 /* ******************** */
-$header-panel-text-secondary-color: #8e9297;
-$room-highlight-color: #40444b;
+$header-panel-text-secondary-color: #c8c8cd;
+$room-highlight-color: #343a46;
 $text-secondary-color: #b9bec6;
 /* ******************** */
 
 /* Colors that aren't in Figma - we need to get rid of these */
 /* ******************** */
-$dark-panel-bg-color: #292b2f;
+$dark-panel-bg-color: var(--cpd-color-bg-subtle-secondary);
 $muted-fg-color: $header-panel-text-primary-color;
 $light-fg-color: $header-panel-text-secondary-color;
 $focus-bg-color: $room-highlight-color;
 $info-plinth-bg-color: $header-panel-bg-color;
-$event-selected-color: #3c3f44;
+$event-selected-color: var(--cpd-color-bg-subtle-secondary);
 $topleftmenu-color: $primary-content;
 $roomtopic-color: $text-secondary-color;
-$spacePanel-bg-color: #202225;
-$panel-gradient: rgba(47, 49, 54, 0), rgba(47, 49, 54, 1);
+$spacePanel-bg-color: rgba(38, 39, 43, 0.82);
+$panel-gradient: rgba(34, 38, 46, 0), rgba(34, 38, 46, 1);
 $h3-color: $primary-content;
-$event-highlight-bg-color: rgba(88, 101, 242, 0.08);
+$event-highlight-bg-color: #25271f;
 $header-panel-text-primary-color: $text-secondary-color;
 /* ******************** */
 
@@ -101,15 +100,15 @@ $widget-body-bg-color: $panel-actions;
 
 /* Menu */
 /* ******************** */
-$menu-border-color: #1e1f22;
-$menu-bg-color: #2f3136;
-$menu-box-shadow-color: rgba(0, 0, 0, 0.24);
-$menu-selected-color: #40444b;
+$menu-border-color: #000000;
+$menu-bg-color: $header-panel-bg-color;
+$menu-box-shadow-color: $background;
+$menu-selected-color: $room-highlight-color;
 /* ******************** */
 
 /* Settings */
 /* ******************** */
-$settings-profile-button-bg-color: #40444b;
+$settings-profile-button-bg-color: #e7e7e7;
 $settings-subsection-fg-color: $text-secondary-color;
 /* ******************** */
 
@@ -120,23 +119,23 @@ $room-icon-unread-color: var(--cpd-color-icon-tertiary);
 
 /* RoomHeader */
 /* ******************** */
-$roomheader-addroom-bg-color: rgba(88, 101, 242, 0.3);
+$roomheader-addroom-bg-color: rgba(92, 100, 112, 0.3);
 $roomheader-addroom-fg-color: $primary-content;
 /* ******************** */
 
 /* Rich-text-editor */
 /* ******************** */
-$pill-bg-color: rgba(88, 101, 242, 0.3);
-$pill-hover-bg-color: rgba(88, 101, 242, 0.5);
-$pill-press-bg-color: rgba(88, 101, 242, 0.7);
+$pill-bg-color: var(--cpd-color-bg-action-primary-rest);
+$pill-hover-bg-color: var(--cpd-color-bg-action-primary-hovered);
+$pill-press-bg-color: var(--cpd-color-bg-action-primary-pressed);
 /* ******************** */
 
 /* Inputs */
 /* ******************** */
-$input-border-color: rgba(0, 0, 0, 0.3);
-$input-darker-bg-color: #202225;
-$input-darker-fg-color: #72767d;
-$input-lighter-bg-color: #40444b;
+$input-border-color: rgba(231, 231, 231, 0.2);
+$input-darker-bg-color: #181b21;
+$input-darker-fg-color: #61708b;
+$input-lighter-bg-color: #f2f5f8;
 $input-placeholder: var(--cpd-color-text-secondary);
 /* ******************** */
 
@@ -150,9 +149,9 @@ $dialog-close-external-color: $primary-content;
 
 /* RoomList */
 /* ******************** */
-$system: #2f3136;
-$roomsublist-skeleton-ui-bg: linear-gradient(180deg, #2f3136 0%, #2f313600 100%);
-$roomtile-default-badge-bg-color: #b9bec6;
+$system: var(--cpd-color-bg-subtle-secondary);
+$roomsublist-skeleton-ui-bg: linear-gradient(180deg, #3e444c 0%, #3e444c00 100%);
+$roomtile-default-badge-bg-color: var(--cpd-color-icon-secondary);
 /* ******************** */
 
 /* Tabbed views */
@@ -192,7 +191,7 @@ $message-action-bar-hover-border-color: $header-panel-text-primary-color;
 /* Reaction row */
 /* ******************** */
 $reaction-row-button-hover-border-color: $header-panel-text-primary-color;
-$reaction-row-button-selected-bg-color: rgba(88, 101, 242, 0.3);
+$reaction-row-button-selected-bg-color: #1f6954;
 /* ******************** */
 
 /* Voice messages */
@@ -203,9 +202,9 @@ $voice-record-icon-color: $quaternary-content;
 
 /* Bubble tiles */
 /* ******************** */
-$eventbubble-self-bg: rgba(88, 101, 242, 0.2);
-$eventbubble-others-bg: #2f3136;
-$eventbubble-bg-hover: #40444b;
+$eventbubble-self-bg: var(--cpd-color-green-300);
+$eventbubble-others-bg: var(--cpd-color-gray-300);
+$eventbubble-bg-hover: var(--cpd-color-bg-subtle-secondary);
 /* ******************** */
 
 /* Lightbox */
@@ -232,8 +231,8 @@ $call-light-quaternary-content: #c1c6cd;
 
 /* Location sharing */
 /* ******************** */
-$location-live-color: #5865f2;
-$location-live-secondary-color: #c5cbf2;
+$location-live-color: #5c56f5;
+$location-live-secondary-color: #deddfd;
 /* ******************** */
 
 /* Location sharing */
@@ -245,17 +244,17 @@ $location-live-secondary-color: #c5cbf2;
 
 /* One-off colors */
 /* ******************** */
-$progressbar-bg-color: #4f545c;
+$progressbar-bg-color: var(--cpd-color-gray-200);
 $kbd-border-color: $strong-input-border-color;
 $visual-bell-bg-color: #800;
-$event-timestamp-color: #72767d;
+$event-timestamp-color: var(--cpd-color-text-secondary);
 $composer-shadow-color: rgba(0, 0, 0, 0.28);
-$breadcrumb-placeholder-bg-color: #292b2f;
-$resend-button-divider-color: #4f545c;
+$breadcrumb-placeholder-bg-color: #272c35;
+$resend-button-divider-color: var(--cpd-color-gray-700);
 $inlinecode-border-color: $quinary-content;
-$inlinecode-background-color: #2f3136;
-$codeblock-background-color: #2b2d31;
-$scrollbar-thumb-color: #202225;
+$inlinecode-background-color: $system;
+$codeblock-background-color: #2a3039;
+$scrollbar-thumb-color: rgba(255, 255, 255, 0.2);
 $selected-color: $room-highlight-color;
 /* ******************** */
 
@@ -309,11 +308,11 @@ body {
 }
 /* ******************** */
 
-/* Splash Page Gradient - Discord Blurple tint */
+/* Splash Page Gradient */
 .mx_SplashPage::before {
     background-image:
-        radial-gradient(53.85% 66.75% at 87.55% 0%, rgba(88, 101, 242, 0.1) 0%, transparent 100%),
-        radial-gradient(41.93% 41.93% at 0% 0%, rgba(88, 101, 242, 0.08) 0%, transparent 100%),
-        radial-gradient(100% 100% at 0% 0%, rgba(88, 101, 242, 0.15) 0%, transparent 100%),
-        radial-gradient(106.35% 96.26% at 100% 0%, rgba(88, 101, 242, 0.12) 0%, transparent 100%) !important;
+        radial-gradient(53.85% 66.75% at 87.55% 0%, hsla(0deg, 0%, 11%, 0.15) 0%, hsla(250deg, 100%, 88%, 0) 100%),
+        radial-gradient(41.93% 41.93% at 0% 0%, hsla(0deg, 0%, 38%, 0.28) 0%, hsla(250deg, 100%, 88%, 0) 100%),
+        radial-gradient(100% 100% at 0% 0%, hsla(250deg, 100%, 88%, 0.3) 0%, hsla(0deg, 100%, 86%, 0) 100%),
+        radial-gradient(106.35% 96.26% at 100% 0%, hsla(25deg, 100%, 88%, 0.4) 0%, hsla(167deg, 76%, 82%, 0) 100%) !important;
 }
