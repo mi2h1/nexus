@@ -1,3 +1,83 @@
 /* Modules bundled with compound apply compound lastly. In order to catch issue due to css class ordering, we put compound at the end */
 @import url("@vector-im/compound-design-tokens/assets/web/css/compound-design-tokens.css") layer(compound);
 @import url("@vector-im/compound-web/dist/style.css");
+
+/* Nexus: Compound トークンオーバーライド (Discord 風カラー) */
+@layer compound.custom {
+    :root,
+    [class*="cpd-theme-"] {
+        /* 背景色 */
+        --cpd-color-bg-canvas-default: #36393f;
+        --cpd-color-bg-subtle-primary: #2f3136;
+        --cpd-color-bg-subtle-secondary: #292b2f;
+        --cpd-color-bg-action-primary-rest: #5865f2;
+        --cpd-color-bg-action-primary-hovered: #4752c4;
+        --cpd-color-bg-action-primary-pressed: #3c45a5;
+        --cpd-color-bg-action-secondary-hovered: #40444b;
+        --cpd-color-bg-action-secondary-pressed: #4f545c;
+
+        /* テキスト色 */
+        --cpd-color-text-primary: #dcddde;
+        --cpd-color-text-secondary: #b9bec6;
+        --cpd-color-text-placeholder: #72767d;
+        --cpd-color-text-disabled: #4f545c;
+        --cpd-color-text-action-accent: #5865f2;
+        --cpd-color-text-action-primary: #ffffff;
+        --cpd-color-text-link-external: #00aff4;
+        --cpd-color-text-critical-primary: #ed4245;
+
+        /* アイコン色 */
+        --cpd-color-icon-primary: #dcddde;
+        --cpd-color-icon-secondary: #b9bec6;
+        --cpd-color-icon-tertiary: #8e9297;
+        --cpd-color-icon-accent-tertiary: #5865f2;
+
+        /* アクセントカラー (緑 → Discord Blurple) */
+        --cpd-color-green-100: #eef0fb;
+        --cpd-color-green-200: #dde1f7;
+        --cpd-color-green-300: #c5cbf2;
+        --cpd-color-green-400: #a8b1ec;
+        --cpd-color-green-500: #8b97e6;
+        --cpd-color-green-600: #7289da;
+        --cpd-color-green-700: #5865f2;
+        --cpd-color-green-800: #4752c4;
+        --cpd-color-green-900: #3c45a5;
+        --cpd-color-green-1000: #2d3480;
+        --cpd-color-green-1100: #23286b;
+        --cpd-color-green-1200: #1a1e56;
+        --cpd-color-green-1300: #121541;
+        --cpd-color-green-1400: #0b0d2c;
+
+        /* グレースケール (Discord 風) */
+        --cpd-color-gray-100: #ebedef;
+        --cpd-color-gray-200: #dcddde;
+        --cpd-color-gray-300: #b9bec6;
+        --cpd-color-gray-400: #8e9297;
+        --cpd-color-gray-500: #72767d;
+        --cpd-color-gray-600: #4f545c;
+        --cpd-color-gray-700: #40444b;
+        --cpd-color-gray-800: #36393f;
+        --cpd-color-gray-900: #2f3136;
+        --cpd-color-gray-1000: #292b2f;
+        --cpd-color-gray-1100: #202225;
+        --cpd-color-gray-1200: #1e1f22;
+        --cpd-color-gray-1300: #1a1b1e;
+        --cpd-color-gray-1400: #111214;
+
+        /* ボーダー */
+        --cpd-color-border-interactive-primary: #40444b;
+        --cpd-color-border-interactive-secondary: #4f545c;
+        --cpd-color-border-interactive-hovered: #5865f2;
+        --cpd-color-border-disabled: #40444b;
+
+        /* エラー/危険 (Discord Red) */
+        --cpd-color-text-critical-primary: #ed4245;
+        --cpd-color-bg-critical-primary: #ed4245;
+        --cpd-color-bg-critical-hovered: #c03537;
+
+        /* 透明度 */
+        --cpd-color-alpha-gray-300: rgba(79, 84, 92, 0.3);
+        --cpd-color-alpha-gray-400: rgba(79, 84, 92, 0.4);
+        --cpd-color-alpha-gray-1300: rgba(0, 0, 0, 0.85);
+    }
+}
