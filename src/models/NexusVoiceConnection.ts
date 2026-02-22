@@ -43,7 +43,7 @@ const STATS_POLL_INTERVAL_MS = 2000;
  * Set to empty string to disable proxy (e.g. when using a self-hosted LiveKit
  * service that already has CORS configured).
  */
-const LIVEKIT_CORS_PROXY_URL = "https://nexus-livekit-proxy.mi2h1.workers.dev";
+const LIVEKIT_CORS_PROXY_URL = "https://nexus-livekit-proxy.ek-st2xx.workers.dev";
 
 interface LivekitTokenResponse {
     jwt: string;
