@@ -16,22 +16,19 @@ import { type DeepReadonly, type Defaultize } from "./@types/common";
 
 // see element-web config.md for docs, or the IConfigOptions interface for dev docs
 export const DEFAULTS: DeepReadonly<IConfigOptions> = {
-    brand: "Element",
-    help_url: "https://element.io/help",
-    help_encryption_url: "https://element.io/help#encryption",
-    help_key_storage_url: "https://element.io/help#encryption5",
-    integrations_ui_url: "https://scalar.vector.im/",
-    integrations_rest_url: "https://scalar.vector.im/api",
-    uisi_autorageshake_app: "element-auto-uisi",
+    brand: "Nexus",
+    help_url: "https://github.com/mi2h1/nexus",
+    help_encryption_url: "https://github.com/mi2h1/nexus",
+    help_key_storage_url: "https://github.com/mi2h1/nexus",
+    integrations_ui_url: "",
+    integrations_rest_url: "",
+    uisi_autorageshake_app: "",
     show_labs_settings: false,
     force_verification: false,
 
-    jitsi: {
-        preferred_domain: "meet.element.io",
-    },
     element_call: {
-        use_exclusively: false,
-        brand: "Element Call",
+        use_exclusively: true,
+        brand: "Nexus Call",
     },
 
     // @ts-ignore - we deliberately use the camelCase version here so we trigger
@@ -39,31 +36,26 @@ export const DEFAULTS: DeepReadonly<IConfigOptions> = {
     // everyone's config which has the camelCase property because our default would
     // be preferred over their config.
     desktopBuilds: {
-        available: true,
+        available: false,
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         logo: require("../res/img/element-desktop-logo.svg").default,
-        url: "https://element.io/get-started",
+        url: "",
     },
 
     feedback: {
-        existing_issues_url:
-            "https://github.com/vector-im/element-web/issues?q=is%3Aopen+is%3Aissue+sort%3Areactions-%2B1-desc",
-        new_issue_url: "https://github.com/vector-im/element-web/issues/new/choose",
+        existing_issues_url: "https://github.com/mi2h1/nexus/issues",
+        new_issue_url: "https://github.com/mi2h1/nexus/issues/new",
     },
 
     desktop_builds: {
-        available: true,
+        available: false,
         logo: "vector-icons/1024.png",
-        url: "https://element.io/download",
-        url_macos: "https://packages.element.io/desktop/install/macos/Element.dmg",
-        url_win64: "https://packages.element.io/desktop/install/win32/x64/Element%20Setup.exe",
-        url_win64arm: "https://packages.element.io/desktop/install/win32/arm64/Element%20Setup.exe",
-        url_linux: "https://element.io/download#linux",
+        url: "",
     },
     mobile_builds: {
-        ios: "https://apps.apple.com/app/vector/id1083446067",
-        android: "https://play.google.com/store/apps/details?id=im.vector.app",
-        fdroid: "https://f-droid.org/repository/browse/?fdid=im.vector.app",
+        ios: null,
+        android: null,
+        fdroid: null,
     },
 };
 
