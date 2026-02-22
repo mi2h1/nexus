@@ -17,6 +17,7 @@ import {
 
 import { useChannelSeparation } from "../../../../hooks/useChannelSeparation";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
+import { VoiceChannelParticipants } from "./VoiceChannelParticipants";
 
 export interface NexusChannelListViewProps {
     vm: RoomListViewModel;
@@ -116,7 +117,12 @@ export function NexusChannelListView({ vm, renderAvatar, onKeyDown }: NexusChann
             {voiceRoomIds.length > 0 && (
                 <div className="mx_NexusChannelList_section">
                     <div className="mx_NexusChannelList_sectionHeader">VOICE CHANNELS</div>
-                    {voiceRoomIds.map((roomId) => renderRoomItem(roomId, globalIndexMap.get(roomId) ?? 0))}
+                    {voiceRoomIds.map((roomId) => (
+                        <React.Fragment key={roomId}>
+                            {renderRoomItem(roomId, globalIndexMap.get(roomId) ?? 0)}
+                            <VoiceChannelParticipants roomId={roomId} />
+                        </React.Fragment>
+                    ))}
                 </div>
             )}
         </div>

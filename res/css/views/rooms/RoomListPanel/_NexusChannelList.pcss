@@ -30,3 +30,29 @@
     color: var(--cpd-color-text-secondary);
     user-select: none;
 }
+
+.mx_VoiceChannelParticipants {
+    display: flex;
+    flex-direction: column;
+    padding-left: var(--cpd-space-10x);
+}
+
+.mx_VoiceChannelParticipants_item {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-2x);
+    padding: var(--cpd-space-1x) var(--cpd-space-2x);
+    border-radius: var(--cpd-space-1x);
+
+    &:hover {
+        background-color: var(--cpd-color-bg-subtle-secondary);
+    }
+}
+
+.mx_VoiceChannelParticipants_name {
+    font: var(--cpd-font-body-sm-regular);
+    color: var(--cpd-color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
