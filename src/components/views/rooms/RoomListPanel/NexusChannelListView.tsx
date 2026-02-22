@@ -59,6 +59,17 @@ export function NexusChannelListView({ vm, onKeyDown }: NexusChannelListViewProp
     const handleContainerFocus = useCallback(() => setHasFocus(true), []);
     const handleContainerBlur = useCallback(() => setHasFocus(false), []);
 
+    // Channel-type-specific avatar renderers
+    // NOTE: Must be above early returns to satisfy React hooks rules
+    const renderTextChannelAvatar = useCallback(
+        (_room: SharedRoom): ReactNode => <TextChannelIcon />,
+        [],
+    );
+    const renderVoiceChannelAvatar = useCallback(
+        (room: SharedRoom): ReactNode => <VoiceChannelIcon roomId={(room as Room).roomId} />,
+        [],
+    );
+
     // Loading state
     if (snapshot.isLoadingRooms) {
         return <RoomListLoadingSkeleton />;
@@ -70,16 +81,6 @@ export function NexusChannelListView({ vm, onKeyDown }: NexusChannelListViewProp
     }
 
     const totalRoomCount = allRoomIds.length;
-
-    // Channel-type-specific avatar renderers
-    const renderTextChannelAvatar = useCallback(
-        (_room: SharedRoom): ReactNode => <TextChannelIcon />,
-        [],
-    );
-    const renderVoiceChannelAvatar = useCallback(
-        (room: SharedRoom): ReactNode => <VoiceChannelIcon roomId={(room as Room).roomId} />,
-        [],
-    );
 
     const renderRoomItem = (
         roomId: string,
