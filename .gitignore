@@ -12,8 +12,9 @@ package-lock.json
 electron/dist
 electron/pub
 **/.idea
-/config.json
-/config.json.*
+# Nexus: config.json はリポジトリに含める（元は除外されていた）
+# /config.json
+# /config.json.*
 /config.local*.json
 # Legacy skinning file that some people might still have
 /src/component-index.js
