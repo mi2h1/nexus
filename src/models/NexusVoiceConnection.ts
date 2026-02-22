@@ -35,6 +35,16 @@ const logger = rootLogger.getChild("NexusVoiceConnection");
 
 const STATS_POLL_INTERVAL_MS = 2000;
 
+/**
+ * Cloudflare Workers CORS proxy URL for LiveKit JWT endpoint.
+ * The upstream LiveKit JWT service (e.g. livekit-jwt.call.matrix.org) does not
+ * set CORS headers, so we proxy through this worker.
+ *
+ * Set to empty string to disable proxy (e.g. when using a self-hosted LiveKit
+ * service that already has CORS configured).
+ */
+const LIVEKIT_CORS_PROXY_URL = "https://nexus-livekit-proxy.mi2h1.workers.dev";
+
 interface LivekitTokenResponse {
     jwt: string;
     url: string;
@@ -216,14 +226,33 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const serviceUrl = livekitTransport.livekit_service_url as string;
         const openIdToken = await this.client.getOpenIdToken();
 
-        const response = await fetch(`${serviceUrl}/sfu/get_token`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+        let fetchUrl: string;
+        let fetchBody: Record<string, unknown>;
+
+        if (LIVEKIT_CORS_PROXY_URL) {
+            // Route through CORS proxy — include livekit_service_url so the
+            // proxy knows where to forward the request.
+            fetchUrl = `${LIVEKIT_CORS_PROXY_URL}/sfu/get_token`;
+            fetchBody = {
                 room: this.room.roomId,
                 openid_token: openIdToken,
                 device_id: this.client.getDeviceId(),
-            }),
+                livekit_service_url: serviceUrl,
+            };
+        } else {
+            // Direct call (self-hosted LiveKit with CORS configured)
+            fetchUrl = `${serviceUrl}/sfu/get_token`;
+            fetchBody = {
+                room: this.room.roomId,
+                openid_token: openIdToken,
+                device_id: this.client.getDeviceId(),
+            };
+        }
+
+        const response = await fetch(fetchUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(fetchBody),
         });
 
         if (!response.ok) {
