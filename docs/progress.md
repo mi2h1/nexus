@@ -7,11 +7,12 @@
 - **URL**: https://github.com/mi2h1/nexus.git
 - **ホスティング**: GitHub Pages (`https://mi2h1.github.io/nexus/`)
 - **ブランチ運用**: `main` = デプロイ対象
+- **upstream**: https://github.com/element-hq/element-web.git (`develop` ブランチ)
 
 ## ディレクトリ構成
 
 ```
-nexus/                          # element-web フォーク（予定）
+nexus/                          # element-web フォーク
 ├── CLAUDE.md                   # プロジェクトルール
 ├── HANDOVER.md                 # セッション引き継ぎ
 ├── docs/                       # プロジェクトドキュメント
@@ -19,32 +20,36 @@ nexus/                          # element-web フォーク（予定）
 │   ├── progress.md             # 進捗（このファイル）
 │   ├── tech-stack.md           # 技術スタック
 │   └── app-spec.md             # アプリ仕様・UI設計
-├── src/                        # ソースコード（element-web フォーク後）
-├── res/                        # リソース・CSS（element-web フォーク後）
-├── config.json                 # アプリ設定
-└── .github/workflows/deploy.yml # CI/CD
+├── src/                        # ソースコード
+├── res/                        # リソース・CSS
+├── config.json                 # アプリ設定（Nexus カスタム）
+└── .github/workflows/pages.yml # GitHub Pages デプロイ
 ```
 
 ## Phase 1: 環境構築 & 動作確認
 
 ### 次のタスク
 
-1. **element-web のフォーク内容をリポジトリに取り込む**
-   - element-hq/element-web のコードを nexus リポジトリに配置
-   - upstream として element-hq/element-web を登録
-2. **config.json を作成・設定**
-   - matrix.org をデフォルトサーバーに設定
-   - ブランド名を "Nexus" に変更
-3. **GitHub Actions デプロイ設定**
-   - `.github/workflows/deploy.yml` を作成
-   - GitHub Pages の Source を "GitHub Actions" に変更
-4. **初回デプロイ & 動作確認**
+1. **ブラウザで動作確認**
+   - https://mi2h1.github.io/nexus/ にアクセス
+   - matrix.org アカウントでログイン
    - テキストチャット / VC / 画面共有の動作確認
-5. **Hooks 設定（ESLint + Prettier）**
+2. **Hooks 設定（ESLint + Prettier）**
    - Element Web 同梱のリンター/フォーマッターを Hooks で自動実行
 
 ### 完了したタスク
 
 #### 2026-02-23
-- プロジェクトドキュメント一式を作成（CLAUDE.md, conventions.md, progress.md, tech-stack.md, app-spec.md）
-- GitHub リポジトリ作成済み（空の状態）
+- プロジェクトドキュメント一式を作成（CLAUDE.md, HANDOVER.md, conventions.md, progress.md, tech-stack.md, app-spec.md）
+- element-hq/element-web を nexus リポジトリに取り込み
+  - upstream として element-hq/element-web を登録
+  - デフォルトブランチを `develop` → `main` にリネーム
+- config.json を作成（brand: Nexus, theme: dark, country: JP）
+- GitHub Actions デプロイワークフロー作成（pnpm + nx build → GitHub Pages）
+  - Element Web 固有の不要なワークフロー 37 個を削除
+  - `pages.yml` を新規作成
+- .gitignore を修正（config.json をリポジトリに含める）
+- GitHub Pages を有効化、初回ビルド & デプロイ成功
+- **注意**: HANDOVER.md に書かれていた技術スタックは一部古い情報だった
+  - パッケージマネージャ: Yarn 1.x → **pnpm 10.x**
+  - ビルドツール: Webpack (直接) → **nx + Webpack**

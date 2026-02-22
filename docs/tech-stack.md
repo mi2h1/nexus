@@ -8,7 +8,7 @@
 |------|------|
 | 開発環境 | VPS: Ubuntu 25.04, 3コア/4GB RAM |
 | Node.js | v20 LTS 以上 |
-| パッケージマネージャ | Yarn 1.x（Element Web 標準） |
+| パッケージマネージャ | pnpm 10.x（Element Web 標準） |
 | ビルド | GitHub Actions（VPS ではビルドしない） |
 | ホスティング | GitHub Pages（静的ファイル配信） |
 
