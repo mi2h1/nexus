@@ -35,6 +35,7 @@ import AccessibleButton, { type ButtonEvent } from "../components/views/elements
 import { useDispatcher } from "../hooks/useDispatcher";
 import { type ActionPayload } from "../dispatcher/payloads";
 import { type Call, CallEvent } from "../models/Call";
+import type { NexusVoiceConnection } from "../models/NexusVoiceConnection";
 import LegacyCallHandler, { AudioID } from "../LegacyCallHandler";
 import { useEventEmitter, useTypedEventEmitter } from "../hooks/useEventEmitter";
 import { CallStore, CallStoreEvent } from "../stores/CallStore";
@@ -71,7 +72,7 @@ const MAX_RING_TIME_MS = 90 * 1000;
 
 interface JoinCallButtonWithCallProps {
     onClick: (e: ButtonEvent) => void;
-    call: Call | null;
+    call: Call | NexusVoiceConnection | null;
     disabledTooltip: string | undefined;
     isRinging: boolean;
 }
@@ -149,7 +150,7 @@ export function IncomingCallToast({ notificationEvent, toastKey }: Props): JSX.E
     const notificationContent = notificationEvent.getContent() as Partial<IRTCNotificationContent>;
     const room = MatrixClientPeg.safeGet().getRoom(roomId) ?? undefined;
     const call = useCall(roomId);
-    const [connectedCalls, setConnectedCalls] = useState<Call[]>(Array.from(CallStore.instance.connectedCalls));
+    const [connectedCalls, setConnectedCalls] = useState<(Call | NexusVoiceConnection)[]>(Array.from(CallStore.instance.connectedCalls));
     useEventEmitter(CallStore.instance, CallStoreEvent.ConnectedCalls, () => {
         setConnectedCalls(Array.from(CallStore.instance.connectedCalls));
     });

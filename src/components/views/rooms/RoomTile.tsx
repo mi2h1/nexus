@@ -39,6 +39,7 @@ import { KeyBindingAction } from "../../../accessibility/KeyboardShortcuts";
 import { getKeyBindingsManager } from "../../../KeyBindingsManager";
 import { RoomGeneralContextMenu } from "../context_menus/RoomGeneralContextMenu";
 import { CallStore, CallStoreEvent } from "../../../stores/CallStore";
+import type { NexusVoiceConnection } from "../../../models/NexusVoiceConnection";
 import { SdkContextClass } from "../../../contexts/SDKContext";
 import { RoomTileSubtitle } from "./RoomTileSubtitle";
 import { shouldShowComponent } from "../../../customisations/helpers/UIComponents";
@@ -60,7 +61,7 @@ interface State {
     selected: boolean;
     notificationsMenuPosition: PartialDOMRect | null;
     generalMenuPosition: PartialDOMRect | null;
-    call: Call | null;
+    call: Call | NexusVoiceConnection | null;
     messagePreview: MessagePreview | null;
 }
 
@@ -197,7 +198,7 @@ class RoomTile extends React.PureComponent<Props, State> {
         }
     };
 
-    private onCallChanged = (call: Call, roomId: string): void => {
+    private onCallChanged = (call: Call | NexusVoiceConnection, roomId: string): void => {
         if (roomId === this.props.room?.roomId) this.setState({ call });
     };
 

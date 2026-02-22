@@ -9,12 +9,15 @@ import React, { useCallback } from "react";
 import { EndCallIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { type Call, ConnectionState } from "../../../../models/Call";
+import type { NexusVoiceConnection } from "../../../../models/NexusVoiceConnection";
 import { useConnectionState } from "../../../../hooks/useCall";
+import { useNexusVoice } from "../../../../hooks/useNexusVoice";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
+import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
 import AccessibleButton from "../../elements/AccessibleButton";
 
 interface NexusCallStatusPanelProps {
-    call: Call;
+    call: Call | NexusVoiceConnection;
 }
 
 const statusLabels: Record<ConnectionState, string> = {
@@ -25,13 +28,20 @@ const statusLabels: Record<ConnectionState, string> = {
 
 const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => {
     const connectionState = useConnectionState(call);
+    const { latencyMs } = useNexusVoice();
     const client = useMatrixClientContext();
     const room = client.getRoom(call.roomId);
     const roomName = room?.name ?? call.roomId;
 
     const onDisconnect = useCallback(async () => {
         try {
-            await call.disconnect();
+            // Use NexusVoiceStore for voice connections to ensure proper cleanup
+            const voiceConn = NexusVoiceStore.instance.getConnection(call.roomId);
+            if (voiceConn) {
+                await NexusVoiceStore.instance.leaveVoiceChannel();
+            } else {
+                await call.disconnect();
+            }
         } catch {
             // Already disconnected — ignore
         }
@@ -42,12 +52,17 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
             ? "mx_NexusCallStatusPanel_dot--connected"
             : "mx_NexusCallStatusPanel_dot--disconnecting";
 
+    const latencyLabel =
+        latencyMs !== null ? ` — ${latencyMs}ms` : "";
+
     return (
         <div className="mx_NexusCallStatusPanel">
             <div className="mx_NexusCallStatusPanel_info">
                 <div className="mx_NexusCallStatusPanel_status">
                     <span className={`mx_NexusCallStatusPanel_dot ${dotClass}`} />
-                    <span className="mx_NexusCallStatusPanel_statusText">{statusLabels[connectionState]}</span>
+                    <span className="mx_NexusCallStatusPanel_statusText">
+                        {statusLabels[connectionState]}{latencyLabel}
+                    </span>
                 </div>
                 <span className="mx_NexusCallStatusPanel_roomName">{roomName}</span>
             </div>

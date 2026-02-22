@@ -8,6 +8,7 @@ Please see LICENSE files in the repository root for full details.
 import { useCallback } from "react";
 
 import { type Call } from "../models/Call";
+import type { NexusVoiceConnection } from "../models/NexusVoiceConnection";
 import { useEventEmitterState } from "./useEventEmitter";
 import { CallStore, CallStoreEvent } from "../stores/CallStore";
 
@@ -15,7 +16,7 @@ import { CallStore, CallStoreEvent } from "../stores/CallStore";
  * Returns the currently connected call, or null if not in a call.
  * Reactively updates when the connected calls set changes.
  */
-export const useActiveCall = (): Call | null => {
+export const useActiveCall = (): Call | NexusVoiceConnection | null => {
     return useEventEmitterState(CallStore.instance, CallStoreEvent.ConnectedCalls, useCallback(
         () => {
             const calls = CallStore.instance.connectedCalls;

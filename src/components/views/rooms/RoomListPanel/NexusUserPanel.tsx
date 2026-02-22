@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import {
     MicOnSolidIcon,
     MicOffSolidIcon,
@@ -15,6 +15,8 @@ import {
 import { useActiveCall } from "../../../../hooks/useActiveCall";
 import { useConnectionState } from "../../../../hooks/useCall";
 import { ConnectionState } from "../../../../models/Call";
+import { NexusVoiceConnection } from "../../../../models/NexusVoiceConnection";
+import { useNexusVoice } from "../../../../hooks/useNexusVoice";
 import { OwnProfileStore } from "../../../../stores/OwnProfileStore";
 import { MatrixClientPeg } from "../../../../MatrixClientPeg";
 import { UPDATE_EVENT } from "../../../../stores/AsyncStore";
@@ -23,15 +25,13 @@ import BaseAvatar from "../../avatars/BaseAvatar";
 import AccessibleButton from "../../elements/AccessibleButton";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
-import { ElementWidgetActions } from "../../../../stores/widgets/ElementWidgetActions";
-import WidgetUtils from "../../../../utils/WidgetUtils";
-import { WidgetMessagingStore } from "../../../../stores/widgets/WidgetMessagingStore";
 import NexusCallStatusPanel from "./NexusCallStatusPanel";
 
 const NexusUserPanel: React.FC = () => {
     const call = useActiveCall();
     const connectionState = useConnectionState(call);
     const isConnected = connectionState === ConnectionState.Connected;
+    const { isMicMuted } = useNexusVoice();
 
     // Profile info (reactive)
     const displayName = useEventEmitterState(OwnProfileStore.instance, UPDATE_EVENT, useCallback(
@@ -44,26 +44,16 @@ const NexusUserPanel: React.FC = () => {
     ));
     const userId = MatrixClientPeg.safeGet().getSafeUserId();
 
-    // Mic mute state
-    const [isMicMuted, setIsMicMuted] = useState(false);
-
-    const onToggleMic = useCallback(async () => {
+    const onToggleMic = useCallback(() => {
         if (!call) return;
-        const uid = WidgetUtils.getWidgetUid(call.widget);
-        const messaging = WidgetMessagingStore.instance.getMessagingForUid(uid);
-        if (!messaging?.widgetApi) return;
 
-        const newMuted = !isMicMuted;
-        setIsMicMuted(newMuted);
-        try {
-            await messaging.widgetApi.transport.send(ElementWidgetActions.DeviceMute, {
-                audio_enabled: !newMuted,
-            });
-        } catch {
-            // Widget may not support DeviceMute — revert state
-            setIsMicMuted(!newMuted);
+        if (call instanceof NexusVoiceConnection) {
+            // Direct mic control via NexusVoiceConnection
+            call.setMicMuted(!call.isMicMuted);
         }
-    }, [call, isMicMuted]);
+        // For legacy Call instances with widget API, mic control is not supported
+        // from this panel (the iframe handles it).
+    }, [call]);
 
     const onOpenSettings = useCallback(() => {
         defaultDispatcher.dispatch({ action: Action.ViewUserSettings });

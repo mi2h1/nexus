@@ -9,7 +9,8 @@ Please see LICENSE files in the repository root for full details.
 import React, { type FC, useContext, useEffect, type AriaRole, useCallback } from "react";
 
 import type { Room } from "matrix-js-sdk/src/matrix";
-import { type Call, CallEvent } from "../../../models/Call";
+import { Call, CallEvent } from "../../../models/Call";
+import { NexusVoiceConnection } from "../../../models/NexusVoiceConnection";
 import MatrixClientContext from "../../../contexts/MatrixClientContext";
 import AppTile from "../elements/AppTile";
 import { CallStore } from "../../../stores/CallStore";
@@ -72,5 +73,8 @@ interface CallViewProps {
 export const CallView: FC<CallViewProps> = ({ room, resizing, role, onClose }) => {
     const call = useCall(room.roomId);
 
-    return call && <JoinCallView room={room} resizing={resizing} call={call} role={role} onClose={onClose} />;
+    // NexusVoiceConnection doesn't use the iframe call view
+    if (!call || call instanceof NexusVoiceConnection) return null;
+
+    return <JoinCallView room={room} resizing={resizing} call={call} role={role} onClose={onClose} />;
 };

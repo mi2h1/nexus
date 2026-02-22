@@ -90,7 +90,7 @@ export enum CallEvent {
     CallTypeChanged = "call_type_changed",
 }
 
-interface CallEventHandlerMap {
+export interface CallEventHandlerMap {
     [CallEvent.ConnectionState]: (state: ConnectionState, prevState: ConnectionState) => void;
     [CallEvent.Participants]: (
         participants: Map<RoomMember, Set<string>>,

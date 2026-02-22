@@ -20,7 +20,8 @@ import { useWidgets } from "../../utils/WidgetUtils";
 import { WidgetType } from "../../widgets/WidgetType";
 import { useCall, useConnectionState, useParticipantCount } from "../useCall";
 import { useRoomMemberCount } from "../useRoomMembers";
-import { ConnectionState } from "../../models/Call";
+import { Call, ConnectionState } from "../../models/Call";
+import { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
 import { placeCall } from "../../utils/room/placeCall";
 import { Container, WidgetLayoutStore } from "../../stores/widgets/WidgetLayoutStore";
 import { useRoomState } from "../useRoomState";
@@ -188,7 +189,8 @@ export const useRoomCall = (
         } else if (mayEditWidgets || hasJitsiWidget) {
             options.push(PlatformCallType.JitsiCall);
         }
-        if (hasGroupCall && WidgetType.CALL.matches(groupCall.widget.type)) {
+        const groupCallWidget = groupCall instanceof NexusVoiceConnection ? undefined : groupCall?.widget;
+        if (hasGroupCall && groupCallWidget && WidgetType.CALL.matches(groupCallWidget.type)) {
             // only allow joining the ongoing Element call if there is one.
             return [PlatformCallType.ElementCall];
         }
@@ -201,17 +203,19 @@ export const useRoomCall = (
         hasGroupCall,
         mayCreateElementCalls,
         useElementCallExclusively,
-        groupCall?.widget.type,
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        groupCall instanceof NexusVoiceConnection ? undefined : groupCall?.widget.type,
     ]);
 
+    const groupCallAsCall = groupCall instanceof NexusVoiceConnection ? undefined : groupCall;
     let widget: IApp | undefined;
     if (callOptions.includes(PlatformCallType.JitsiCall) || callOptions.includes(PlatformCallType.LegacyCall)) {
         widget = jitsiWidget ?? managedHybridWidget;
     }
     if (callOptions.includes(PlatformCallType.ElementCall)) {
-        widget = groupCall?.widget;
+        widget = groupCallAsCall?.widget;
     } else {
-        widget = groupCall?.widget ?? jitsiWidget;
+        widget = groupCallAsCall?.widget ?? jitsiWidget;
     }
     const updateWidgetState = useCallback((): void => {
         setCanPinWidget(WidgetLayoutStore.instance.canAddToContainer(room, Container.Top));

@@ -9,13 +9,14 @@ Please see LICENSE files in the repository root for full details.
 import React, { type FC } from "react";
 
 import type { Call } from "../../../models/Call";
+import type { NexusVoiceConnection } from "../../../models/NexusVoiceConnection";
 import { _t } from "../../../languageHandler";
 import { useConnectionState, useParticipantCount } from "../../../hooks/useCall";
 import { ConnectionState } from "../../../models/Call";
 import { LiveContentSummary, LiveContentType } from "./LiveContentSummary";
 
 interface Props {
-    call: Call;
+    call: Call | NexusVoiceConnection;
 }
 
 export const RoomTileCallSummary: FC<Props> = ({ call }) => {

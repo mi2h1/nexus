@@ -17,6 +17,7 @@ import WidgetStore from "./WidgetStore";
 import SettingsStore from "../settings/SettingsStore";
 import { SettingLevel } from "../settings/SettingLevel";
 import { Call, CallEvent, ConnectionState } from "../models/Call";
+import type { NexusVoiceConnection } from "../models/NexusVoiceConnection";
 
 export enum CallStoreEvent {
     // Signals a change in the call associated with a given room
@@ -121,14 +122,14 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
         WidgetStore.instance.off(UPDATE_EVENT, this.onWidgets);
     }
 
-    private _connectedCalls: Set<Call> = new Set();
+    private _connectedCalls: Set<Call | NexusVoiceConnection> = new Set();
     /**
      * The calls to which the user is currently connected.
      */
-    public get connectedCalls(): Set<Call> {
+    public get connectedCalls(): Set<Call | NexusVoiceConnection> {
         return this._connectedCalls;
     }
-    private set connectedCalls(value: Set<Call>) {
+    private set connectedCalls(value: Set<Call | NexusVoiceConnection>) {
         this._connectedCalls = value;
         this.emit(CallStoreEvent.ConnectedCalls, value);
 
@@ -188,13 +189,15 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
         }
     }
 
+    private voiceConnections = new Map<string, NexusVoiceConnection>();
+
     /**
-     * Gets the call associated with the given room, if any.
+     * Gets the call or voice connection associated with the given room, if any.
      * @param {string} roomId The room's ID.
-     * @returns {Call | null} The call.
+     * @returns {Call | NexusVoiceConnection | null} The call or voice connection.
      */
-    public getCall(roomId: string): Call | null {
-        return this.calls.get(roomId) ?? null;
+    public getCall(roomId: string): Call | NexusVoiceConnection | null {
+        return this.voiceConnections.get(roomId) ?? this.calls.get(roomId) ?? null;
     }
 
     /**
@@ -202,9 +205,39 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
      * @param roomId The room's ID.
      * @returns The active call.
      */
-    public getActiveCall(roomId: string): Call | null {
+    public getActiveCall(roomId: string): Call | NexusVoiceConnection | null {
         const call = this.getCall(roomId);
         return call !== null && this.connectedCalls.has(call) ? call : null;
+    }
+
+    /**
+     * Register a NexusVoiceConnection so it's visible to hooks via getCall().
+     */
+    public registerVoiceConnection(roomId: string, conn: NexusVoiceConnection): void {
+        this.voiceConnections.set(roomId, conn);
+
+        const onConnectionState = (state: ConnectionState): void => {
+            if (state === ConnectionState.Connected) {
+                this.connectedCalls = new Set([...this.connectedCalls, conn]);
+            } else if (state === ConnectionState.Disconnected) {
+                this.connectedCalls = new Set([...this.connectedCalls].filter((c) => c !== conn));
+            }
+        };
+        conn.on(CallEvent.ConnectionState, onConnectionState);
+
+        this.emit(CallStoreEvent.Call, conn, roomId);
+    }
+
+    /**
+     * Unregister a NexusVoiceConnection.
+     */
+    public unregisterVoiceConnection(roomId: string): void {
+        const conn = this.voiceConnections.get(roomId);
+        if (conn) {
+            this.voiceConnections.delete(roomId);
+            this.connectedCalls = new Set([...this.connectedCalls].filter((c) => c !== conn));
+            this.emit(CallStoreEvent.Call, null, roomId);
+        }
     }
 
     private onWidgets = (roomId: string | null): void => {

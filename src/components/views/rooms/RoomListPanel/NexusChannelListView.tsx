@@ -20,6 +20,7 @@ import { useChannelSeparation } from "../../../../hooks/useChannelSeparation";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { VoiceChannelParticipants } from "./VoiceChannelParticipants";
 import { TextChannelIcon, VoiceChannelIcon } from "./NexusChannelIcon";
+import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
 
 export interface NexusChannelListViewProps {
     vm: RoomListViewModel;
@@ -136,13 +137,66 @@ export function NexusChannelListView({ vm, onKeyDown }: NexusChannelListViewProp
                 <div className="mx_NexusChannelList_section">
                     <div className="mx_NexusChannelList_sectionHeader">VOICE CHANNELS</div>
                     {voiceRoomIds.map((roomId) => (
-                        <React.Fragment key={roomId}>
-                            {renderRoomItem(roomId, globalIndexMap.get(roomId) ?? 0, renderVoiceChannelAvatar)}
-                            <VoiceChannelParticipants roomId={roomId} />
-                        </React.Fragment>
+                        <VoiceChannelItem
+                            key={roomId}
+                            roomId={roomId}
+                            globalIndex={globalIndexMap.get(roomId) ?? 0}
+                            renderItem={renderRoomItem}
+                            avatarRenderer={renderVoiceChannelAvatar}
+                            matrixClient={matrixClient}
+                        />
                     ))}
                 </div>
             )}
         </div>
+    );
+}
+
+/**
+ * Wrapper for voice channel items that intercepts clicks to join/leave
+ * via NexusVoiceStore instead of navigating to the room view.
+ */
+function VoiceChannelItem({
+    roomId,
+    globalIndex,
+    renderItem,
+    avatarRenderer,
+    matrixClient,
+}: {
+    roomId: string;
+    globalIndex: number;
+    renderItem: (roomId: string, globalIndex: number, avatarRenderer: (room: SharedRoom) => ReactNode) => JSX.Element;
+    avatarRenderer: (room: SharedRoom) => ReactNode;
+    matrixClient: ReturnType<typeof useMatrixClientContext>;
+}): JSX.Element {
+    const onVoiceChannelClick = useCallback(
+        (e: React.MouseEvent) => {
+            e.stopPropagation();
+            e.preventDefault();
+
+            const room = matrixClient.getRoom(roomId);
+            if (!room) return;
+
+            const store = NexusVoiceStore.instance;
+            const existing = store.getConnection(roomId);
+            if (existing?.connected) {
+                // Already in this VC — leave
+                store.leaveVoiceChannel().catch(() => {});
+            } else {
+                // Join (will disconnect from any other VC)
+                store.joinVoiceChannel(room).catch(() => {});
+            }
+        },
+        [matrixClient, roomId],
+    );
+
+    return (
+        <React.Fragment>
+            {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+            <div onClick={onVoiceChannelClick}>
+                {renderItem(roomId, globalIndex, avatarRenderer)}
+            </div>
+            <VoiceChannelParticipants roomId={roomId} />
+        </React.Fragment>
     );
 }

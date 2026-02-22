@@ -10,14 +10,19 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 
 import type { RoomMember } from "matrix-js-sdk/src/matrix";
 import { type Call, ConnectionState, CallEvent } from "../models/Call";
+import type { NexusVoiceConnection } from "../models/NexusVoiceConnection";
 import { useTypedEventEmitterState, useEventEmitter } from "./useEventEmitter";
 import { CallStore, CallStoreEvent } from "../stores/CallStore";
 
-export const useCall = (roomId: string): Call | null => {
+export const useCall = (roomId: string): Call | NexusVoiceConnection | null => {
     const [call, setCall] = useState(() => CallStore.instance.getCall(roomId));
-    useEventEmitter(CallStore.instance, CallStoreEvent.Call, (call: Call | null, forRoomId: string) => {
-        if (forRoomId === roomId) setCall(call);
-    });
+    useEventEmitter(
+        CallStore.instance,
+        CallStoreEvent.Call,
+        (call: Call | NexusVoiceConnection | null, forRoomId: string) => {
+            if (forRoomId === roomId) setCall(call);
+        },
+    );
 
     // Reset the value when the roomId changes
     useEffect(() => {
@@ -29,17 +34,19 @@ export const useCall = (roomId: string): Call | null => {
 
 export const useCallForWidget = (widgetId: string, roomId: string): Call | null => {
     const call = useCall(roomId);
-    return call?.widget.id === widgetId ? call : null;
+    // NexusVoiceConnection has no widget, so only match against Call instances
+    if (call && "widget" in call && call.widget.id === widgetId) return call as Call;
+    return null;
 };
 
-export const useConnectionState = (call: Call | null): ConnectionState =>
+export const useConnectionState = (call: Call | NexusVoiceConnection | null): ConnectionState =>
     useTypedEventEmitterState(
         call ?? undefined,
         CallEvent.ConnectionState,
         useCallback((state) => state ?? call?.connectionState ?? ConnectionState.Disconnected, [call]),
     );
 
-const useParticipants = (call: Call | null): Map<RoomMember, Set<string>> => {
+const useParticipants = (call: Call | NexusVoiceConnection | null): Map<RoomMember, Set<string>> => {
     return useTypedEventEmitterState(
         call ?? undefined,
         CallEvent.Participants,
@@ -47,7 +54,7 @@ const useParticipants = (call: Call | null): Map<RoomMember, Set<string>> => {
     );
 };
 
-export const useParticipantCount = (call: Call | null): number => {
+export const useParticipantCount = (call: Call | NexusVoiceConnection | null): number => {
     const participants = useParticipants(call);
 
     return useMemo(() => {
@@ -55,7 +62,7 @@ export const useParticipantCount = (call: Call | null): number => {
     }, [participants]);
 };
 
-export const useParticipatingMembers = (call: Call): RoomMember[] => {
+export const useParticipatingMembers = (call: Call | NexusVoiceConnection): RoomMember[] => {
     const participants = useParticipants(call);
 
     return useMemo(() => {

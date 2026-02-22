@@ -12,10 +12,11 @@ import { ThreadsIcon } from "@vector-im/compound-design-tokens/assets/web/icons"
 
 import { type MessagePreview } from "../../../stores/room-list/MessagePreviewStore";
 import { type Call } from "../../../models/Call";
+import type { NexusVoiceConnection } from "../../../models/NexusVoiceConnection";
 import { RoomTileCallSummary } from "./RoomTileCallSummary";
 
 interface Props {
-    call: Call | null;
+    call: Call | NexusVoiceConnection | null;
     messagePreview: MessagePreview | null;
     roomId: string;
     showMessagePreview: boolean;

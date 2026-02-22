@@ -8,6 +8,8 @@
 import React, { type JSX } from "react";
 
 import { useCall, useParticipatingMembers } from "../../../../hooks/useCall";
+import type { Call } from "../../../../models/Call";
+import type { NexusVoiceConnection } from "../../../../models/NexusVoiceConnection";
 import MemberAvatar from "../../avatars/MemberAvatar";
 
 interface VoiceChannelParticipantsProps {
@@ -30,7 +32,7 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
  * Inner component that renders the participant list.
  * Separated so useParticipatingMembers (which requires non-null Call) is only called when a call exists.
  */
-function VoiceChannelParticipantsList({ call }: { call: NonNullable<ReturnType<typeof useCall>> }): JSX.Element | null {
+function VoiceChannelParticipantsList({ call }: { call: Call | NexusVoiceConnection }): JSX.Element | null {
     const members = useParticipatingMembers(call);
 
     if (members.length === 0) return null;
