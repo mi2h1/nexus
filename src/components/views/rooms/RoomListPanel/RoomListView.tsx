@@ -5,12 +5,10 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import React, { useCallback, type JSX, type ReactNode } from "react";
-import { useCreateAutoDisposedViewModel, type Room as SharedRoom } from "@element-hq/web-shared-components";
-import { type Room } from "matrix-js-sdk/src/matrix";
+import React, { useCallback, type JSX } from "react";
+import { useCreateAutoDisposedViewModel } from "@element-hq/web-shared-components";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
-import { RoomAvatarView } from "../../avatars/RoomAvatarView";
 import { getKeyBindingsManager } from "../../../../KeyBindingsManager";
 import { KeyBindingAction } from "../../../../accessibility/KeyboardShortcuts";
 import { Landmark, LandmarkNavigation } from "../../../../accessibility/LandmarkNavigation";
@@ -26,11 +24,6 @@ export function RoomListView(): JSX.Element {
     // Create and auto-dispose ViewModel instance
     const vm = useCreateAutoDisposedViewModel(() => new RoomListViewViewModel({ client: matrixClient }));
 
-    // Render avatar for each room - memoized to prevent re-renders
-    const renderAvatar = useCallback((room: SharedRoom): ReactNode => {
-        return <RoomAvatarView room={room as Room} />;
-    }, []);
-
     // Handle keyboard navigation for landmarks
     const onKeyDown = useCallback((ev: React.KeyboardEvent) => {
         const navAction = getKeyBindingsManager().getNavigationAction(ev);
@@ -44,5 +37,5 @@ export function RoomListView(): JSX.Element {
         }
     }, []);
 
-    return <NexusChannelListView vm={vm} renderAvatar={renderAvatar} onKeyDown={onKeyDown} />;
+    return <NexusChannelListView vm={vm} onKeyDown={onKeyDown} />;
 }

@@ -14,14 +14,15 @@ import {
     type RoomListViewModel,
     type Room as SharedRoom,
 } from "@element-hq/web-shared-components";
+import { type Room } from "matrix-js-sdk/src/matrix";
 
 import { useChannelSeparation } from "../../../../hooks/useChannelSeparation";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { VoiceChannelParticipants } from "./VoiceChannelParticipants";
+import { TextChannelIcon, VoiceChannelIcon } from "./NexusChannelIcon";
 
 export interface NexusChannelListViewProps {
     vm: RoomListViewModel;
-    renderAvatar: (room: SharedRoom) => ReactNode;
     onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
 }
 
@@ -31,7 +32,7 @@ export interface NexusChannelListViewProps {
  * 1. Text channels (all non-video rooms)
  * 2. Voice channels (video rooms / RoomType.UnstableCall)
  */
-export function NexusChannelListView({ vm, renderAvatar, onKeyDown }: NexusChannelListViewProps): JSX.Element {
+export function NexusChannelListView({ vm, onKeyDown }: NexusChannelListViewProps): JSX.Element {
     const snapshot = useViewModel(vm);
     const matrixClient = useMatrixClientContext();
     const { textRoomIds, voiceRoomIds } = useChannelSeparation(snapshot.roomIds, matrixClient);
@@ -70,7 +71,21 @@ export function NexusChannelListView({ vm, renderAvatar, onKeyDown }: NexusChann
 
     const totalRoomCount = allRoomIds.length;
 
-    const renderRoomItem = (roomId: string, globalIndex: number): JSX.Element => {
+    // Channel-type-specific avatar renderers
+    const renderTextChannelAvatar = useCallback(
+        (_room: SharedRoom): ReactNode => <TextChannelIcon />,
+        [],
+    );
+    const renderVoiceChannelAvatar = useCallback(
+        (room: SharedRoom): ReactNode => <VoiceChannelIcon roomId={(room as Room).roomId} />,
+        [],
+    );
+
+    const renderRoomItem = (
+        roomId: string,
+        globalIndex: number,
+        avatarRenderer: (room: SharedRoom) => ReactNode,
+    ): JSX.Element => {
         const roomItemVM = vm.getRoomItemViewModel(roomId);
         const isSelected = activeRoomIndex === globalIndex;
         const isFocused = hasFocus && focusedRoomId === roomId;
@@ -79,7 +94,7 @@ export function NexusChannelListView({ vm, renderAvatar, onKeyDown }: NexusChann
             <RoomListItemView
                 key={roomId}
                 vm={roomItemVM}
-                renderAvatar={renderAvatar}
+                renderAvatar={avatarRenderer}
                 isSelected={isSelected}
                 isFocused={isFocused}
                 onFocus={onFocus}
@@ -109,7 +124,9 @@ export function NexusChannelListView({ vm, renderAvatar, onKeyDown }: NexusChann
             {textRoomIds.length > 0 && (
                 <div className="mx_NexusChannelList_section">
                     <div className="mx_NexusChannelList_sectionHeader">TEXT CHANNELS</div>
-                    {textRoomIds.map((roomId) => renderRoomItem(roomId, globalIndexMap.get(roomId) ?? 0))}
+                    {textRoomIds.map((roomId) =>
+                        renderRoomItem(roomId, globalIndexMap.get(roomId) ?? 0, renderTextChannelAvatar),
+                    )}
                 </div>
             )}
 
@@ -119,7 +136,7 @@ export function NexusChannelListView({ vm, renderAvatar, onKeyDown }: NexusChann
                     <div className="mx_NexusChannelList_sectionHeader">VOICE CHANNELS</div>
                     {voiceRoomIds.map((roomId) => (
                         <React.Fragment key={roomId}>
-                            {renderRoomItem(roomId, globalIndexMap.get(roomId) ?? 0)}
+                            {renderRoomItem(roomId, globalIndexMap.get(roomId) ?? 0, renderVoiceChannelAvatar)}
                             <VoiceChannelParticipants roomId={roomId} />
                         </React.Fragment>
                     ))}

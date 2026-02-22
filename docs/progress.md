@@ -26,18 +26,19 @@ nexus/                          # element-web フォーク
 └── .github/workflows/pages.yml # GitHub Pages デプロイ
 ```
 
-## Phase 1: 環境構築 & 動作確認
-
-### 次のタスク
-
-1. **ブラウザで動作確認**
-   - https://mi2h1.github.io/nexus/ にアクセス
-   - matrix.org アカウントでログイン
-   - テキストチャット / VC / 画面共有の動作確認
-2. **Hooks 設定（ESLint + Prettier）**
-   - Element Web 同梱のリンター/フォーマッターを Hooks で自動実行
+## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-23
+- Discord 風テキスト/VC チャンネル分離を実装（NexusChannelListView）
+- VC チャンネル参加者表示を実装（VoiceChannelParticipants）
+  - チャンネル名の下にアバター + 名前をリアルタイム表示
+  - useCall / useParticipatingMembers を活用
+- 不要な UI 要素を非表示（インテグレーションマネージャ、Jitsi 等）
+- Element ブランディングを Nexus に差し替え
+
+## Phase 1: 環境構築 & 動作確認
 
 #### 2026-02-23
 - プロジェクトドキュメント一式を作成（CLAUDE.md, HANDOVER.md, conventions.md, progress.md, tech-stack.md, app-spec.md）
