@@ -88,10 +88,22 @@ try {
     // ignore - not important
 }
 
-// Get the root of a node_modules dependency the name of its import
+// Get the root of a node_modules dependency by resolving its main entry
 function getPackageRoot(dep: string, target = "package.json"): string {
-    const targetPath = import.meta.resolve(`${dep}${target ? "/" + target : ""}`);
-    return path.dirname(fileURLToPath(targetPath));
+    try {
+        const targetPath = import.meta.resolve(`${dep}${target ? "/" + target : ""}`);
+        return path.dirname(fileURLToPath(targetPath));
+    } catch {
+        // Fallback for packages whose exports don't include package.json:
+        // resolve the main entry and walk up to find the package root.
+        const mainPath = fileURLToPath(import.meta.resolve(dep));
+        let dir = path.dirname(mainPath);
+        while (dir !== path.dirname(dir)) {
+            if (fs.existsSync(path.join(dir, "package.json"))) return dir;
+            dir = path.dirname(dir);
+        }
+        throw new Error(`Could not find package root for ${dep}`);
+    }
 }
 
 function parseOverridesToReplacements(overrides: Record<string, string>): webpack.NormalModuleReplacementPlugin[] {
