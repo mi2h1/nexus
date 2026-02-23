@@ -31,6 +31,7 @@ import {
     createLocalAudioTrack,
     createLocalScreenTracks,
     Track,
+    ScreenSharePresets,
 } from "livekit-client";
 
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
@@ -346,7 +347,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.livekitRoom || !this.connected) return;
 
         try {
-            const tracks = await createLocalScreenTracks({ audio: true });
+            const tracks = await createLocalScreenTracks({
+                audio: true,
+                contentHint: "detail",
+            });
             for (const track of tracks) {
                 if (track.kind === "video") {
                     this.localScreenTrack = track as LocalVideoTrack;
@@ -358,6 +362,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             if (this.localScreenTrack) {
                 await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
                     source: Track.Source.ScreenShare,
+                    screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
+                    screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
+                    degradationPreference: "maintain-resolution",
                 });
 
                 // Listen for browser "stop sharing" event
