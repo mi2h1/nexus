@@ -11,7 +11,7 @@ import ShareScreenIcon from "@vector-im/compound-design-tokens/assets/web/icons/
 
 import { type Call, ConnectionState } from "../../../../models/Call";
 import type { NexusVoiceConnection } from "../../../../models/NexusVoiceConnection";
-import { useConnectionState } from "../../../../hooks/useCall";
+import { useConnectionState, useParticipatingMembers } from "../../../../hooks/useCall";
 import { useNexusVoice } from "../../../../hooks/useNexusVoice";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
@@ -30,10 +30,19 @@ const statusLabels: Record<ConnectionState, string> = {
 
 const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => {
     const connectionState = useConnectionState(call);
+    const members = useParticipatingMembers(call);
     const { latencyMs, isScreenSharing } = useNexusVoice();
     const client = useMatrixClientContext();
     const room = client.getRoom(call.roomId);
     const roomName = room?.name ?? call.roomId;
+
+    // Show "接続中…" until local user appears in participant list
+    const myUserId = client.getUserId();
+    const selfInList = members.some((m) => m.userId === myUserId);
+    const displayState =
+        connectionState === ConnectionState.Connected && !selfInList
+            ? ConnectionState.Connecting
+            : connectionState;
 
     const onDisconnect = useCallback(async () => {
         try {
@@ -57,9 +66,9 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
     }, [call]);
 
     let dotClass: string;
-    if (connectionState === ConnectionState.Connected) {
+    if (displayState === ConnectionState.Connected) {
         dotClass = "mx_NexusCallStatusPanel_dot--connected";
-    } else if (connectionState === ConnectionState.Connecting) {
+    } else if (displayState === ConnectionState.Connecting) {
         dotClass = "mx_NexusCallStatusPanel_dot--connecting";
     } else {
         dotClass = "mx_NexusCallStatusPanel_dot--disconnecting";
@@ -73,8 +82,8 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
             <div className="mx_NexusCallStatusPanel_info">
                 <div className="mx_NexusCallStatusPanel_status">
                     <span className={`mx_NexusCallStatusPanel_dot ${dotClass}`} />
-                    <span className={`mx_NexusCallStatusPanel_statusText${connectionState === ConnectionState.Connecting ? " mx_NexusCallStatusPanel_statusText--connecting" : ""}`}>
-                        {statusLabels[connectionState]}{latencyLabel}
+                    <span className={`mx_NexusCallStatusPanel_statusText${displayState === ConnectionState.Connecting ? " mx_NexusCallStatusPanel_statusText--connecting" : ""}`}>
+                        {statusLabels[displayState]}{latencyLabel}
                     </span>
                 </div>
                 <span className="mx_NexusCallStatusPanel_roomName">{roomName}</span>
