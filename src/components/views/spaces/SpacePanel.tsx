@@ -437,7 +437,8 @@ const SpacePanel: React.FC = () => {
                         ref={ref}
                         aria-label={_t("common|spaces")}
                     >
-                        <UserMenu isPanelCollapsed={isPanelCollapsed}>
+                        {/* Nexus: UserMenu を NexusUserPanel に移動済み。折りたたみボタンのみ残す */}
+                        <div className="mx_SpacePanel_toggleCollapseWrapper">
                             <AccessibleButton
                                 className={classNames("mx_SpacePanel_toggleCollapse", {
                                     expanded: !isPanelCollapsed,
@@ -453,7 +454,7 @@ const SpacePanel: React.FC = () => {
                             >
                                 <ChevronRightIcon />
                             </AccessibleButton>
-                        </UserMenu>
+                        </div>
                         <Droppable droppableId="top-level-spaces">
                             {(provided, snapshot) => (
                                 <InnerSpacePanel
