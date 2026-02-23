@@ -7,7 +7,12 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import { logger } from "matrix-js-sdk/src/logger";
-import { type MatrixRTCSession, MatrixRTCSessionManagerEvents, type Transport } from "matrix-js-sdk/src/matrixrtc";
+import {
+    type MatrixRTCSession,
+    MatrixRTCSessionManagerEvents,
+    MatrixRTCSessionEvent,
+    type Transport,
+} from "matrix-js-sdk/src/matrixrtc";
 import { MatrixError, type EmptyObject, type Room } from "matrix-js-sdk/src/matrix";
 
 import defaultDispatcher from "../dispatcher/dispatcher";
@@ -108,6 +113,19 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
         // This handles unclean disconnects (browser refresh/close while in VC)
         // where activeCallRoomIds may already have been cleared synchronously.
         await this.cleanupStaleMatrixRTCMemberships();
+
+        // Nexus: Session membership calculation is async — the initial cleanup
+        // above may run before memberships are populated.  Listen for membership
+        // changes on every future session so we can catch stale memberships that
+        // appear after the first pass.
+        this.matrixClient.matrixRTC.on(
+            MatrixRTCSessionManagerEvents.SessionStarted,
+            this.onRTCSessionStartForCleanup,
+        );
+        for (const room of this.matrixClient.getRooms()) {
+            const session = this.matrixClient.matrixRTC.getRoomSession(room);
+            session.on(MatrixRTCSessionEvent.MembershipsChanged, this.onMembershipsChangedForCleanup);
+        }
     }
 
     protected async onNotReady(): Promise<any> {
@@ -124,6 +142,10 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
         this.configuredMatrixRTCTransports.clear();
 
         this.matrixClient?.matrixRTC.off(MatrixRTCSessionManagerEvents.SessionStarted, this.onRTCSessionStart);
+        this.matrixClient?.matrixRTC.off(
+            MatrixRTCSessionManagerEvents.SessionStarted,
+            this.onRTCSessionStartForCleanup,
+        );
         WidgetStore.instance.off(UPDATE_EVENT, this.onWidgets);
     }
 
@@ -305,4 +327,46 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
             }
         }
     }
+
+    /**
+     * Nexus: When a new MatrixRTC session starts after onReady, attach a
+     * MembershipsChanged listener so we can catch stale memberships that
+     * weren't available during the initial cleanup pass.
+     */
+    private onRTCSessionStartForCleanup = (_roomId: string, session: MatrixRTCSession): void => {
+        session.on(MatrixRTCSessionEvent.MembershipsChanged, this.onMembershipsChangedForCleanup);
+    };
+
+    /**
+     * Nexus: When any session's memberships change, check whether our own
+     * device has a stale membership (i.e. we are listed but not actually
+     * connected via NexusVoiceConnection).  If so, leave the session.
+     */
+    private onMembershipsChangedForCleanup = (): void => {
+        if (!this.matrixClient) return;
+
+        const myUserId = this.matrixClient.getUserId();
+        const myDeviceId = this.matrixClient.getDeviceId();
+        if (!myUserId || !myDeviceId) return;
+
+        for (const room of this.matrixClient.getRooms()) {
+            if (!room.isCallRoom()) continue; // Only check VC rooms
+
+            const conn = this.voiceConnections.get(room.roomId);
+            if (conn?.connected) continue; // Actually connected — not stale
+
+            const session = this.matrixClient.matrixRTC.getRoomSession(room);
+            const myMembership = session.memberships.find(
+                (m) => m.sender === myUserId && m.deviceId === myDeviceId,
+            );
+            if (myMembership) {
+                logger.log(`Cleaning up late-detected stale MatrixRTC membership in ${room.roomId}`);
+                // Remove the listener first to avoid re-entry
+                session.off(MatrixRTCSessionEvent.MembershipsChanged, this.onMembershipsChangedForCleanup);
+                session.leaveRoomSession(5000).catch((e) => {
+                    logger.warn(`Failed to clean stale MatrixRTC membership in ${room.roomId}`, e);
+                });
+            }
+        }
+    };
 }
