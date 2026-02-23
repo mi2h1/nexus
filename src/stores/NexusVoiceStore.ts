@@ -9,7 +9,7 @@ import { TypedEventEmitter } from "matrix-js-sdk/src/matrix";
 import { type Room } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
-import { NexusVoiceConnection } from "../models/NexusVoiceConnection";
+import { NexusVoiceConnection, playVcSound, VC_JOIN_SOUND, VC_LEAVE_SOUND } from "../models/NexusVoiceConnection";
 import { CallStore } from "./CallStore";
 import { MatrixClientPeg } from "../MatrixClientPeg";
 
@@ -66,6 +66,9 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
         this.connections.set(room.roomId, connection);
         this.activeConnection = connection;
 
+        // Play join SE immediately for instant feedback
+        playVcSound(VC_JOIN_SOUND);
+
         // Register in CallStore
         CallStore.instance.registerVoiceConnection(room.roomId, connection);
 
@@ -91,18 +94,24 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
     public async leaveVoiceChannel(): Promise<void> {
         if (!this.activeConnection) return;
 
-        const roomId = this.activeConnection.roomId;
-        try {
-            await this.activeConnection.disconnect();
-        } catch (e) {
-            logger.warn("Error disconnecting voice channel", e);
-        }
+        const connection = this.activeConnection;
+        const roomId = connection.roomId;
 
+        // Play leave SE immediately for instant feedback
+        playVcSound(VC_LEAVE_SOUND);
+
+        // Clear state immediately so UI updates right away
         CallStore.instance.unregisterVoiceConnection(roomId);
-        this.activeConnection.destroy();
         this.connections.delete(roomId);
         this.activeConnection = null;
         this.emit(NexusVoiceStoreEvent.ActiveConnection, null);
+
+        // Background disconnect (MatrixRTC leave + LiveKit cleanup)
+        connection.disconnect().catch((e) => {
+            logger.warn("Background disconnect error", e);
+        }).finally(() => {
+            connection.destroy();
+        });
     }
 
     /**

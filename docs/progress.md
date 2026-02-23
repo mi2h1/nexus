@@ -26,11 +26,44 @@ nexus/                          # element-web フォーク
 └── .github/workflows/pages.yml # GitHub Pages デプロイ
 ```
 
+## Phase 2.5: 通話機能の内包（優先度: 高）
+
+> Element Call を iframe 経由で利用する現行方式から、livekit-client-sdk を Nexus 本体に直接組み込む方式へ移行する。
+
+### 動機
+- iframe 方式では毎回 Element Call を丸ごと起動し直すため VC 参加が遅い（数秒のオーバーヘッド）
+- WebRTC の stats / メディアストリームが iframe 内に閉じており、外部から制御できない
+  - Ping/遅延表示、スピーカーミュート、画面共有の外部制御が不可能
+
+### 内包で可能になること
+| 機能 | 現状 | 内包後 |
+|------|------|--------|
+| VC 参加速度 | iframe ロード + アセット取得で遅い | 事前初期化済みで即接続 |
+| Ping/遅延表示 | API なし | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
+| スピーカーミュート | iframe 内で再生、制御不可 | `AudioContext` / `volume` で制御 |
+| マイクミュート | Jitsi のみ動作、EC は ack のみ | 直接 `MediaStreamTrack.enabled` 制御 |
+| 画面共有の外部制御 | iframe 内部処理 | `getDisplayMedia()` を自前で呼べる |
+
+### 技術方針（暫定）
+1. `livekit-client-sdk` を直接依存に追加
+2. MatrixRTC シグナリング（ステートイベント）は既存の matrix-js-sdk を利用
+3. E2EE は SFrame（LiveKit SDK 内蔵）を利用
+4. Element Call の通話ロジック（参加/退出/メディア管理）を Nexus 内に再実装
+5. 既存の iframe ウィジェット方式は段階的に廃止
+
+### ステータス: 未着手
+
+---
+
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
 
 #### 2026-02-23
+- Discord 風ユーザーパネル & 通話ステータスパネルを追加（NexusUserPanel / NexusCallStatusPanel）
+  - アバター・表示名・マイクミュート・設定ボタン
+  - 通話中: 接続状態ドット + ルーム名 + 終話ボタン
+  - SpacePanel 下部のスレッドボタンを削除
 - Discord 風テキスト/VC チャンネル分離を実装（NexusChannelListView）
 - VC チャンネル参加者表示を実装（VoiceChannelParticipants）
   - チャンネル名の下にアバター + 名前をリアルタイム表示

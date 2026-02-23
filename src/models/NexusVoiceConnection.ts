@@ -40,10 +40,10 @@ const logger = rootLogger.getChild("NexusVoiceConnection");
 const STATS_POLL_INTERVAL_MS = 2000;
 
 // VC join/leave sound effects
-const VC_JOIN_SOUND = "media/message.ogg";
-const VC_LEAVE_SOUND = "media/callend.ogg";
+export const VC_JOIN_SOUND = "media/message.ogg";
+export const VC_LEAVE_SOUND = "media/callend.ogg";
 
-function playVcSound(src: string): void {
+export function playVcSound(src: string): void {
     try {
         const audio = new Audio(src);
         audio.volume = 0.5;
@@ -200,7 +200,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.room.on(RoomEvent.MyMembership, this.onMyMembership);
             window.addEventListener("beforeunload", this.onBeforeUnload);
             this.connectionState = ConnectionState.Connected;
-            playVcSound(VC_JOIN_SOUND);
 
             // 6. Start latency polling & speaker detection
             this.startStatsPolling();
@@ -229,7 +228,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.room.off(RoomEvent.MyMembership, this.onMyMembership);
         window.removeEventListener("beforeunload", this.onBeforeUnload);
         this.connectionState = ConnectionState.Disconnected;
-        playVcSound(VC_LEAVE_SOUND);
     }
 
     public async clean(): Promise<void> {
