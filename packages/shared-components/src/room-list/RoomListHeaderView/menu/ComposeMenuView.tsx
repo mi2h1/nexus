@@ -7,7 +7,7 @@
 
 import React, { useState, type JSX } from "react";
 import { IconButton, Menu, MenuItem } from "@vector-im/compound-web";
-import ComposeIcon from "@vector-im/compound-design-tokens/assets/web/icons/compose";
+import PlusIcon from "@vector-im/compound-design-tokens/assets/web/icons/plus";
 import VideoCallIcon from "@vector-im/compound-design-tokens/assets/web/icons/video-call";
 import ChatIcon from "@vector-im/compound-design-tokens/assets/web/icons/chat";
 import RoomIcon from "@vector-im/compound-design-tokens/assets/web/icons/room";
@@ -47,7 +47,7 @@ export function ComposeMenuView({ vm }: ComposeMenuViewProps): JSX.Element {
             trigger={
                 // 28px button with a 20px icon
                 <IconButton size="28px" style={{ padding: "4px" }} tooltip={_t("action|new_conversation")}>
-                    <ComposeIcon aria-hidden />
+                    <PlusIcon aria-hidden />
                 </IconButton>
             }
         >

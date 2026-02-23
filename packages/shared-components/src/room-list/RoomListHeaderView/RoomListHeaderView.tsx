@@ -7,12 +7,12 @@
 
 import React, { type JSX } from "react";
 import { IconButton, H1 } from "@vector-im/compound-web";
-import ComposeIcon from "@vector-im/compound-design-tokens/assets/web/icons/compose";
+import PlusIcon from "@vector-im/compound-design-tokens/assets/web/icons/plus";
 
 import { type ViewModel, useViewModel } from "../../viewmodel";
 import { Flex } from "../../utils/Flex";
 import { useI18n } from "../../utils/i18nContext";
-import { ComposeMenuView, OptionMenuView, SpaceMenuView } from "./menu";
+import { ComposeMenuView, SpaceMenuView } from "./menu";
 import styles from "./RoomListHeaderView.module.css";
 
 /**
@@ -141,8 +141,6 @@ export function RoomListHeaderView({ vm }: Readonly<RoomListHeaderViewProps>): J
                     {displaySpaceMenu && <SpaceMenuView vm={vm} />}
                 </Flex>
                 <Flex align="center" gap="var(--cpd-space-2x)">
-                    <OptionMenuView vm={vm} />
-
                     {/* If we don't display the compose menu, it means that the user can only send DM */}
                     {displayComposeMenu ? (
                         <ComposeMenuView vm={vm} />
@@ -153,7 +151,7 @@ export function RoomListHeaderView({ vm }: Readonly<RoomListHeaderViewProps>): J
                             onClick={(e) => vm.createChatRoom(e.nativeEvent)}
                             tooltip={_t("action|new_conversation")}
                         >
-                            <ComposeIcon color="var(--cpd-color-icon-secondary)" aria-hidden />
+                            <PlusIcon color="var(--cpd-color-icon-secondary)" aria-hidden />
                         </IconButton>
                     )}
                 </Flex>

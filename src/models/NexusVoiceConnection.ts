@@ -463,7 +463,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     const member = this.room.getMember(participant.identity);
                     shares.push({
                         participantIdentity: participant.identity,
-                        participantName: member?.name ?? participant.identity,
+                        participantName: member?.name ?? participant.name ?? participant.identity,
                         track: screenPub.track,
                         audioTrack: screenAudioPub?.track ?? undefined,
                         isLocal: false,

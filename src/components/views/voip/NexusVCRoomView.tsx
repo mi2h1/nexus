@@ -214,12 +214,7 @@ function SpotlightLayout({
         <div className="nx_VCRoomView_spotlight">
             <div className="nx_VCRoomView_spotlightMain">
                 {effectiveTarget?.type === "screenshare" ? (
-                    <>
-                        <ScreenShareTile share={effectiveTarget.share} />
-                        <div className="nx_VCRoomView_spotlightLabel">
-                            {effectiveTarget.share.participantName}の画面
-                        </div>
-                    </>
+                    <ScreenShareTile share={effectiveTarget.share} />
                 ) : effectiveTarget?.type === "member" ? (
                     <div className="nx_VCRoomView_spotlightAvatar">
                         <MemberAvatar member={effectiveTarget.member} size="128px" hideTitle />
