@@ -67,14 +67,14 @@ nexus/                          # element-web フォーク
 | 機能 | 実装 |
 |------|------|
 | VC 接続/切断 | `NexusVoiceConnection` — LiveKit 直接接続 + MatrixRTC シグナリング |
-| マイクミュート | `setMicMuted()` — `LocalAudioTrack.mute()/unmute()` |
+| マイクミュート | `setMicMuted()` — `mediaStreamTrack.enabled` 直接操作（非publish トラック経由） |
 | 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` |
 | Ping/遅延表示 | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
 | 個別音量調整 | `setParticipantVolume()` — `HTMLAudioElement.volume` |
 | 入力音量調整 | Web Audio API `GainNode` — 0-200% スライダー |
 | 出力マスター音量 | `setMasterOutputVolume()` — 全リモート参加者の受信音量一括調整 |
 | 入力感度（ボイスゲート） | `AnalyserNode` RMS 計測 → 閾値以下で `GainNode.gain=0`（300ms リリース遅延） |
-| 発話検出 | ポーリング方式（250ms）+ LiveKit `ActiveSpeakersChanged` イベント |
+| 発話検出 | ポーリング方式（250ms）— ローカルは自前 `inputLevel>5` / リモートは LiveKit `isSpeaking` |
 | 入退室 SE | 押下時 standby SE → 接続確立時 join SE → 退室時 leave SE |
 | VC 参加者グリッド | spotlight/grid 切替 + コントロールバー |
 | 音声設定 UI | 入力/出力音量スライダー + 入力感度トグル/閾値 + リアルタイムレベルメーター |
@@ -90,9 +90,14 @@ nexus/                          # element-web フォーク
 - **Discord 風音声設定**: 入力音量・出力音量・入力感度（ボイスゲート）を追加
   - Web Audio API パイプライン（AnalyserNode + GainNode）で入力音量調整・レベル監視
   - ボイスゲート: 閾値以下の入力を自動ミュート（300ms リリース遅延、ポップノイズなし）
-  - 設定 UI: マイク/スピーカー音量スライダー、入力感度トグル+閾値+リアルタイムレベルメーター
+  - 設定 UI: 2カラムレイアウト（左:入力デバイス+音量 / 右:出力デバイス+音量）+ 入力感度セクション
+  - リアルタイムレベルメーター + 閾値ラインオーバーレイ
   - コントロールバー設定ボタンが音声・ビデオタブを直接オープン
   - VC 接続開始 SE を standby SE に分離（接続確立時に join SE）
+- **発話インジケーター修正**: Web Audio API 経由で処理済みトラックを publish するため LiveKit の `isSpeaking` が不動作 → 自前の `inputLevel > 5` で検知に変更
+- **マイクミュート方式変更**: `LocalAudioTrack.mute()/unmute()` → `mediaStreamTrack.enabled` 直接操作（publish されたのは処理済みトラックのため）
+- **SE 差し替え**: join/leave/mute の SE を高品質版に差し替え、音量を 0.25 に調整
+- **ブラウザ更新直後の VC 接続修正**: transports 未取得時に TransportsUpdated イベントを待機 + 参加者リスト retry ポーリング追加
 - **VC 入退室 SE 改善**: ボタン押下時に即時再生、退室を非ブロッキング化
 - **音量コンテキストメニュー**: サイドバー参加者リストに移動
 - **VC 退出後リロード修正**: リロードで参加者が残る問題を修正

@@ -182,7 +182,10 @@ jobs:
 - Element Call iframe を廃止し livekit-client で直接接続
 - NexusVoiceConnection: LiveKit SFU + MatrixRTC シグナリング
 - VC ルームビュー: 参加者グリッド + コントロールバー + 画面共有
-- 個別音量調整、入力/出力音量調整、入力感度（ボイスゲート）、発話検出、Ping 表示、入退室 SE
+- 個別音量調整、入力/出力音量調整（2カラム設定UI）、入力感度（ボイスゲート）
+- 発話検出（ローカル: 自前 inputLevel / リモート: LiveKit isSpeaking）、Ping 表示
+- 入退室 SE（standby → join → leave）、ミュート/アンミュート SE
+- マイクミュートは `mediaStreamTrack.enabled` 直接操作（処理済みトラック publish のため）
 
 ### Phase 3: 将来のネイティブ化（Tauri 2）
 - Web 版の UI が固まった後に着手
