@@ -10,9 +10,7 @@ import classNames from "classnames";
 import {
     MicOnSolidIcon,
     MicOffSolidIcon,
-    VideoCallOffSolidIcon,
     ShareScreenSolidIcon,
-    ReactionIcon,
     SettingsSolidIcon,
     EndCallIcon,
     SpotlightIcon,
@@ -76,16 +74,6 @@ export function NexusVCControlBar({
                     )}
                 </AccessibleButton>
 
-                {/* Camera (disabled, future) */}
-                <AccessibleButton
-                    className="nx_VCControlBar_button nx_VCControlBar_button--disabled"
-                    onClick={() => {}}
-                    disabled
-                    title="カメラ（将来対応）"
-                >
-                    <VideoCallOffSolidIcon width={22} height={22} />
-                </AccessibleButton>
-
                 {/* Screen share */}
                 <AccessibleButton
                     className={classNames("nx_VCControlBar_button", {
@@ -95,16 +83,6 @@ export function NexusVCControlBar({
                     title={isScreenSharing ? "画面共有を停止" : "画面を共有"}
                 >
                     <ShareScreenSolidIcon width={22} height={22} />
-                </AccessibleButton>
-
-                {/* Reaction (disabled, future) */}
-                <AccessibleButton
-                    className="nx_VCControlBar_button nx_VCControlBar_button--disabled"
-                    onClick={() => {}}
-                    disabled
-                    title="リアクション（将来対応）"
-                >
-                    <ReactionIcon width={22} height={22} />
                 </AccessibleButton>
 
                 {/* Settings */}
