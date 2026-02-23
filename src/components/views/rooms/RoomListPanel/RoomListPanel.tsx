@@ -12,7 +12,6 @@ import { shouldShowComponent } from "../../../../customisations/helpers/UICompon
 import { UIComponent } from "../../../../settings/UIFeature";
 import { RoomListSearch } from "./RoomListSearch";
 import { RoomListView } from "./RoomListView";
-import NexusUserPanel from "./NexusUserPanel";
 import { _t } from "../../../../languageHandler";
 import { getKeyBindingsManager } from "../../../../KeyBindingsManager";
 import { KeyBindingAction } from "../../../../accessibility/KeyboardShortcuts";
@@ -80,7 +79,7 @@ export const RoomListPanel: React.FC<RoomListPanelProps> = ({ activeSpace }) => 
             {/* Nexus: フィルター非表示 */}
             <RoomListHeaderView vm={vm} />
             <RoomListView />
-            <NexusUserPanel />
+            {/* Nexus: NexusUserPanel は LoggedInView に移動済み（SpacePanel + ChList 全幅） */}
         </Flex>
     );
 };

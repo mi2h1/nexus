@@ -37,7 +37,7 @@ import { useEncryptionStatus } from "../../../../hooks/useEncryptionStatus.ts";
 import { E2EStatus } from "../../../../utils/ShieldUtils.ts";
 import FacePile from "../../elements/FacePile.tsx";
 import { useRoomState } from "../../../../hooks/useRoomState.ts";
-import RoomAvatar from "../../avatars/RoomAvatar.tsx";
+// Nexus: RoomAvatar は非表示
 import { formatCount } from "../../../../utils/FormattingUtils.ts";
 import RightPanelStore from "../../../../stores/right-panel/RightPanelStore.ts";
 import PosthogTrackers from "../../../../PosthogTrackers.ts";
@@ -47,11 +47,9 @@ import { isVideoRoom as calcIsVideoRoom } from "../../../../utils/video-rooms.ts
 import { notificationLevelToIndicator } from "../../../../utils/notifications.ts";
 import { CallGuestLinkButton } from "./CallGuestLinkButton.tsx";
 import { type ButtonEvent } from "../../elements/AccessibleButton.tsx";
-import WithPresenceIndicator, { useDmMember } from "../../avatars/WithPresenceIndicator.tsx";
+import { useDmMember } from "../../avatars/WithPresenceIndicator.tsx";
 import { type IOOBData } from "../../../../stores/ThreepidInviteStore.ts";
 import { MainSplitContentType } from "../../../structures/RoomView.tsx";
-import defaultDispatcher from "../../../../dispatcher/dispatcher.ts";
-import { RoomSettingsTab } from "../../dialogs/RoomSettingsDialog.tsx";
 import { useScopedRoomContext } from "../../../../contexts/ScopedRoomContext.tsx";
 import { ToggleableIcon } from "./toggle/ToggleableIcon.tsx";
 import { CurrentRightPanelPhaseContextProvider } from "../../../../contexts/CurrentRightPanelPhaseContext.tsx";
@@ -437,29 +435,11 @@ export default function RoomHeader({
     const isRoomEncrypted = useIsEncrypted(client, room);
     const e2eStatus = useEncryptionStatus(client, room);
     const askToJoinEnabled = useFeatureEnabled("feature_ask_to_join");
-    const onAvatarClick = (): void => {
-        defaultDispatcher.dispatch({
-            action: "open_room_settings",
-            initial_tab_id: RoomSettingsTab.General,
-        });
-    };
-
     return (
         <>
             <CurrentRightPanelPhaseContextProvider roomId={room.roomId}>
                 <Flex as="header" align="center" gap="var(--cpd-space-3x)" className="mx_RoomHeader light-panel">
-                    <WithPresenceIndicator room={room} size="8px">
-                        {/* We hide this from the tabIndex list as it is a pointer shortcut and superfluous for a11y */}
-                        {/* Disable on-click actions until the room is created */}
-                        <RoomAvatar
-                            room={room}
-                            size="40px"
-                            oobData={oobData}
-                            onClick={room instanceof LocalRoom ? undefined : onAvatarClick}
-                            tabIndex={-1}
-                            aria-label={_t("room|header_avatar_open_settings_label")}
-                        />
-                    </WithPresenceIndicator>
+                    {/* Nexus: ルームアバター非表示 */}
                     {/* Disable on-click actions until the room is created */}
                     <button
                         aria-label={_t("right_panel|room_summary_card|title")}

@@ -46,6 +46,7 @@ import { type CollapseItem, type ICollapseConfig } from "../../resizer/distribut
 import { getKeyBindingsManager } from "../../KeyBindingsManager";
 import { type IOpts } from "../../createRoom";
 import SpacePanel from "../views/spaces/SpacePanel";
+import NexusUserPanel from "../views/rooms/RoomListPanel/NexusUserPanel";
 import LegacyCallHandler, { LegacyCallHandlerEvent } from "../../LegacyCallHandler";
 import AudioFeedArrayForLegacyCall from "../views/voip/AudioFeedArrayForLegacyCall";
 import { OwnProfileStore } from "../../stores/OwnProfileStore";
@@ -789,6 +790,7 @@ class LoggedInView extends React.Component<IProps, IState> {
                                     </div>
                                 )}
                             </div>
+                            {useNewRoomList && <NexusUserPanel />}
                         </div>
                         {!moduleRenderer && <ResizeHandle passRef={this.resizeHandler} id="lp-resizer" />}
                         <div className="mx_RoomView_wrapper">{pageElement}</div>

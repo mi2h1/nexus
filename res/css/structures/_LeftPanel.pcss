@@ -29,6 +29,7 @@ Please see LICENSE files in the repository root for full details.
     display: flex;
     flex-direction: row;
     flex: 1;
+    min-height: 0; /* allow shrinking when NexusUserPanel is below */
     height: 100%; /* ensure space panel is still scrollable with an outer wrapper */
 
     .mx_LeftPanel_wrapper--user {
