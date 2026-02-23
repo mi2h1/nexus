@@ -21,6 +21,7 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | テキストチャット | Element Web (matrix-js-sdk) | 組み込み済み |
 | ボイスチャット (VC) | Nexus (livekit-client + MatrixRTC) | 実装済み |
 | 画面共有 | Nexus (livekit-client, 720p30 simulcast) | 実装済み |
+| 画面共有オプトイン視聴 | Nexus (Discord 準拠 — プレビュー+クリックで視聴開始) | 実装済み |
 | E2E 暗号化 | matrix-js-sdk (Olm/Megolm) | 組み込み済み |
 | テキスト/VC チャンネル分離 | Nexus (NexusChannelListView) | 実装済み |
 | VC 参加者グリッド | Nexus (NexusVoiceParticipantGrid) | 実装済み |
@@ -106,6 +107,22 @@ NexusVoiceStore (シングルトン)
             └─ LiveKit JWT 取得
 ```
 
+### VC 接続フロー最適化
+
+接続時間短縮のため、`connect()` 内で以下を `Promise.all` で並列実行:
+
+```
+┌─ getJwt()              （JWT 取得: 200-500ms）
+├─ createLocalAudioTrack() （マイクアクセス: 50-200ms）
+└─ preloadRnnoiseWasm()    （WASM プリロード: 50-150ms）
+         ↓
+livekitRoom.connect()      （WebRTC 確立: 500-5000ms）← JWT 必要なので後
+         ↓
+AudioContext 構築 + publishTrack ← マイクトラック必要なので後
+```
+
+詳細な調査・設計メモは [docs/vc-optimization.md](./vc-optimization.md) を参照。
+
 ### SE（効果音）タイミング
 - **入室**: ボタン押下時に standby SE → 接続確立（参加者リスト表示）時に join SE
 - **退室**: ボタン押下時に leave SE → UI 即クリア → バックグラウンドで切断処理
@@ -123,11 +140,27 @@ NexusVoiceStore (シングルトン)
 入力感度セクション:
 - **ボイスゲート**: AnalyserNode で RMS 計測、閾値以下で GainNode.gain=0（300ms リリース遅延）
 - **リアルタイムレベルメーター**: 50ms 間隔で入力レベルを表示、閾値ラインをオーバーレイ表示
+- **VC 未接続時のレベルメーター**: 独立した `getUserMedia` + `AnalyserNode` で動作（VC 接続不要）
 
 ### 発話検出の仕組み
 - **ローカルユーザー**: Web Audio API の AnalyserNode で計測した `inputLevel > 5` で判定（LiveKit の `isSpeaking` は処理済みトラック publish のため不動作）
 - **リモートユーザー**: LiveKit の `participant.isSpeaking` をポーリング（250ms 間隔）
 - **ミュート方式**: `mediaStreamTrack.enabled` 直接操作（LiveKit の `mute()/unmute()` は非 publish トラックのため不使用）
+
+### 画面共有オプトイン視聴（Discord 準拠）
+
+他者の画面共有が開始されても自動でスポットライトに表示せず、プレビューオーバーレイ付きタイルを表示。
+ユーザーが「画面を視聴する」をクリックして初めてスポットライトに表示される。
+
+| ケース | 動作 |
+|-------|------|
+| 自分が画面共有 | `isLocal` で自動 watched → プレビューなし、直接表示 |
+| 他者が画面共有開始 | ボトムバー/グリッドにプレビューオーバーレイ表示 |
+| 「画面を視聴する」クリック | `watchingIds` に追加 → スポットライトに表示 |
+| 画面共有が終了 | `useEffect` で `watchingIds` から自動削除 |
+
+- **state**: `watchingIds: Set<string>` — 視聴中の画面共有者の `participantIdentity`
+- **SpotlightLayout / GridLayout** 両方で同じ UX
 
 ### 画面共有エンコーディング（Discord 準拠）
 

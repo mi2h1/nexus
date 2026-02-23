@@ -19,7 +19,8 @@ nexus/                          # element-web フォーク
 │   ├── conventions.md          # 開発規約
 │   ├── progress.md             # 進捗（このファイル）
 │   ├── tech-stack.md           # 技術スタック
-│   └── app-spec.md             # アプリ仕様・UI設計
+│   ├── app-spec.md             # アプリ仕様・UI設計
+│   └── vc-optimization.md      # VC 接続高速化 調査・設計メモ
 ├── src/                        # ソースコード
 │   ├── models/
 │   │   └── NexusVoiceConnection.ts  # LiveKit 直接接続クラス
@@ -67,8 +68,10 @@ nexus/                          # element-web フォーク
 | 機能 | 実装 |
 |------|------|
 | VC 接続/切断 | `NexusVoiceConnection` — LiveKit 直接接続 + MatrixRTC シグナリング |
+| VC 接続高速化 | `connect()` で JWT取得+マイクアクセス+WASMプリロードを並列実行 |
 | マイクミュート | `setMicMuted()` — `mediaStreamTrack.enabled` 直接操作（非publish トラック経由） |
 | 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` + 720p30/simulcast エンコーディング |
+| 画面共有オプトイン視聴 | Discord 準拠 — 他者の画面共有はプレビュー+「画面を視聴する」クリックで表示 |
 | Ping/遅延表示 | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
 | 個別音量調整 | `setParticipantVolume()` — `HTMLAudioElement.volume` |
 | 入力音量調整 | Web Audio API `GainNode` — 0-200% スライダー |
@@ -78,6 +81,7 @@ nexus/                          # element-web フォーク
 | 入退室 SE | 押下時 standby SE → 接続確立時 join SE → 退室時 leave SE |
 | VC 参加者グリッド | spotlight/grid 切替 + コントロールバー |
 | 音声設定 UI | 入力/出力音量スライダー + 入力感度トグル/閾値 + リアルタイムレベルメーター |
+| 設定画面マイクゲージ | VC 未接続時も独立した getUserMedia+AnalyserNode でレベルメーター動作 |
 | CORS プロキシ | Cloudflare Workers 経由で LiveKit JWT を取得 |
 
 ---
@@ -87,6 +91,21 @@ nexus/                          # element-web フォーク
 ### 完了したタスク
 
 #### 2026-02-24
+- **画面共有オプトイン視聴機能**: Discord 準拠の画面共有視聴 UX を実装
+  - 他者の画面共有は自動表示せず、ボトムバー/グリッドにプレビューオーバーレイ付きタイル表示
+  - 「画面を視聴する」クリックで初めてスポットライトに表示
+  - 自分の画面共有は従来通り自動表示（`isLocal` 判定）
+  - `watchingIds` state で視聴中の画面共有を管理、終了時に自動クリーンアップ
+- **VC 接続フロー並列化**: 接続時間を最大 500ms 短縮
+  - `connect()` 内で JWT取得 + マイクアクセス + RNNoise WASM プリロードを `Promise.all` で並列実行
+  - `preloadRnnoiseWasm()` スタティックメソッド追加（AudioContext 不要で WASM だけ先にダウンロード）
+- **設定画面マイクゲージ独立動作**: VC 未接続時も入力レベルメーターが動作
+  - `useSettingsInputLevel` フック追加 — 独立した `getUserMedia` + `AnalyserNode` で 50ms ポーリング
+  - VC 接続時は接続の `CallEvent.InputLevel` をそのまま使用（従来動作）
+- **VC 接続高速化調査ドキュメント**: `docs/vc-optimization.md` 追加
+  - Discord のボイス接続アーキテクチャとの比較分析
+  - SFU 代替（Mediasoup, Cloudflare Calls 等）の検討
+  - 最適化ロードマップ（並列化 → JWT キャッシュ → Tauri UDP 高速パス）
 - **画面共有エンコーディング修正**: 高解像度モニターで受信側が真っ暗になる問題を修正
   - `ScreenSharePresets.h720fps30` (2Mbps/30fps) をエンコーディング上限に設定
   - `ScreenSharePresets.h360fps15` (400kbps/15fps) の simulcast 層で低帯域対応
