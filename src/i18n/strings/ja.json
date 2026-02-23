@@ -2323,7 +2323,7 @@
             "video_input_empty": "Webカメラが検出されません",
             "video_section": "ビデオの設定",
             "voice_agc": "マイクの音量を自動的に調節",
-            "voice_processing": "音声を処理しています",
+            "voice_processing": "音声処理",
             "voice_section": "音声の設定"
         },
         "warn_quit": "終了する際に警告",

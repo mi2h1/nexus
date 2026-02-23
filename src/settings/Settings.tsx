@@ -377,6 +377,7 @@ export interface Settings {
     "nexus_voice_gate_threshold": IBaseSetting<number>;
     "nexus_input_volume": IBaseSetting<number>;
     "nexus_output_volume": IBaseSetting<number>;
+    "nexus_noise_cancellation": IBaseSetting<boolean>;
 }
 
 export type SettingKey = keyof Settings;
@@ -1514,5 +1515,9 @@ export const SETTINGS: Settings = {
     "nexus_output_volume": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: 100, // 0-200 (percentage)
+    },
+    "nexus_noise_cancellation": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: false,
     },
 };
