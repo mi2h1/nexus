@@ -23,6 +23,7 @@ import {
 import {
     Room as LivekitRoom,
     RoomEvent as LivekitRoomEvent,
+    type Participant,
     type RemoteTrackPublication,
     type RemoteParticipant,
     type LocalAudioTrack,
@@ -89,6 +90,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _isScreenSharing = false;
     private _screenShares: ScreenShareInfo[] = [];
     private _activeSpeakers = new Set<string>();
+    private speakerPollTimer: ReturnType<typeof setInterval> | null = null;
     private statsTimer: ReturnType<typeof setInterval> | null = null;
     private audioElements = new Map<string, HTMLAudioElement>();
 
@@ -193,8 +195,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.connectionState = ConnectionState.Connected;
             playVcSound(VC_JOIN_SOUND);
 
-            // 6. Start latency polling
+            // 6. Start latency polling & speaker detection
             this.startStatsPolling();
+            this.startSpeakerPolling();
         } catch (e) {
             logger.error("Failed to connect voice channel", e);
             await this.cleanupLivekit();
@@ -421,6 +424,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     private async cleanupLivekit(): Promise<void> {
         this.stopStatsPolling();
+        this.stopSpeakerPolling();
 
         // Dispose audio elements
         for (const audio of this.audioElements.values()) {
@@ -516,10 +520,112 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Private: Active Speakers ─────────────────────────────
 
-    private onActiveSpeakersChanged = (speakers: { identity: string }[]): void => {
-        this._activeSpeakers = new Set(speakers.map((s) => s.identity));
-        this.emit(CallEvent.ActiveSpeakers, this._activeSpeakers);
+    /**
+     * Resolve a LiveKit participant identity to a Matrix user ID.
+     * Identity is usually the Matrix user ID, but may include a device suffix.
+     */
+    private resolveIdentityToUserId(identity: string): string | null {
+        // Direct match: identity is exactly a Matrix user ID
+        const directMember = this.room.getMember(identity);
+        if (directMember) return directMember.userId;
+
+        // Fallback: identity may be "userId:deviceId" — try stripping suffix.
+        // Matrix user IDs are "@localpart:domain", so we look for @...:...:...
+        const atIdx = identity.indexOf("@");
+        const firstColon = identity.indexOf(":", atIdx + 1);
+        if (firstColon > 0) {
+            const secondColon = identity.indexOf(":", firstColon + 1);
+            if (secondColon > 0) {
+                const userId = identity.substring(0, secondColon);
+                const member = this.room.getMember(userId);
+                if (member) return member.userId;
+            }
+        }
+
+        return null;
+    }
+
+    private onActiveSpeakersChanged = (speakers: Participant[]): void => {
+        this.updateActiveSpeakersFromParticipants(speakers);
     };
+
+    private updateActiveSpeakersFromParticipants(speakers: Participant[]): void {
+        const speakingUserIds = new Set<string>();
+        const myUserId = this.client.getUserId();
+
+        for (const speaker of speakers) {
+            // Check if this is the local participant
+            if (
+                this.livekitRoom &&
+                speaker.sid === this.livekitRoom.localParticipant.sid &&
+                myUserId
+            ) {
+                speakingUserIds.add(myUserId);
+                continue;
+            }
+
+            // Remote participant — resolve identity to Matrix user ID
+            const userId = this.resolveIdentityToUserId(speaker.identity);
+            if (userId) {
+                speakingUserIds.add(userId);
+            }
+        }
+
+        this._activeSpeakers = speakingUserIds;
+        this.emit(CallEvent.ActiveSpeakers, speakingUserIds);
+    }
+
+    /**
+     * Polling fallback for speaker detection.
+     * Checks isSpeaking on all participants every 250ms.
+     * This is more reliable than relying solely on the room event.
+     */
+    private startSpeakerPolling(): void {
+        this.speakerPollTimer = setInterval(() => this.pollActiveSpeakers(), 250);
+    }
+
+    private stopSpeakerPolling(): void {
+        if (this.speakerPollTimer) {
+            clearInterval(this.speakerPollTimer);
+            this.speakerPollTimer = null;
+        }
+    }
+
+    private pollActiveSpeakers(): void {
+        if (!this.livekitRoom) return;
+
+        const speakingUserIds = new Set<string>();
+        const myUserId = this.client.getUserId();
+
+        // Check local participant
+        if (this.livekitRoom.localParticipant.isSpeaking && myUserId) {
+            speakingUserIds.add(myUserId);
+        }
+
+        // Check remote participants
+        for (const participant of this.livekitRoom.remoteParticipants.values()) {
+            if (participant.isSpeaking) {
+                const userId = this.resolveIdentityToUserId(participant.identity);
+                if (userId) {
+                    speakingUserIds.add(userId);
+                }
+            }
+        }
+
+        // Only emit if the set actually changed
+        if (!this.setsEqual(this._activeSpeakers, speakingUserIds)) {
+            this._activeSpeakers = speakingUserIds;
+            this.emit(CallEvent.ActiveSpeakers, speakingUserIds);
+        }
+    }
+
+    private setsEqual(a: Set<string>, b: Set<string>): boolean {
+        if (a.size !== b.size) return false;
+        for (const item of a) {
+            if (!b.has(item)) return false;
+        }
+        return true;
+    }
 
     // ─── Private: Participants ────────────────────────────────
 
