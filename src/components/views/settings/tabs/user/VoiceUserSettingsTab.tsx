@@ -26,6 +26,8 @@ import { SettingsSubsection } from "../../shared/SettingsSubsection";
 import MatrixClientContext from "../../../../../contexts/MatrixClientContext";
 import SettingsStore from "../../../../../settings/SettingsStore";
 import { useNexusVoice } from "../../../../../hooks/useNexusVoice";
+import type { NexusVoiceConnection } from "../../../../../models/NexusVoiceConnection";
+import { CallEvent } from "../../../../../models/Call";
 
 interface IState {
     mediaDevices: IMediaDevices | null;
@@ -124,9 +126,92 @@ function NexusOutputVolume(): JSX.Element {
     );
 }
 
+/**
+ * Standalone mic input level monitor for settings page.
+ * When not in a VC, opens its own getUserMedia stream + AnalyserNode
+ * so the level meter works without an active voice connection.
+ * When a VC connection exists, returns the connection's inputLevel instead.
+ */
+function useSettingsInputLevel(connection: NexusVoiceConnection | null): number {
+    const [level, setLevel] = useState(0);
+    const cleanupRef = useRef<(() => void) | null>(null);
+
+    useEffect(() => {
+        // If connected to a VC, don't run standalone monitoring
+        if (connection) {
+            // Clean up standalone resources if they exist
+            cleanupRef.current?.();
+            cleanupRef.current = null;
+            return;
+        }
+
+        let cancelled = false;
+        let audioCtx: AudioContext | null = null;
+        let stream: MediaStream | null = null;
+        let timer: ReturnType<typeof setInterval> | null = null;
+
+        const start = async (): Promise<void> => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: true, noiseSuppression: true },
+                });
+                if (cancelled) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    return;
+                }
+
+                audioCtx = new AudioContext();
+                const source = audioCtx.createMediaStreamSource(stream);
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                timer = setInterval(() => {
+                    analyser.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                    const avg = sum / dataArray.length;
+                    setLevel(Math.min(100, Math.round((avg / 128) * 100)));
+                }, 50);
+            } catch {
+                // getUserMedia denied or unavailable — level stays at 0
+            }
+        };
+
+        start();
+
+        const cleanup = (): void => {
+            cancelled = true;
+            if (timer) clearInterval(timer);
+            stream?.getTracks().forEach((t) => t.stop());
+            audioCtx?.close().catch(() => {});
+            setLevel(0);
+        };
+        cleanupRef.current = cleanup;
+
+        return cleanup;
+    }, [connection]);
+
+    // When connected, subscribe to the connection's InputLevel event
+    useEffect(() => {
+        if (!connection) return;
+
+        const onInputLevel = (l: number): void => setLevel(l);
+        connection.on(CallEvent.InputLevel, onInputLevel);
+        return () => {
+            connection.off(CallEvent.InputLevel, onInputLevel);
+        };
+    }, [connection]);
+
+    return level;
+}
+
 /** Voice gate / input sensitivity settings (functional component for hook access). */
 function NexusVoiceGateSettings(): JSX.Element {
-    const { inputLevel } = useNexusVoice();
+    const { connection } = useNexusVoice();
+    const inputLevel = useSettingsInputLevel(connection);
 
     const [gateEnabled, setGateEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_voice_gate_enabled") ?? false,

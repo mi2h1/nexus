@@ -194,10 +194,22 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.connectionState = ConnectionState.Connecting;
 
         try {
-            // 1. Get LiveKit JWT
-            const { jwt, url } = await this.getJwt();
+            // ── Phase 1: Parallel pre-fetch ──────────────────────────
+            // JWT, mic access, and RNNoise WASM download run concurrently
+            // to minimize total wall-clock time.
+            const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation") ?? false;
+            const [{ jwt, url }, audioTrack] = await Promise.all([
+                this.getJwt(),
+                createLocalAudioTrack({
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                }),
+                // Preload RNNoise WASM binary in parallel (cached statically)
+                ncEnabled ? NexusVoiceConnection.preloadRnnoiseWasm() : Promise.resolve(),
+            ]);
+            this.localAudioTrack = audioTrack;
 
-            // 2. Connect to LiveKit
+            // ── Phase 2: Connect to LiveKit (requires JWT) ───────────
             this.livekitRoom = new LivekitRoom();
             this.livekitRoom.on(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.on(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
@@ -206,13 +218,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             await this.livekitRoom.connect(url, jwt);
 
-            // 3. Publish local audio (via Web Audio API pipeline for input volume control)
-            this.localAudioTrack = await createLocalAudioTrack({
-                echoCancellation: true,
-                noiseSuppression: true,
-            });
-
-            // Build audio pipeline:
+            // ── Phase 3: Build audio pipeline ────────────────────────
+            // Audio pipeline:
             //   NC disabled: source → analyser + inputGainNode → dest
             //   NC enabled:  source → rnnoiseNode → analyser + inputGainNode → dest
             this.audioContext = new AudioContext();
@@ -237,7 +244,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.inputGainNode.gain.value = inputVolume / 100;
 
             // Insert RNNoise if enabled and sample rate is 48kHz
-            const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation") ?? false;
+            // (WASM binary is already preloaded from Phase 1)
             if (ncEnabled && this.audioContext.sampleRate === 48000) {
                 await this.setupRnnoiseNode();
             }
@@ -577,6 +584,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     // ─── Private: RNNoise setup ──────────────────────────────
+
+    /**
+     * Preload the RNNoise WASM binary without requiring an AudioContext.
+     * Called during connect() in parallel with JWT fetch and mic access
+     * so the binary is already cached when setupRnnoiseNode() runs.
+     */
+    public static async preloadRnnoiseWasm(): Promise<void> {
+        if (NexusVoiceConnection.rnnoiseWasmBinary) return;
+        try {
+            NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
+                url: "noise-suppressor/rnnoise.wasm",
+                simdUrl: "noise-suppressor/rnnoise_simd.wasm",
+            });
+            logger.info("RNNoise WASM preloaded");
+        } catch (e) {
+            logger.warn("Failed to preload RNNoise WASM", e);
+        }
+    }
 
     private async setupRnnoiseNode(): Promise<void> {
         if (!this.audioContext) return;
