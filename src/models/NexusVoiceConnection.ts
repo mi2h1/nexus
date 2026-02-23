@@ -194,6 +194,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.on(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
             this.livekitRoom.on(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
+            this.livekitRoom.on(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
+            this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             await this.livekitRoom.connect(url, jwt);
 
             // 3. Publish local audio (via Web Audio API pipeline for input volume control)
@@ -680,6 +682,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.off(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.off(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
             this.livekitRoom.off(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
+            this.livekitRoom.off(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
+            this.livekitRoom.off(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             await this.livekitRoom.disconnect();
             this.livekitRoom = null;
         }
@@ -921,6 +925,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Private: Participants ────────────────────────────────
 
+    private onParticipantConnected = (): void => {
+        this.updateParticipants();
+    };
+
+    private onParticipantDisconnected = (): void => {
+        this.updateParticipants();
+    };
+
     private onMembershipsChanged = (): void => {
         const prevCount = this._participants.size;
         this.updateParticipants();
@@ -963,6 +975,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     private updateParticipants(): void {
         const participants = new Map<RoomMember, Set<string>>();
+
+        // 1. MatrixRTC memberships（権威データ）
         for (const m of this.session.memberships) {
             if (!m.sender) continue;
             const member = this.room.getMember(m.sender);
@@ -974,6 +988,32 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 }
             }
         }
+
+        // 2. LiveKit 参加者（高速パス — MatrixRTC にまだ反映されていない人を補完）
+        if (this.livekitRoom) {
+            const seen = new Set([...participants.keys()].map((m) => m.userId));
+
+            for (const rp of this.livekitRoom.remoteParticipants.values()) {
+                const userId = this.resolveIdentityToUserId(rp.identity);
+                if (!userId || seen.has(userId)) continue;
+                const member = this.room.getMember(userId);
+                if (member) {
+                    participants.set(member, new Set(["livekit"]));
+                }
+            }
+
+            // 3. ローカルユーザー（接続済みだが membership 未到着の場合）
+            if (this.connected) {
+                const myUserId = this.client.getUserId();
+                if (myUserId && !seen.has(myUserId)) {
+                    const myMember = this.room.getMember(myUserId);
+                    if (myMember) {
+                        participants.set(myMember, new Set([this.client.getDeviceId()!]));
+                    }
+                }
+            }
+        }
+
         this.participants = participants;
     }
 

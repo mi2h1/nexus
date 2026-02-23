@@ -5,16 +5,15 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import React, { type JSX, useCallback, useEffect, useState } from "react";
-import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
+import React, { type JSX, useCallback, useState } from "react";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 import classNames from "classnames";
 import { MicOffSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
-import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
 import { useNexusActiveSpeakers } from "../../../../hooks/useNexusActiveSpeakers";
 import { useNexusParticipantStates } from "../../../../hooks/useNexusParticipantStates";
+import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import MemberAvatar from "../../avatars/MemberAvatar";
 import { NexusParticipantContextMenu } from "../../voip/NexusParticipantContextMenu";
 
@@ -34,58 +33,9 @@ interface VoiceChannelParticipantsProps {
  */
 export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsProps): JSX.Element | null {
     const client = useMatrixClientContext();
-    const [members, setMembers] = useState<RoomMember[]>([]);
+    const { members } = useVCParticipants(roomId);
     const activeSpeakers = useNexusActiveSpeakers();
     const participantStates = useNexusParticipantStates();
-
-    useEffect(() => {
-        const room = client.getRoom(roomId);
-        if (!room) return;
-
-        const myUserId = client.getUserId();
-        const session = client.matrixRTC.getRoomSession(room);
-
-        const updateMembers = (): void => {
-            const participantMembers: RoomMember[] = [];
-            const seen = new Set<string>();
-
-            // Check if the local user is actually connected to this VC
-            const localConn = NexusVoiceStore.instance.getConnection(roomId);
-            const localConnected = localConn?.connected ?? false;
-
-            for (const membership of session.memberships) {
-                const sender = membership.sender;
-                if (!sender || seen.has(sender)) continue;
-
-                // Filter out our own stale membership if we're not connected
-                if (sender === myUserId && !localConnected) continue;
-
-                seen.add(sender);
-                const member = room.getMember(sender);
-                if (member) {
-                    participantMembers.push(member);
-                }
-            }
-
-            setMembers(participantMembers);
-        };
-
-        // Initial update
-        updateMembers();
-
-        // Listen for membership changes
-        session.on(MatrixRTCSessionEvent.MembershipsChanged, updateMembers);
-
-        // Also update when the local voice connection changes
-        const onActiveConnection = (): void => updateMembers();
-        NexusVoiceStore.instance.on(NexusVoiceStoreEvent.ActiveConnection, onActiveConnection);
-
-        return () => {
-            session.off(MatrixRTCSessionEvent.MembershipsChanged, updateMembers);
-            NexusVoiceStore.instance.off(NexusVoiceStoreEvent.ActiveConnection, onActiveConnection);
-        };
-    }, [client, roomId]);
-
     const myUserId = client.getUserId();
 
     if (members.length === 0) return null;
