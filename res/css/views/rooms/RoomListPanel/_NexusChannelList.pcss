@@ -11,6 +11,16 @@
     overflow-y: auto;
     flex: 1 1 0;
     min-height: 0;
+
+    /* Nexus: アイコンとチャンネル名の間隔を狭める */
+    .mx_RoomListItemView [class*="container"] {
+        gap: var(--cpd-space-2x) !important;
+    }
+
+    /* Nexus: 選択中チャンネルの左ノッチ（緑マーカー）を非表示 */
+    .mx_RoomListItemView_selected [class*="container"]::before {
+        display: none !important;
+    }
 }
 
 .mx_NexusChannelList_section {
@@ -53,8 +63,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
 }
 

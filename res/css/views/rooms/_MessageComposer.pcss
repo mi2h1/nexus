@@ -12,7 +12,7 @@ Please see LICENSE files in the repository root for full details.
     /* Nexus: border-top 削除、角丸ボーダーに変更 */
     position: relative;
     padding-left: 16px;
-    padding-right: 16px;
+    padding-right: 24px;
     padding-bottom: 12px;
 }
 
@@ -76,11 +76,11 @@ Please see LICENSE files in the repository root for full details.
 .mx_MessageComposer_e2eIconWrapper {
     height: 12px; /* Match the height of the E2E icon for alignment */
     width: 12px;
-    position: absolute;
-    left: 20px;
-    top: 22px;
-    margin-right: 0; /* Counteract the E2EIcon class */
-    margin-left: 3px; /* Counteract the E2EIcon class */
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    margin-right: 0;
+    margin-left: 4px;
 
     .mx_MessageComposer_e2eIcon {
         margin: 0;

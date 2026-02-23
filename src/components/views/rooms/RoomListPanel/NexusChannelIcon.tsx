@@ -37,8 +37,8 @@ export function VoiceChannelIcon({ roomId }: { roomId: string }): JSX.Element {
     return (
         <VolumeOnSolidIcon
             className="mx_NexusChannelIcon mx_NexusChannelIcon_voice"
-            width="20px"
-            height="20px"
+            width="16px"
+            height="16px"
             color={color}
             aria-label="Voice channel"
         />

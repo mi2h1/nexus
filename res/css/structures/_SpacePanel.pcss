@@ -131,9 +131,21 @@ Please see LICENSE files in the repository root for full details.
                 background-color: var(--activeBackground-color);
             }
 
-            &.mx_SpaceButton_narrow .mx_SpaceButton_selectionWrapper {
-                padding: var(--activeBorder-transparent-gap);
-                border: 3px var(--activeBorder-color) solid;
+            /* Nexus: ボーダー囲みの代わりに左ノッチを表示 */
+            &.mx_SpaceButton_narrow {
+                position: relative;
+
+                &::before {
+                    content: "";
+                    position: absolute;
+                    left: 0;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 4px;
+                    height: 24px;
+                    background-color: var(--cpd-color-icon-primary);
+                    border-radius: 0 4px 4px 0;
+                }
             }
         }
 
