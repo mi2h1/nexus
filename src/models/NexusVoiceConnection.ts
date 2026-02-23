@@ -114,6 +114,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _voiceGateOpen = true;
     private voiceGateReleaseTimeout: ReturnType<typeof setTimeout> | null = null;
     private static readonly VOICE_GATE_RELEASE_MS = 300;
+    private participantRetryTimer: ReturnType<typeof setInterval> | null = null;
 
     public constructor(
         public readonly room: Room,
@@ -622,6 +623,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.stopStatsPolling();
         this.stopSpeakerPolling();
         this.stopVoiceGatePolling();
+        if (this.participantRetryTimer) {
+            clearInterval(this.participantRetryTimer);
+            this.participantRetryTimer = null;
+        }
 
         // Close audio pipeline
         if (this.audioContext) {
@@ -929,21 +934,33 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.connected && prevCount !== newCount) {
             if (newCount > prevCount) {
                 playVcSound(VC_JOIN_SOUND);
-            } else {
+            } else if (newCount > 0) {
                 playVcSound(VC_LEAVE_SOUND);
             }
+        }
+
+        // If connected but memberships dropped to 0, MatrixRTC may be
+        // re-joining (force re-join on "Missing own membership"). Retry
+        // to pick up the re-sent state event once the next sync arrives.
+        if (this.connected && newCount === 0) {
+            logger.info("Memberships dropped to 0 while connected, scheduling retry");
+            this.retryUpdateParticipants();
         }
     };
 
     private retryUpdateParticipants(): void {
+        // Avoid duplicate retry loops
+        if (this.participantRetryTimer) return;
+
         let retries = 0;
         const maxRetries = 10;
-        const interval = setInterval(() => {
+        this.participantRetryTimer = setInterval(() => {
             retries++;
             this.updateParticipants();
             // Stop retrying once we have participants or hit the limit
             if (this._participants.size > 0 || retries >= maxRetries || !this.connected) {
-                clearInterval(interval);
+                clearInterval(this.participantRetryTimer!);
+                this.participantRetryTimer = null;
             }
         }, 1000);
     }
