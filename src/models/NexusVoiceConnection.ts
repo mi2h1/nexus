@@ -99,6 +99,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private statsTimer: ReturnType<typeof setInterval> | null = null;
     private audioElements = new Map<string, HTMLAudioElement>();
 
+    // ─── Audio pipeline (output volume via Web Audio API) ────
+    private outputAudioContext: AudioContext | null = null;
+    private outputMasterGain: GainNode | null = null;
+    private outputParticipantGains = new Map<string, GainNode>();
+    private participantVolumes = new Map<string, number>(); // 0-1.0
+
     // ─── Audio pipeline (input volume + voice gate) ──────────
     private audioContext: AudioContext | null = null;
     private analyserNode: AnalyserNode | null = null;
@@ -451,9 +457,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public setParticipantVolume(userId: string, volume: number): void {
         const identity = this.findIdentityForUserId(userId);
         if (!identity) return;
-        const audio = this.audioElements.get(identity);
-        if (audio) {
-            audio.volume = Math.max(0, Math.min(1, volume));
+        const clamped = Math.max(0, Math.min(1, volume));
+        this.participantVolumes.set(identity, clamped);
+        const gain = this.outputParticipantGains.get(identity);
+        if (gain) {
+            gain.gain.value = clamped;
         }
     }
 
@@ -464,8 +472,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public getParticipantVolume(userId: string): number {
         const identity = this.findIdentityForUserId(userId);
         if (!identity) return 1;
-        const audio = this.audioElements.get(identity);
-        return audio?.volume ?? 1;
+        return this.participantVolumes.get(identity) ?? 1;
     }
 
     // ─── Public: Audio pipeline accessors ──────────────────────
@@ -485,11 +492,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
     }
 
-    /** Set master output volume for all remote audio elements (0-200). */
+    /** Set master output volume for all remote audio (0-200). Uses Web Audio GainNode. */
     public setMasterOutputVolume(volume: number): void {
-        const normalized = Math.max(0, Math.min(2, volume / 100));
-        for (const audio of this.audioElements.values()) {
-            audio.volume = normalized;
+        if (this.outputMasterGain) {
+            this.outputMasterGain.gain.value = Math.max(0, Math.min(2, volume / 100));
         }
     }
 
@@ -623,6 +629,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._inputLevel = 0;
         this._voiceGateOpen = true;
 
+        // Close output audio pipeline
+        if (this.outputAudioContext) {
+            this.outputAudioContext.close().catch(() => {});
+            this.outputAudioContext = null;
+            this.outputMasterGain = null;
+        }
+        this.outputParticipantGains.clear();
+
         // Dispose audio elements
         for (const audio of this.audioElements.values()) {
             audio.pause();
@@ -683,13 +697,34 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         if (track.kind !== "audio") return;
 
-        const audio = new Audio();
-        audio.autoplay = true;
-        // Apply master output volume
-        const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
-        audio.volume = Math.max(0, Math.min(2, masterVol / 100));
-        track.attach(audio);
-        this.audioElements.set(participant.identity, audio);
+        try {
+            const audio = new Audio();
+            audio.autoplay = true;
+            track.attach(audio);
+            this.audioElements.set(participant.identity, audio);
+
+            // Route through Web Audio API for volume control (supports > 1.0)
+            if (!this.outputAudioContext) {
+                this.outputAudioContext = new AudioContext();
+                this.outputMasterGain = this.outputAudioContext.createGain();
+                const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
+                this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
+                this.outputMasterGain.connect(this.outputAudioContext.destination);
+            }
+            const source = this.outputAudioContext.createMediaElementSource(audio);
+            const participantGain = this.outputAudioContext.createGain();
+            participantGain.gain.value = this.participantVolumes.get(participant.identity) ?? 1;
+            source.connect(participantGain);
+            participantGain.connect(this.outputMasterGain!);
+            this.outputParticipantGains.set(participant.identity, participantGain);
+
+            // Resume AudioContext if suspended (autoplay policy)
+            if (this.outputAudioContext.state === "suspended") {
+                this.outputAudioContext.resume().catch(() => {});
+            }
+        } catch (e) {
+            logger.warn("onTrackSubscribed error:", e);
+        }
     };
 
     private onTrackUnsubscribed = (
@@ -710,6 +745,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         if (track.kind !== "audio") return;
 
+        this.outputParticipantGains.delete(participant.identity);
         const audio = this.audioElements.get(participant.identity);
         if (audio) {
             track.detach(audio);
