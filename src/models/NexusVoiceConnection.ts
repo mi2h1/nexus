@@ -245,6 +245,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // 6. Start latency polling & speaker detection
             this.startStatsPolling();
             this.startSpeakerPolling();
+
+            // 7. Re-check participants after a short delay.
+            // After a browser refresh, the initial sync may not have completed
+            // when joinRoomSession() was called, so memberships might be empty.
+            // Retry a few times to catch late-arriving membership data.
+            this.retryUpdateParticipants();
         } catch (e) {
             logger.error("Failed to connect voice channel", e);
             await this.cleanupLivekit();
@@ -885,6 +891,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             }
         }
     };
+
+    private retryUpdateParticipants(): void {
+        let retries = 0;
+        const maxRetries = 10;
+        const interval = setInterval(() => {
+            retries++;
+            this.updateParticipants();
+            // Stop retrying once we have participants or hit the limit
+            if (this._participants.size > 0 || retries >= maxRetries || !this.connected) {
+                clearInterval(interval);
+            }
+        }, 1000);
+    }
 
     private updateParticipants(): void {
         const participants = new Map<RoomMember, Set<string>>();

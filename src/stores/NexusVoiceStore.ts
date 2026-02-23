@@ -10,7 +10,7 @@ import { type Room } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
 import { NexusVoiceConnection, playVcSound, VC_STANDBY_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
-import { CallStore } from "./CallStore";
+import { CallStore, CallStoreEvent } from "./CallStore";
 import { MatrixClientPeg } from "../MatrixClientPeg";
 
 export enum NexusVoiceStoreEvent {
@@ -84,8 +84,26 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
         }
 
         // Get MatrixRTC session and transports
+        // After a browser refresh, fetchTransports() may not have completed yet.
+        // Wait for TransportsUpdated if the list is empty (up to 5s).
+        let transports = CallStore.instance.getConfiguredRTCTransports();
+        if (transports.length === 0) {
+            logger.info("No RTC transports configured yet, waiting for TransportsUpdated…");
+            await new Promise<void>((resolve) => {
+                const timeout = setTimeout(() => {
+                    CallStore.instance.off(CallStoreEvent.TransportsUpdated, onUpdate);
+                    resolve();
+                }, 5000);
+                const onUpdate = (): void => {
+                    clearTimeout(timeout);
+                    CallStore.instance.off(CallStoreEvent.TransportsUpdated, onUpdate);
+                    resolve();
+                };
+                CallStore.instance.on(CallStoreEvent.TransportsUpdated, onUpdate);
+            });
+            transports = CallStore.instance.getConfiguredRTCTransports();
+        }
         const session = client.matrixRTC.getRoomSession(room);
-        const transports = CallStore.instance.getConfiguredRTCTransports();
 
         // Create new connection
         const connection = new NexusVoiceConnection(room, client, session, transports);
