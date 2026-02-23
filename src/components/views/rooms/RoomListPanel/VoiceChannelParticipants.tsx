@@ -5,7 +5,7 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import React, { type JSX, useEffect, useState } from "react";
+import React, { type JSX, useCallback, useEffect, useState } from "react";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 import classNames from "classnames";
@@ -16,6 +16,7 @@ import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusV
 import { useNexusActiveSpeakers } from "../../../../hooks/useNexusActiveSpeakers";
 import { useNexusParticipantStates } from "../../../../hooks/useNexusParticipantStates";
 import MemberAvatar from "../../avatars/MemberAvatar";
+import { NexusParticipantContextMenu } from "../../voip/NexusParticipantContextMenu";
 
 interface VoiceChannelParticipantsProps {
     roomId: string;
@@ -85,35 +86,79 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
         };
     }, [client, roomId]);
 
+    const myUserId = client.getUserId();
+
     if (members.length === 0) return null;
 
     return (
         <div className="mx_VoiceChannelParticipants">
-            {members.map((member) => {
-                const speaking = activeSpeakers.has(member.userId);
-                const avatarClass = classNames("mx_VoiceChannelParticipants_avatar", {
-                    "mx_VoiceChannelParticipants_avatar--speaking": speaking,
-                });
-                const state = participantStates.get(member.userId);
-                return (
-                    <div className="mx_VoiceChannelParticipants_item" key={member.userId}>
-                        <div className={avatarClass}>
-                            <MemberAvatar member={member} size="20px" hideTitle />
-                        </div>
-                        <span className="mx_VoiceChannelParticipants_name">{member.name}</span>
-                        {state?.isMuted && (
-                            <MicOffSolidIcon
-                                className="mx_VoiceChannelParticipants_muteIcon"
-                                width={14}
-                                height={14}
-                            />
-                        )}
-                        {state?.isScreenSharing && (
-                            <span className="mx_VoiceChannelParticipants_sharingBadge">配信中</span>
-                        )}
-                    </div>
-                );
-            })}
+            {members.map((member) => (
+                <VoiceChannelParticipantItem
+                    key={member.userId}
+                    member={member}
+                    isSpeaking={activeSpeakers.has(member.userId)}
+                    participantState={participantStates.get(member.userId)}
+                    myUserId={myUserId}
+                />
+            ))}
+        </div>
+    );
+}
+
+function VoiceChannelParticipantItem({
+    member,
+    isSpeaking,
+    participantState,
+    myUserId,
+}: {
+    member: RoomMember;
+    isSpeaking: boolean;
+    participantState?: { isMuted: boolean; isScreenSharing: boolean };
+    myUserId: string | null;
+}): JSX.Element {
+    const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
+
+    const onContextMenu = useCallback(
+        (e: React.MouseEvent): void => {
+            if (myUserId && member.userId === myUserId) return;
+            e.preventDefault();
+            setMenuPos({ left: e.clientX, top: e.clientY });
+        },
+        [myUserId, member.userId],
+    );
+
+    const onMenuFinished = useCallback((): void => {
+        setMenuPos(null);
+    }, []);
+
+    const avatarClass = classNames("mx_VoiceChannelParticipants_avatar", {
+        "mx_VoiceChannelParticipants_avatar--speaking": isSpeaking,
+    });
+
+    return (
+        <div className="mx_VoiceChannelParticipants_item" onContextMenu={onContextMenu}>
+            <div className={avatarClass}>
+                <MemberAvatar member={member} size="20px" hideTitle />
+            </div>
+            <span className="mx_VoiceChannelParticipants_name">{member.name}</span>
+            {participantState?.isMuted && (
+                <MicOffSolidIcon
+                    className="mx_VoiceChannelParticipants_muteIcon"
+                    width={14}
+                    height={14}
+                />
+            )}
+            {participantState?.isScreenSharing && (
+                <span className="mx_VoiceChannelParticipants_sharingBadge">配信中</span>
+            )}
+            {menuPos && (
+                <NexusParticipantContextMenu
+                    member={member}
+                    left={menuPos.left}
+                    top={menuPos.top}
+                    onFinished={onMenuFinished}
+                />
+            )}
         </div>
     );
 }

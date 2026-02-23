@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX, useEffect, useState, useCallback } from "react";
+import React, { type JSX, useEffect, useState } from "react";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 import classNames from "classnames";
@@ -16,7 +16,6 @@ import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../stores/NexusVoic
 import { useNexusActiveSpeakers } from "../../../hooks/useNexusActiveSpeakers";
 import { useNexusParticipantStates } from "../../../hooks/useNexusParticipantStates";
 import MemberAvatar from "../avatars/MemberAvatar";
-import { NexusParticipantContextMenu } from "./NexusParticipantContextMenu";
 
 interface NexusVoiceParticipantGridProps {
     roomId: string;
@@ -76,8 +75,6 @@ export function NexusVoiceParticipantGrid({ roomId }: NexusVoiceParticipantGridP
 
     if (!connected || members.length === 0) return null;
 
-    const myUserId = client.getUserId();
-
     return (
         <div className="mx_NexusVoiceParticipantGrid">
             {members.map((member) => {
@@ -89,7 +86,6 @@ export function NexusVoiceParticipantGrid({ roomId }: NexusVoiceParticipantGridP
                         isSpeaking={activeSpeakers.has(member.userId)}
                         isMuted={state?.isMuted ?? false}
                         isScreenSharing={state?.isScreenSharing ?? false}
-                        myUserId={myUserId}
                     />
                 );
             })}
@@ -102,34 +98,16 @@ interface ParticipantTileProps {
     isSpeaking: boolean;
     isMuted: boolean;
     isScreenSharing: boolean;
-    myUserId?: string | null;
-    size?: "normal" | "small";
 }
 
-export function ParticipantTile({ member, isSpeaking, isMuted, isScreenSharing, myUserId, size = "normal" }: ParticipantTileProps): JSX.Element {
-    const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
-
-    const onContextMenu = useCallback(
-        (e: React.MouseEvent): void => {
-            // Don't show volume menu for own tile
-            if (myUserId && member.userId === myUserId) return;
-            e.preventDefault();
-            setMenuPos({ left: e.clientX, top: e.clientY });
-        },
-        [myUserId, member.userId],
-    );
-
-    const onMenuFinished = useCallback((): void => {
-        setMenuPos(null);
-    }, []);
-
+export function ParticipantTile({ member, isSpeaking, isMuted, isScreenSharing, size = "normal" }: ParticipantTileProps & { size?: "normal" | "small" }): JSX.Element {
     const tileClass = classNames("mx_NexusVoiceParticipantTile", {
         "mx_NexusVoiceParticipantTile--speaking": isSpeaking,
         "mx_NexusVoiceParticipantTile--small": size === "small",
     });
 
     return (
-        <div className={tileClass} onContextMenu={onContextMenu}>
+        <div className={tileClass}>
             <MemberAvatar member={member} size={size === "small" ? "48px" : "64px"} hideTitle />
             <div className="mx_NexusVoiceParticipantTile_nameRow">
                 {isMuted && (
@@ -144,14 +122,6 @@ export function ParticipantTile({ member, isSpeaking, isMuted, isScreenSharing, 
                 )}
                 <span className="mx_NexusVoiceParticipantTile_name">{member.name}</span>
             </div>
-            {menuPos && (
-                <NexusParticipantContextMenu
-                    member={member}
-                    left={menuPos.left}
-                    top={menuPos.top}
-                    onFinished={onMenuFinished}
-                />
-            )}
         </div>
     );
 }
