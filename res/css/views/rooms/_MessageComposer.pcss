@@ -9,10 +9,11 @@ Please see LICENSE files in the repository root for full details.
 .mx_MessageComposer_wrapper {
     vertical-align: middle;
     margin: auto;
-    border-top: 1px solid $primary-hairline-color;
+    /* Nexus: border-top 削除、角丸ボーダーに変更 */
     position: relative;
-    padding-left: 42px;
+    padding-left: 16px;
     padding-right: 16px;
+    padding-bottom: 12px;
 }
 
 .mx_MessageComposer_replaced_wrapper {
@@ -38,11 +39,21 @@ Please see LICENSE files in the repository root for full details.
     font-weight: bold;
 }
 
+/* Nexus: Discord 風の角丸ボーダー付き入力エリア */
 .mx_MessageComposer_row {
     display: flex;
     flex-direction: row;
     align-items: center;
     width: 100%;
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: 8px;
+    padding: 0 8px;
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    transition: border-color 0.15s ease;
+
+    &:focus-within {
+        border-color: var(--cpd-color-border-interactive-hovered);
+    }
 }
 
 .mx_MessageComposer_actions {
