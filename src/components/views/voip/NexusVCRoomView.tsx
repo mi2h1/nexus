@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useState, useRef, useEffect, type JSX, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback, type JSX, useMemo } from "react";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 
 import { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
@@ -16,8 +16,10 @@ import { useNexusParticipantStates } from "../../../hooks/useNexusParticipantSta
 import { ScreenShareTile } from "./NexusScreenShareView";
 import { ParticipantTile } from "./NexusVoiceParticipantGrid";
 import { NexusVCControlBar, type VCLayoutMode } from "./NexusVCControlBar";
+import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
 import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
+import AccessibleButton from "../elements/AccessibleButton";
 
 interface NexusVCRoomViewProps {
     roomId: string;
@@ -40,7 +42,28 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
     // Debounced spotlight target based on active speaker
     const spotlightTarget = useSpotlightTarget(client.getUserId(), members, screenShares, activeSpeakers);
 
-    if (!connected) return null;
+    const onJoinCall = useCallback(() => {
+        const room = client.getRoom(roomId);
+        if (room) {
+            NexusVoiceStore.instance.joinVoiceChannel(room).catch(() => {});
+        }
+    }, [client, roomId]);
+
+    if (!connected) {
+        return (
+            <div className="nx_VCRoomView">
+                <div className="nx_VCRoomView_empty">
+                    <div className="nx_VCRoomView_emptyText">まだ誰もいません</div>
+                    <AccessibleButton
+                        className="nx_VCRoomView_joinButton"
+                        onClick={onJoinCall}
+                    >
+                        通話に参加する
+                    </AccessibleButton>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="nx_VCRoomView">

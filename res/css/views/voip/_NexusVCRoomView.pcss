@@ -13,6 +13,36 @@
     background-color: var(--cpd-color-bg-canvas-default);
 }
 
+/* ─── Empty state (not connected) ──────────────────── */
+
+.nx_VCRoomView_empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cpd-space-4x);
+}
+
+.nx_VCRoomView_emptyText {
+    font: var(--cpd-font-body-lg-regular);
+    color: var(--cpd-color-text-secondary);
+}
+
+.nx_VCRoomView_joinButton {
+    padding: var(--cpd-space-2x) var(--cpd-space-6x);
+    border-radius: var(--cpd-space-2x);
+    border: none;
+    cursor: pointer;
+    font: var(--cpd-font-body-md-medium);
+    color: var(--cpd-color-text-on-solid-primary);
+    background-color: var(--cpd-color-bg-success-primary);
+
+    &:hover {
+        background-color: var(--cpd-color-bg-success-hovered);
+    }
+}
+
 .nx_VCRoomView_content {
     flex: 1;
     min-height: 0;
