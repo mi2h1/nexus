@@ -8,9 +8,11 @@ Please see LICENSE files in the repository root for full details.
 import React, { type JSX, useEffect, useState } from "react";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
+import classNames from "classnames";
 
 import { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../stores/NexusVoiceStore";
+import { useNexusActiveSpeakers } from "../../../hooks/useNexusActiveSpeakers";
 import MemberAvatar from "../avatars/MemberAvatar";
 
 interface NexusVoiceParticipantGridProps {
@@ -20,12 +22,14 @@ interface NexusVoiceParticipantGridProps {
 /**
  * Discord-style participant grid for voice channels.
  * Shows avatar tiles for each participant in the VC.
+ * Speaking participants get a green border highlight.
  * Only displayed when the local user is connected.
  */
 export function NexusVoiceParticipantGrid({ roomId }: NexusVoiceParticipantGridProps): JSX.Element | null {
     const client = useMatrixClientContext();
     const [members, setMembers] = useState<RoomMember[]>([]);
     const [connected, setConnected] = useState(false);
+    const activeSpeakers = useNexusActiveSpeakers();
 
     useEffect(() => {
         const room = client.getRoom(roomId);
@@ -71,7 +75,11 @@ export function NexusVoiceParticipantGrid({ roomId }: NexusVoiceParticipantGridP
     return (
         <div className="mx_NexusVoiceParticipantGrid">
             {members.map((member) => (
-                <ParticipantTile key={member.userId} member={member} />
+                <ParticipantTile
+                    key={member.userId}
+                    member={member}
+                    isSpeaking={activeSpeakers.has(member.userId)}
+                />
             ))}
         </div>
     );
@@ -79,11 +87,16 @@ export function NexusVoiceParticipantGrid({ roomId }: NexusVoiceParticipantGridP
 
 interface ParticipantTileProps {
     member: RoomMember;
+    isSpeaking: boolean;
 }
 
-function ParticipantTile({ member }: ParticipantTileProps): JSX.Element {
+function ParticipantTile({ member, isSpeaking }: ParticipantTileProps): JSX.Element {
+    const tileClass = classNames("mx_NexusVoiceParticipantTile", {
+        "mx_NexusVoiceParticipantTile--speaking": isSpeaking,
+    });
+
     return (
-        <div className="mx_NexusVoiceParticipantTile">
+        <div className={tileClass}>
             <MemberAvatar member={member} size="64px" hideTitle />
             <span className="mx_NexusVoiceParticipantTile_name">{member.name}</span>
         </div>

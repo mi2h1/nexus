@@ -88,6 +88,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private localScreenAudioTrack: LocalAudioTrack | null = null;
     private _isScreenSharing = false;
     private _screenShares: ScreenShareInfo[] = [];
+    private _activeSpeakers = new Set<string>();
     private statsTimer: ReturnType<typeof setInterval> | null = null;
     private audioElements = new Map<string, HTMLAudioElement>();
 
@@ -149,6 +150,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         return this._screenShares;
     }
 
+    public get activeSpeakers(): Set<string> {
+        return this._activeSpeakers;
+    }
+
     // ─── Public API ──────────────────────────────────────────
 
     public async connect(): Promise<void> {
@@ -162,6 +167,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom = new LivekitRoom();
             this.livekitRoom.on(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.on(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
+            this.livekitRoom.on(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             await this.livekitRoom.connect(url, jwt);
 
             // 3. Publish local audio
@@ -442,10 +448,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.localAudioTrack = null;
         }
 
+        // Clear active speakers
+        this._activeSpeakers = new Set();
+
         // Disconnect LiveKit room
         if (this.livekitRoom) {
             this.livekitRoom.off(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.off(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
+            this.livekitRoom.off(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             await this.livekitRoom.disconnect();
             this.livekitRoom = null;
         }
@@ -502,6 +512,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             audio.srcObject = null;
             this.audioElements.delete(participant.identity);
         }
+    };
+
+    // ─── Private: Active Speakers ─────────────────────────────
+
+    private onActiveSpeakersChanged = (speakers: { identity: string }[]): void => {
+        this._activeSpeakers = new Set(speakers.map((s) => s.identity));
+        this.emit(CallEvent.ActiveSpeakers, this._activeSpeakers);
     };
 
     // ─── Private: Participants ────────────────────────────────

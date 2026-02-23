@@ -28,10 +28,17 @@
     height: 120px;
     border-radius: var(--cpd-space-3x);
     background-color: var(--cpd-color-bg-subtle-secondary);
-    transition: background-color 0.15s ease;
+    border: 3px solid transparent;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease;
 
     &:hover {
         background-color: var(--cpd-color-bg-subtle-primary);
+    }
+
+    &.mx_NexusVoiceParticipantTile--speaking {
+        border-color: var(--cpd-color-icon-success-primary);
     }
 }
 

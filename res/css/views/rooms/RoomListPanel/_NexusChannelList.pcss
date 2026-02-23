@@ -65,6 +65,18 @@
     line-height: 1;
 }
 
+.mx_VoiceChannelParticipants_avatar {
+    display: flex;
+    align-items: center;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    transition: border-color 0.15s ease;
+
+    &.mx_VoiceChannelParticipants_avatar--speaking {
+        border-color: var(--cpd-color-icon-success-primary);
+    }
+}
+
 .mx_VoiceChannelParticipants_name {
     font: var(--cpd-font-body-sm-regular);
     color: var(--cpd-color-text-secondary);

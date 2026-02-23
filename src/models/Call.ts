@@ -89,6 +89,7 @@ export enum CallEvent {
     Destroy = "destroy",
     CallTypeChanged = "call_type_changed",
     ScreenShares = "screen_shares",
+    ActiveSpeakers = "active_speakers",
 }
 
 export interface ScreenShareInfo {
@@ -109,6 +110,7 @@ export interface CallEventHandlerMap {
     [CallEvent.Destroy]: () => void;
     [CallEvent.CallTypeChanged]: (callType: CallType) => void;
     [CallEvent.ScreenShares]: (screenShares: ScreenShareInfo[]) => void;
+    [CallEvent.ActiveSpeakers]: (speakerIdentities: Set<string>) => void;
 }
 
 /**

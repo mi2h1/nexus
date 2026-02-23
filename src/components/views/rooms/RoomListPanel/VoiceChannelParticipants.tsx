@@ -8,9 +8,11 @@
 import React, { type JSX, useEffect, useState } from "react";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
+import classNames from "classnames";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
+import { useNexusActiveSpeakers } from "../../../../hooks/useNexusActiveSpeakers";
 import MemberAvatar from "../../avatars/MemberAvatar";
 
 interface VoiceChannelParticipantsProps {
@@ -25,12 +27,12 @@ interface VoiceChannelParticipantsProps {
  * on a local NexusVoiceConnection — so participants remain visible
  * even when the local user is not in the VC.
  *
- * Filters out the current user's own stale membership if they're not
- * actually connected (handles unclean disconnect / browser refresh).
+ * Speaking participants get a green border on their avatar.
  */
 export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsProps): JSX.Element | null {
     const client = useMatrixClientContext();
     const [members, setMembers] = useState<RoomMember[]>([]);
+    const activeSpeakers = useNexusActiveSpeakers();
 
     useEffect(() => {
         const room = client.getRoom(roomId);
@@ -71,7 +73,6 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
         session.on(MatrixRTCSessionEvent.MembershipsChanged, updateMembers);
 
         // Also update when the local voice connection changes
-        // (e.g. user joins or leaves this VC)
         const onActiveConnection = (): void => updateMembers();
         NexusVoiceStore.instance.on(NexusVoiceStoreEvent.ActiveConnection, onActiveConnection);
 
@@ -85,12 +86,20 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
 
     return (
         <div className="mx_VoiceChannelParticipants">
-            {members.map((member) => (
-                <div className="mx_VoiceChannelParticipants_item" key={member.userId}>
-                    <MemberAvatar member={member} size="20px" hideTitle />
-                    <span className="mx_VoiceChannelParticipants_name">{member.name}</span>
-                </div>
-            ))}
+            {members.map((member) => {
+                const speaking = activeSpeakers.has(member.userId);
+                const avatarClass = classNames("mx_VoiceChannelParticipants_avatar", {
+                    "mx_VoiceChannelParticipants_avatar--speaking": speaking,
+                });
+                return (
+                    <div className="mx_VoiceChannelParticipants_item" key={member.userId}>
+                        <div className={avatarClass}>
+                            <MemberAvatar member={member} size="20px" hideTitle />
+                        </div>
+                        <span className="mx_VoiceChannelParticipants_name">{member.name}</span>
+                    </div>
+                );
+            })}
         </div>
     );
 }
