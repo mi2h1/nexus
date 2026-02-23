@@ -41,8 +41,8 @@ export function NexusVCControlBar({
     const { connection, isMicMuted, isScreenSharing } = useNexusVoice();
 
     const onToggleMic = useCallback(() => {
-        connection?.setMicMuted(!isMicMuted);
-    }, [connection, isMicMuted]);
+        NexusVoiceStore.instance.toggleMic();
+    }, []);
 
     const onToggleScreenShare = useCallback(() => {
         connection?.toggleScreenShare();

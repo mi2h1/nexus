@@ -39,14 +39,16 @@ const logger = rootLogger.getChild("NexusVoiceConnection");
 
 const STATS_POLL_INTERVAL_MS = 2000;
 
-// VC join/leave sound effects
-export const VC_JOIN_SOUND = "media/message.ogg";
-export const VC_LEAVE_SOUND = "media/callend.ogg";
+// VC sound effects
+export const VC_JOIN_SOUND = "media/sfx_join.mp3";
+export const VC_LEAVE_SOUND = "media/sfx_leave.mp3";
+export const VC_MUTE_SOUND = "media/sfx_mute.mp3";
+export const VC_UNMUTE_SOUND = "media/sfx_unmute.mp3";
 
 export function playVcSound(src: string): void {
     try {
         const audio = new Audio(src);
-        audio.volume = 0.5;
+        audio.volume = 0.15;
         audio.play().catch(() => {});
     } catch {
         // Ignore audio playback errors

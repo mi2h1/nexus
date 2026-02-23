@@ -9,7 +9,7 @@ import { TypedEventEmitter } from "matrix-js-sdk/src/matrix";
 import { type Room } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
-import { NexusVoiceConnection, playVcSound, VC_JOIN_SOUND, VC_LEAVE_SOUND } from "../models/NexusVoiceConnection";
+import { NexusVoiceConnection, playVcSound, VC_JOIN_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
 import { CallStore } from "./CallStore";
 import { MatrixClientPeg } from "../MatrixClientPeg";
 
@@ -57,9 +57,12 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
      */
     public toggleMic(): void {
         if (this.activeConnection) {
-            this.activeConnection.setMicMuted(!this.activeConnection.isMicMuted);
+            const newMuted = !this.activeConnection.isMicMuted;
+            this.activeConnection.setMicMuted(newMuted);
+            playVcSound(newMuted ? VC_MUTE_SOUND : VC_UNMUTE_SOUND);
         } else {
             this._preMicMuted = !this._preMicMuted;
+            playVcSound(this._preMicMuted ? VC_MUTE_SOUND : VC_UNMUTE_SOUND);
             this.emit(NexusVoiceStoreEvent.PreMicMuted, this._preMicMuted);
         }
     }
