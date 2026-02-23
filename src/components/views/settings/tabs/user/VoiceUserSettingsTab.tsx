@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type ChangeEventHandler, type JSX, type ReactNode } from "react";
+import React, { type ChangeEventHandler, type JSX, type ReactNode, useState, useCallback, useRef, useEffect } from "react";
 import { logger } from "matrix-js-sdk/src/logger";
 import { FALLBACK_ICE_SERVER } from "matrix-js-sdk/src/webrtc/call";
 import { type EmptyObject } from "matrix-js-sdk/src/matrix";
@@ -24,6 +24,8 @@ import SettingsTab from "../SettingsTab";
 import { SettingsSection } from "../../shared/SettingsSection";
 import { SettingsSubsection } from "../../shared/SettingsSubsection";
 import MatrixClientContext from "../../../../../contexts/MatrixClientContext";
+import SettingsStore from "../../../../../settings/SettingsStore";
+import { useNexusVoice } from "../../../../../hooks/useNexusVoice";
 
 interface IState {
     mediaDevices: IMediaDevices | null;
@@ -49,6 +51,154 @@ const mapDeviceKindToHandlerValue = (deviceKind: MediaDeviceKindEnum): string | 
             return MediaDeviceHandler.getVideoInput();
     }
 };
+
+/**
+ * Nexus voice settings: input volume, output volume, voice gate (input sensitivity).
+ * Functional component to use hooks (useNexusVoice).
+ */
+function NexusVoiceSettings(): JSX.Element {
+    const { connection, inputLevel } = useNexusVoice();
+
+    const [inputVolume, setInputVolume] = useState<number>(
+        () => SettingsStore.getValue("nexus_input_volume") ?? 100,
+    );
+    const [outputVolume, setOutputVolume] = useState<number>(
+        () => SettingsStore.getValue("nexus_output_volume") ?? 100,
+    );
+    const [gateEnabled, setGateEnabled] = useState<boolean>(
+        () => SettingsStore.getValue("nexus_voice_gate_enabled") ?? false,
+    );
+    const [gateThreshold, setGateThreshold] = useState<number>(
+        () => SettingsStore.getValue("nexus_voice_gate_threshold") ?? 40,
+    );
+
+    const levelBarRef = useRef<HTMLDivElement>(null);
+
+    // Animate level meter via ref (avoid re-renders at 50ms interval)
+    useEffect(() => {
+        if (levelBarRef.current) {
+            levelBarRef.current.style.width = `${inputLevel}%`;
+        }
+    }, [inputLevel]);
+
+    const onInputVolumeChange = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const val = Number(e.target.value);
+            setInputVolume(val);
+            SettingsStore.setValue("nexus_input_volume", null, SettingLevel.DEVICE, val);
+            connection?.setInputVolume(val);
+        },
+        [connection],
+    );
+
+    const onOutputVolumeChange = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const val = Number(e.target.value);
+            setOutputVolume(val);
+            SettingsStore.setValue("nexus_output_volume", null, SettingLevel.DEVICE, val);
+            connection?.setMasterOutputVolume(val);
+        },
+        [connection],
+    );
+
+    const onGateEnabledChange = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const enabled = e.target.checked;
+            setGateEnabled(enabled);
+            SettingsStore.setValue("nexus_voice_gate_enabled", null, SettingLevel.DEVICE, enabled);
+        },
+        [],
+    );
+
+    const onGateThresholdChange = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const val = Number(e.target.value);
+            setGateThreshold(val);
+            SettingsStore.setValue("nexus_voice_gate_threshold", null, SettingLevel.DEVICE, val);
+        },
+        [],
+    );
+
+    return (
+        <>
+            <SettingsSubsection heading="音量設定" stretchContent>
+                <div className="nx_VoiceSettings_slider">
+                    <label htmlFor="nx-input-volume">マイク音量</label>
+                    <div className="nx_VoiceSettings_sliderRow">
+                        <input
+                            id="nx-input-volume"
+                            type="range"
+                            min={0}
+                            max={200}
+                            step={1}
+                            value={inputVolume}
+                            onChange={onInputVolumeChange}
+                        />
+                        <span className="nx_VoiceSettings_sliderValue">{inputVolume}%</span>
+                    </div>
+                </div>
+                <div className="nx_VoiceSettings_slider">
+                    <label htmlFor="nx-output-volume">スピーカー音量</label>
+                    <div className="nx_VoiceSettings_sliderRow">
+                        <input
+                            id="nx-output-volume"
+                            type="range"
+                            min={0}
+                            max={200}
+                            step={1}
+                            value={outputVolume}
+                            onChange={onOutputVolumeChange}
+                        />
+                        <span className="nx_VoiceSettings_sliderValue">{outputVolume}%</span>
+                    </div>
+                </div>
+            </SettingsSubsection>
+
+            <SettingsSubsection heading="入力感度" stretchContent>
+                <SettingsToggleInput
+                    name="nx-voice-gate"
+                    label="入力感度（ボイスゲート）を有効にする"
+                    helpMessage="閾値以下の音声を自動でミュートし、背景ノイズを抑制します"
+                    checked={gateEnabled}
+                    onChange={onGateEnabledChange}
+                />
+                {gateEnabled && (
+                    <div className="nx_VoiceSettings_slider">
+                        <label htmlFor="nx-gate-threshold">閾値</label>
+                        <div className="nx_VoiceSettings_sliderRow">
+                            <input
+                                id="nx-gate-threshold"
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={gateThreshold}
+                                onChange={onGateThresholdChange}
+                            />
+                            <span className="nx_VoiceSettings_sliderValue">{gateThreshold}</span>
+                        </div>
+                    </div>
+                )}
+                <div className="nx_VoiceSettings_levelMeter">
+                    <label>入力レベル</label>
+                    <div className="nx_VoiceSettings_levelMeter_track">
+                        <div
+                            ref={levelBarRef}
+                            className="nx_VoiceSettings_levelMeter_bar"
+                            style={{ width: `${inputLevel}%` }}
+                        />
+                        {gateEnabled && (
+                            <div
+                                className="nx_VoiceSettings_levelMeter_threshold"
+                                style={{ left: `${gateThreshold}%` }}
+                            />
+                        )}
+                    </div>
+                </div>
+            </SettingsSubsection>
+        </>
+    );
+}
 
 export default class VoiceUserSettingsTab extends React.Component<EmptyObject, IState> {
     public static contextType = MatrixClientContext;
@@ -205,6 +355,7 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
                                 onChange={this.onAutoGainChanged}
                             />
                         </SettingsSubsection>
+                        <NexusVoiceSettings />
                         <SettingsSubsection heading={_t("settings|voip|video_section")} stretchContent>
                             {webcamDropdown}
                             <SettingsFlag name="VideoView.flipVideoHorizontally" level={SettingLevel.ACCOUNT} />

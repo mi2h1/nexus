@@ -371,6 +371,12 @@ export interface Settings {
     "inviteRules": IBaseSetting<ComputedInviteConfig>;
     "blockInvites": IBaseSetting<boolean>;
     "Developer.elementCallUrl": IBaseSetting<string>;
+
+    // Nexus voice settings
+    "nexus_voice_gate_enabled": IBaseSetting<boolean>;
+    "nexus_voice_gate_threshold": IBaseSetting<number>;
+    "nexus_input_volume": IBaseSetting<number>;
+    "nexus_output_volume": IBaseSetting<number>;
 }
 
 export type SettingKey = keyof Settings;
@@ -1490,5 +1496,23 @@ export const SETTINGS: Settings = {
         supportedLevels: [SettingLevel.DEVICE],
         displayName: _td("devtools|settings|elementCallUrl"),
         default: "",
+    },
+
+    // ─── Nexus voice settings ───────────────────────────────
+    "nexus_voice_gate_enabled": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: false,
+    },
+    "nexus_voice_gate_threshold": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: 40, // 0-100
+    },
+    "nexus_input_volume": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: 100, // 0-200 (percentage, 100=等倍)
+    },
+    "nexus_output_volume": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: 100, // 0-200 (percentage)
     },
 };

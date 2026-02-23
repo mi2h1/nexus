@@ -21,6 +21,8 @@ import { useNexusVoice } from "../../../hooks/useNexusVoice";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
 import dis from "../../../dispatcher/dispatcher";
 import { Action } from "../../../dispatcher/actions";
+import { type OpenToTabPayload } from "../../../dispatcher/payloads/OpenToTabPayload";
+import { UserTab } from "../../views/dialogs/UserTab";
 import AccessibleButton from "../elements/AccessibleButton";
 
 export type VCLayoutMode = "spotlight" | "grid";
@@ -53,7 +55,10 @@ export function NexusVCControlBar({
     }, []);
 
     const onSettings = useCallback(() => {
-        dis.dispatch({ action: Action.ViewUserSettings });
+        dis.dispatch<OpenToTabPayload>({
+            action: Action.ViewUserSettings,
+            initialTabId: UserTab.Voice,
+        });
     }, []);
 
     return (

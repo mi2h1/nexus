@@ -9,7 +9,7 @@ import { TypedEventEmitter } from "matrix-js-sdk/src/matrix";
 import { type Room } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
-import { NexusVoiceConnection, playVcSound, VC_JOIN_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
+import { NexusVoiceConnection, playVcSound, VC_STANDBY_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
 import { CallStore } from "./CallStore";
 import { MatrixClientPeg } from "../MatrixClientPeg";
 
@@ -92,8 +92,8 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
         this.connections.set(room.roomId, connection);
         this.activeConnection = connection;
 
-        // Play join SE immediately for instant feedback
-        playVcSound(VC_JOIN_SOUND);
+        // Play standby SE when connection starts (join SE plays on membership change)
+        playVcSound(VC_STANDBY_SOUND);
 
         // Register in CallStore
         CallStore.instance.registerVoiceConnection(room.roomId, connection);

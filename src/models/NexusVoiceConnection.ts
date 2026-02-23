@@ -34,6 +34,7 @@ import {
 } from "livekit-client";
 
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
+import SettingsStore from "../settings/SettingsStore";
 
 const logger = rootLogger.getChild("NexusVoiceConnection");
 
@@ -42,6 +43,7 @@ const STATS_POLL_INTERVAL_MS = 2000;
 // VC sound effects
 export const VC_JOIN_SOUND = "media/sfx_join.mp3";
 export const VC_LEAVE_SOUND = "media/sfx_leave.mp3";
+export const VC_STANDBY_SOUND = "media/sfx_standby.mp3";
 export const VC_MUTE_SOUND = "media/sfx_mute.mp3";
 export const VC_UNMUTE_SOUND = "media/sfx_unmute.mp3";
 
@@ -96,6 +98,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private speakerPollTimer: ReturnType<typeof setInterval> | null = null;
     private statsTimer: ReturnType<typeof setInterval> | null = null;
     private audioElements = new Map<string, HTMLAudioElement>();
+
+    // ─── Audio pipeline (input volume + voice gate) ──────────
+    private audioContext: AudioContext | null = null;
+    private analyserNode: AnalyserNode | null = null;
+    private inputGainNode: GainNode | null = null;
+    private voiceGateTimer: ReturnType<typeof setInterval> | null = null;
+    private _inputLevel = 0; // 0-100 real-time input level
+    private _voiceGateOpen = true;
+    private voiceGateReleaseTimeout: ReturnType<typeof setTimeout> | null = null;
+    private static readonly VOICE_GATE_RELEASE_MS = 300;
 
     public constructor(
         public readonly room: Room,
@@ -181,12 +193,39 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             await this.livekitRoom.connect(url, jwt);
 
-            // 3. Publish local audio
+            // 3. Publish local audio (via Web Audio API pipeline for input volume control)
             this.localAudioTrack = await createLocalAudioTrack({
                 echoCancellation: true,
                 noiseSuppression: true,
             });
-            await this.livekitRoom.localParticipant.publishTrack(this.localAudioTrack);
+
+            // Build audio pipeline: source → analyser (monitoring only)
+            //                        source → inputGainNode → destination (processed track)
+            this.audioContext = new AudioContext();
+            const source = this.audioContext.createMediaStreamSource(
+                new MediaStream([this.localAudioTrack.mediaStreamTrack]),
+            );
+
+            // AnalyserNode — monitors original input level (not affected by gain)
+            this.analyserNode = this.audioContext.createAnalyser();
+            this.analyserNode.fftSize = 256;
+            source.connect(this.analyserNode);
+
+            // Input GainNode — adjusts input volume before sending to LiveKit
+            this.inputGainNode = this.audioContext.createGain();
+            const inputVolume = SettingsStore.getValue("nexus_input_volume") ?? 100;
+            this.inputGainNode.gain.value = inputVolume / 100;
+            source.connect(this.inputGainNode);
+
+            // Create processed stream and publish that instead of raw mic
+            const dest = this.audioContext.createMediaStreamDestination();
+            this.inputGainNode.connect(dest);
+            const processedTrack = dest.stream.getAudioTracks()[0];
+            // Publish the processed MediaStreamTrack directly
+            await this.livekitRoom.localParticipant.publishTrack(processedTrack);
+
+            // Start voice gate / input level polling
+            this.startVoiceGatePolling();
 
             // 4. Join MatrixRTC session so other clients see us
             const livekitTransport = this.transports.find(
@@ -261,9 +300,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 this.localAudioTrack.mute();
             } else {
                 this.localAudioTrack.unmute();
+                // Restore input gain when unmuting (voice gate may have set it to 0)
+                if (this.inputGainNode) {
+                    this.inputGainNode.gain.value =
+                        (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+                }
             }
         }
         this._isMicMuted = muted;
+        this._voiceGateOpen = true;
         this.emit(CallEvent.MicMuted, muted);
     }
 
@@ -417,6 +462,95 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         return audio?.volume ?? 1;
     }
 
+    // ─── Public: Audio pipeline accessors ──────────────────────
+
+    public get inputLevel(): number {
+        return this._inputLevel;
+    }
+
+    public get voiceGateOpen(): boolean {
+        return this._voiceGateOpen;
+    }
+
+    /** Update input gain in real time (called from settings UI). */
+    public setInputVolume(volume: number): void {
+        if (this.inputGainNode) {
+            this.inputGainNode.gain.value = Math.max(0, Math.min(2, volume / 100));
+        }
+    }
+
+    /** Set master output volume for all remote audio elements (0-200). */
+    public setMasterOutputVolume(volume: number): void {
+        const normalized = Math.max(0, Math.min(2, volume / 100));
+        for (const audio of this.audioElements.values()) {
+            audio.volume = normalized;
+        }
+    }
+
+    // ─── Private: Voice gate / input level ───────────────────
+
+    private startVoiceGatePolling(): void {
+        this.voiceGateTimer = setInterval(() => this.pollInputLevel(), 50);
+    }
+
+    private stopVoiceGatePolling(): void {
+        if (this.voiceGateTimer) {
+            clearInterval(this.voiceGateTimer);
+            this.voiceGateTimer = null;
+        }
+        if (this.voiceGateReleaseTimeout) {
+            clearTimeout(this.voiceGateReleaseTimeout);
+            this.voiceGateReleaseTimeout = null;
+        }
+    }
+
+    private pollInputLevel(): void {
+        if (!this.analyserNode) return;
+
+        const data = new Uint8Array(this.analyserNode.fftSize);
+        this.analyserNode.getByteTimeDomainData(data);
+
+        // RMS calculation → scale to 0-100
+        let sum = 0;
+        for (const sample of data) {
+            const normalized = (sample - 128) / 128;
+            sum += normalized * normalized;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        this._inputLevel = Math.min(100, Math.round(rms * 300));
+        this.emit(CallEvent.InputLevel, this._inputLevel);
+
+        // Voice gate check
+        const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
+        if (!gateEnabled || this._isMicMuted) {
+            this._voiceGateOpen = true;
+            return;
+        }
+
+        const threshold = SettingsStore.getValue("nexus_voice_gate_threshold") ?? 40;
+        if (this._inputLevel > threshold) {
+            // Above threshold → open gate, reset release timer
+            this._voiceGateOpen = true;
+            if (this.inputGainNode) {
+                this.inputGainNode.gain.value =
+                    (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+            }
+            if (this.voiceGateReleaseTimeout) {
+                clearTimeout(this.voiceGateReleaseTimeout);
+                this.voiceGateReleaseTimeout = null;
+            }
+        } else if (this._voiceGateOpen && !this.voiceGateReleaseTimeout) {
+            // Below threshold → close gate after release delay
+            this.voiceGateReleaseTimeout = setTimeout(() => {
+                this._voiceGateOpen = false;
+                if (this.inputGainNode && !this._isMicMuted) {
+                    this.inputGainNode.gain.value = 0;
+                }
+                this.voiceGateReleaseTimeout = null;
+            }, NexusVoiceConnection.VOICE_GATE_RELEASE_MS);
+        }
+    }
+
     // ─── Private: JWT ────────────────────────────────────────
 
     private async getJwt(): Promise<LivekitTokenResponse> {
@@ -471,6 +605,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private async cleanupLivekit(): Promise<void> {
         this.stopStatsPolling();
         this.stopSpeakerPolling();
+        this.stopVoiceGatePolling();
+
+        // Close audio pipeline
+        if (this.audioContext) {
+            this.audioContext.close().catch(() => {});
+            this.audioContext = null;
+        }
+        this.analyserNode = null;
+        this.inputGainNode = null;
+        this._inputLevel = 0;
+        this._voiceGateOpen = true;
 
         // Dispose audio elements
         for (const audio of this.audioElements.values()) {
@@ -534,6 +679,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         const audio = new Audio();
         audio.autoplay = true;
+        // Apply master output volume
+        const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
+        audio.volume = Math.max(0, Math.min(2, masterVol / 100));
         track.attach(audio);
         this.audioElements.set(participant.identity, audio);
     };

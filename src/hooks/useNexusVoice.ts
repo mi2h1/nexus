@@ -17,6 +17,7 @@ interface NexusVoiceState {
     isMicMuted: boolean;
     isScreenSharing: boolean;
     screenShares: ScreenShareInfo[];
+    inputLevel: number; // 0-100 real-time input level
 }
 
 /**
@@ -31,6 +32,7 @@ export function useNexusVoice(): NexusVoiceState {
     const [isMicMuted, setIsMicMuted] = useState(false);
     const [isScreenSharing, setIsScreenSharing] = useState(false);
     const [screenShares, setScreenShares] = useState<ScreenShareInfo[]>([]);
+    const [inputLevel, setInputLevel] = useState(0);
 
     const onActiveConnection = useCallback((conn: NexusVoiceConnection | null) => {
         setConnection(conn);
@@ -39,6 +41,7 @@ export function useNexusVoice(): NexusVoiceState {
             setIsMicMuted(false);
             setIsScreenSharing(false);
             setScreenShares([]);
+            setInputLevel(0);
         }
     }, []);
 
@@ -100,5 +103,19 @@ export function useNexusVoice(): NexusVoiceState {
         };
     }, [connection]);
 
-    return { connection, latencyMs, isMicMuted, isScreenSharing, screenShares };
+    // Listen for input level changes
+    useEffect(() => {
+        if (!connection) return;
+
+        const onInputLevel = (level: number): void => {
+            setInputLevel(level);
+        };
+
+        connection.on(CallEvent.InputLevel, onInputLevel);
+        return () => {
+            connection.off(CallEvent.InputLevel, onInputLevel);
+        };
+    }, [connection]);
+
+    return { connection, latencyMs, isMicMuted, isScreenSharing, screenShares, inputLevel };
 }
