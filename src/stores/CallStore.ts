@@ -152,6 +152,12 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
 
     private inUpdateRoom = false;
     private updateRoom(room: Room): void {
+        // Nexus: Voice channel rooms (isCallRoom) are managed by
+        // NexusVoiceConnection, not ElementCall. Skip them here to prevent
+        // an unwanted ElementCall from being created, which would show a
+        // call indicator icon even when the user is not in the VC.
+        if (room.isCallRoom()) return;
+
         // XXX: This method is guarded with the flag this.inUpdateRoom because
         // we need to block this method from calling itself recursively. That
         // could happen, for instance, if Call.get adds a new virtual widget to
