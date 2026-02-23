@@ -600,14 +600,10 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
     };
 
     private getMainSplitContentType = (room: Room): MainSplitContentType => {
-        // Nexus: When using NexusVoiceConnection (direct LiveKit), show the
-        // timeline instead of the empty CallView iframe wrapper.
+        // Nexus: VC rooms always use NexusVoiceConnection (direct LiveKit).
+        // Never show the ElementCall iframe — always show the timeline.
         if (isVideoRoom(room)) {
-            const call = CallStore.instance.getCall(room.roomId);
-            if (call instanceof NexusVoiceConnection || !call) {
-                return MainSplitContentType.Timeline;
-            }
-            return MainSplitContentType.Call;
+            return MainSplitContentType.Timeline;
         }
         if (this.roomViewStore.isViewingCall()) {
             return MainSplitContentType.Call;
