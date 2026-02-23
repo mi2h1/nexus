@@ -23,6 +23,7 @@
 | matrix-js-sdk | Element Web 同梱 | Matrix プロトコル通信（MatrixRTC シグナリング含む） |
 | matrix-react-sdk | Element Web に統合済み | UI コンポーネント群 |
 | livekit-client | Element Web 同梱 | VC・画面共有（LiveKit SFU 直接接続） |
+| Web Audio API | ブラウザ標準 | 入力音量調整(GainNode)・入力レベル監視(AnalyserNode)・ボイスゲート |
 
 ## インフラ・サービス
 
@@ -39,6 +40,7 @@
 | 技術 | 用途 | 時期 |
 |------|------|------|
 | Tauri 2 | Windows ネイティブアプリ化 | Phase 3（Web UI 完成後） |
+| dtln-rs or web-noise-suppressor | 高度ノイズキャンセリング（WASM） | 検討中 |
 
 ## CSS アーキテクチャ
 
@@ -52,6 +54,10 @@
 ```
 ブラウザ (Nexus)
   │
+  ├─ Web Audio API パイプライン
+  │    ├─ マイク → AnalyserNode (レベル監視) → GainNode (音量+ゲート) → 処理済みトラック
+  │    └─ リモート音声 → HTMLAudioElement (マスター音量適用)
+  │
   ├─ MatrixRTC (matrix-js-sdk)
   │    └─ m.call.member ステートイベントで参加/退出を通知
   │
@@ -59,7 +65,8 @@
   │    └─ LiveKit JWT 取得（livekit-jwt.call.matrix.org へ中継）
   │
   └─ LiveKit SFU (livekit-client)
-       ├─ 音声トラック送受信
+       ├─ 処理済み音声トラック送信
+       ├─ リモート音声トラック受信
        ├─ 画面共有トラック送受信
        └─ WebRTC stats（遅延計測）
 ```

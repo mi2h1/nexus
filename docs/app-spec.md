@@ -25,6 +25,8 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | テキスト/VC チャンネル分離 | Nexus (NexusChannelListView) | 実装済み |
 | VC 参加者グリッド | Nexus (NexusVoiceParticipantGrid) | 実装済み |
 | 個別音量調整 | Nexus (NexusParticipantContextMenu) | 実装済み |
+| 入力/出力音量調整 | Nexus (Web Audio API GainNode) | 実装済み |
+| 入力感度（ボイスゲート） | Nexus (AnalyserNode + GainNode) | 実装済み |
 | 発話検出 | Nexus (ポーリング + LiveKit イベント) | 実装済み |
 | Ping/遅延表示 | Nexus (RTCPeerConnection.getStats) | 実装済み |
 
@@ -88,9 +90,15 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 ```
 NexusVoiceStore (シングルトン)
   └─ NexusVoiceConnection
+       ├─ Web Audio API パイプライン
+       │    ├─ AudioContext
+       │    ├─ MediaStreamSource (マイク入力)
+       │    ├─ AnalyserNode (入力レベル監視、50ms ポーリング)
+       │    ├─ GainNode (入力音量調整 + ボイスゲート)
+       │    └─ MediaStreamDestination → 処理済みトラック
        ├─ LiveKit Room (livekit-client)
-       │    ├─ ローカルオーディオトラック
-       │    ├─ リモートオーディオ再生 (HTMLAudioElement)
+       │    ├─ 処理済みオーディオトラック (GainNode 経由)
+       │    ├─ リモートオーディオ再生 (HTMLAudioElement + マスター音量)
        │    └─ 画面共有トラック
        ├─ MatrixRTC Session (matrix-js-sdk)
        │    └─ メンバーシップ管理 (参加者リスト)
@@ -99,9 +107,16 @@ NexusVoiceStore (シングルトン)
 ```
 
 ### SE（効果音）タイミング
-- **入室**: ボタン押下時に即時再生 → パネル「接続中…」→ 接続完了で「通話中」
-- **退室**: ボタン押下時に即時再生 → UI 即クリア → バックグラウンドで切断処理
-- **他ユーザー入退室**: MatrixRTC MembershipsChanged イベント時に再生
+- **入室**: ボタン押下時に standby SE → 接続確立（参加者リスト表示）時に join SE
+- **退室**: ボタン押下時に leave SE → UI 即クリア → バックグラウンドで切断処理
+- **他ユーザー入退室**: MatrixRTC MembershipsChanged イベント時に join/leave SE
+- **ミュート/アンミュート**: トグル時に mute/unmute SE
+
+### 音声設定（設定 → 音声・ビデオ）
+- **マイク音量** (0-200%): Web Audio API GainNode で入力音量調整
+- **スピーカー音量** (0-200%): 全リモート参加者の HTMLAudioElement.volume 一括調整
+- **入力感度（ボイスゲート）**: AnalyserNode で RMS 計測、閾値以下で GainNode.gain=0（300ms リリース遅延）
+- **リアルタイムレベルメーター**: 50ms 間隔で入力レベルを表示、閾値ラインをオーバーレイ表示
 
 ## 無効化した機能
 

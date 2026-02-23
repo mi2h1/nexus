@@ -47,6 +47,8 @@ nexus/                          # element-web フォーク
 │   ├── rooms/RoomListPanel/
 │   │   ├── _NexusChannelList.pcss
 │   │   └── _NexusUserPanel.pcss
+│   ├── settings/
+│   │   └── _NexusVoiceSettings.pcss    # 音声設定スライダー・レベルメーター
 │   └── voip/
 │       ├── _NexusVCRoomView.pcss
 │       ├── _NexusVoiceParticipantGrid.pcss
@@ -69,9 +71,13 @@ nexus/                          # element-web フォーク
 | 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` |
 | Ping/遅延表示 | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
 | 個別音量調整 | `setParticipantVolume()` — `HTMLAudioElement.volume` |
+| 入力音量調整 | Web Audio API `GainNode` — 0-200% スライダー |
+| 出力マスター音量 | `setMasterOutputVolume()` — 全リモート参加者の受信音量一括調整 |
+| 入力感度（ボイスゲート） | `AnalyserNode` RMS 計測 → 閾値以下で `GainNode.gain=0`（300ms リリース遅延） |
 | 発話検出 | ポーリング方式（250ms）+ LiveKit `ActiveSpeakersChanged` イベント |
-| 入退室 SE | ボタン押下時に即時再生（接続完了を待たない） |
+| 入退室 SE | 押下時 standby SE → 接続確立時 join SE → 退室時 leave SE |
 | VC 参加者グリッド | spotlight/grid 切替 + コントロールバー |
+| 音声設定 UI | 入力/出力音量スライダー + 入力感度トグル/閾値 + リアルタイムレベルメーター |
 | CORS プロキシ | Cloudflare Workers 経由で LiveKit JWT を取得 |
 
 ---
@@ -81,6 +87,12 @@ nexus/                          # element-web フォーク
 ### 完了したタスク
 
 #### 2026-02-23
+- **Discord 風音声設定**: 入力音量・出力音量・入力感度（ボイスゲート）を追加
+  - Web Audio API パイプライン（AnalyserNode + GainNode）で入力音量調整・レベル監視
+  - ボイスゲート: 閾値以下の入力を自動ミュート（300ms リリース遅延、ポップノイズなし）
+  - 設定 UI: マイク/スピーカー音量スライダー、入力感度トグル+閾値+リアルタイムレベルメーター
+  - コントロールバー設定ボタンが音声・ビデオタブを直接オープン
+  - VC 接続開始 SE を standby SE に分離（接続確立時に join SE）
 - **VC 入退室 SE 改善**: ボタン押下時に即時再生、退室を非ブロッキング化
 - **音量コンテキストメニュー**: サイドバー参加者リストに移動
 - **VC 退出後リロード修正**: リロードで参加者が残る問題を修正

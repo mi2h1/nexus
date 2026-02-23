@@ -876,7 +876,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.updateParticipants();
         const newCount = this._participants.size;
 
-        // Play SE when other users join/leave (only while connected)
+        // Play SE when users join/leave (only while connected)
         if (this.connected && prevCount !== newCount) {
             if (newCount > prevCount) {
                 playVcSound(VC_JOIN_SOUND);
