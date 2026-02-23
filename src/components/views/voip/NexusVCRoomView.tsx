@@ -71,6 +71,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                 {layoutMode === "spotlight" ? (
                     <SpotlightLayout
                         spotlightTarget={spotlightTarget}
+                        screenShares={screenShares}
                         members={members}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
@@ -157,6 +158,7 @@ function useSpotlightTarget(
 
 interface SpotlightLayoutProps {
     spotlightTarget: SpotlightTarget | null;
+    screenShares: ScreenShareInfo[];
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
@@ -165,50 +167,95 @@ interface SpotlightLayoutProps {
 
 function SpotlightLayout({
     spotlightTarget,
+    screenShares,
     members,
     activeSpeakers,
     participantStates,
     myUserId,
 }: SpotlightLayoutProps): JSX.Element {
-    // Sidebar members: everyone except the spotlight target (if it's a member)
-    const sidebarMembers = useMemo(() => {
-        if (!spotlightTarget) return members;
-        if (spotlightTarget.type === "screenshare") return members;
-        return members.filter((m) => m.userId !== spotlightTarget.member.userId);
-    }, [spotlightTarget, members]);
+    // Manual screen share selection (null = auto from spotlightTarget)
+    const [manualScreenShareId, setManualScreenShareId] = useState<string | null>(null);
+
+    // Clear manual selection when the selected screen share disappears
+    useEffect(() => {
+        if (manualScreenShareId === null) return;
+        if (!screenShares.some((s) => s.participantIdentity === manualScreenShareId)) {
+            setManualScreenShareId(null);
+        }
+    }, [screenShares, manualScreenShareId]);
+
+    // Resolve effective spotlight target
+    const effectiveTarget = useMemo((): SpotlightTarget | null => {
+        if (manualScreenShareId) {
+            const share = screenShares.find((s) => s.participantIdentity === manualScreenShareId);
+            if (share) return { type: "screenshare", share };
+        }
+        return spotlightTarget;
+    }, [manualScreenShareId, screenShares, spotlightTarget]);
+
+    // Bottom bar: screen shares NOT currently in the main spotlight
+    const bottomBarScreenShares = useMemo(() => {
+        if (effectiveTarget?.type !== "screenshare") return screenShares;
+        return screenShares.filter(
+            (s) => s.participantIdentity !== effectiveTarget.share.participantIdentity,
+        );
+    }, [effectiveTarget, screenShares]);
+
+    // Bottom bar: members (exclude spotlight member if target is a member)
+    const bottomBarMembers = useMemo(() => {
+        if (!effectiveTarget) return members;
+        if (effectiveTarget.type === "screenshare") return members;
+        return members.filter((m) => m.userId !== effectiveTarget.member.userId);
+    }, [effectiveTarget, members]);
+
+    const hasBottomBar = bottomBarScreenShares.length > 0 || bottomBarMembers.length > 0;
 
     return (
         <div className="nx_VCRoomView_spotlight">
             <div className="nx_VCRoomView_spotlightMain">
-                {spotlightTarget?.type === "screenshare" ? (
+                {effectiveTarget?.type === "screenshare" ? (
                     <>
-                        <ScreenShareTile share={spotlightTarget.share} />
+                        <ScreenShareTile share={effectiveTarget.share} />
                         <div className="nx_VCRoomView_spotlightLabel">
-                            {spotlightTarget.share.participantName}の画面
+                            {effectiveTarget.share.participantName}の画面
                         </div>
                     </>
-                ) : spotlightTarget?.type === "member" ? (
+                ) : effectiveTarget?.type === "member" ? (
                     <div className="nx_VCRoomView_spotlightAvatar">
-                        <MemberAvatar member={spotlightTarget.member} size="128px" hideTitle />
+                        <MemberAvatar member={effectiveTarget.member} size="128px" hideTitle />
                         <div className="nx_VCRoomView_spotlightAvatarName">
-                            {spotlightTarget.member.name}
+                            {effectiveTarget.member.name}
                         </div>
                     </div>
                 ) : null}
             </div>
-            {sidebarMembers.length > 0 && (
-                <div className="nx_VCRoomView_spotlightSidebar">
-                    {sidebarMembers.map((member) => {
+            {hasBottomBar && (
+                <div className="nx_VCRoomView_spotlightBottomBar">
+                    {bottomBarScreenShares.map((share) => (
+                        <div
+                            key={`ss-${share.participantIdentity}`}
+                            className="nx_VCRoomView_spotlightBottomBar_item nx_VCRoomView_spotlightBottomBar_screenShare"
+                            onClick={() => setManualScreenShareId(share.participantIdentity)}
+                        >
+                            <ScreenShareTile share={share} />
+                        </div>
+                    ))}
+                    {bottomBarMembers.map((member) => {
                         const state = participantStates.get(member.userId);
                         return (
-                            <ParticipantTile
+                            <div
                                 key={member.userId}
-                                member={member}
-                                isSpeaking={activeSpeakers.has(member.userId)}
-                                isMuted={state?.isMuted ?? false}
-                                isScreenSharing={state?.isScreenSharing ?? false}
-                                size="small"
-                            />
+                                className="nx_VCRoomView_spotlightBottomBar_item"
+                                onClick={() => setManualScreenShareId(null)}
+                            >
+                                <ParticipantTile
+                                    member={member}
+                                    isSpeaking={activeSpeakers.has(member.userId)}
+                                    isMuted={state?.isMuted ?? false}
+                                    isScreenSharing={state?.isScreenSharing ?? false}
+                                    size="small"
+                                />
+                            </div>
                         );
                     })}
                 </div>
