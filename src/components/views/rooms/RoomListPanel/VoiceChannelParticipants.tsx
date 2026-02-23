@@ -9,10 +9,12 @@ import React, { type JSX, useEffect, useState } from "react";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 import classNames from "classnames";
+import { MicOffSolidIcon, ShareScreenSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
 import { useNexusActiveSpeakers } from "../../../../hooks/useNexusActiveSpeakers";
+import { useNexusParticipantStates } from "../../../../hooks/useNexusParticipantStates";
 import MemberAvatar from "../../avatars/MemberAvatar";
 
 interface VoiceChannelParticipantsProps {
@@ -33,6 +35,7 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
     const client = useMatrixClientContext();
     const [members, setMembers] = useState<RoomMember[]>([]);
     const activeSpeakers = useNexusActiveSpeakers();
+    const participantStates = useNexusParticipantStates();
 
     useEffect(() => {
         const room = client.getRoom(roomId);
@@ -91,12 +94,27 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
                 const avatarClass = classNames("mx_VoiceChannelParticipants_avatar", {
                     "mx_VoiceChannelParticipants_avatar--speaking": speaking,
                 });
+                const state = participantStates.get(member.userId);
                 return (
                     <div className="mx_VoiceChannelParticipants_item" key={member.userId}>
                         <div className={avatarClass}>
                             <MemberAvatar member={member} size="20px" hideTitle />
                         </div>
                         <span className="mx_VoiceChannelParticipants_name">{member.name}</span>
+                        {state?.isMuted && (
+                            <MicOffSolidIcon
+                                className="mx_VoiceChannelParticipants_statusIcon"
+                                width={12}
+                                height={12}
+                            />
+                        )}
+                        {state?.isScreenSharing && (
+                            <ShareScreenSolidIcon
+                                className="mx_VoiceChannelParticipants_statusIcon mx_VoiceChannelParticipants_statusIcon--sharing"
+                                width={12}
+                                height={12}
+                            />
+                        )}
                     </div>
                 );
             })}

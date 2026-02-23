@@ -93,4 +93,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.mx_VoiceChannelParticipants_statusIcon {
+    flex-shrink: 0;
+    color: var(--cpd-color-icon-secondary);
+
+    &.mx_VoiceChannelParticipants_statusIcon--sharing {
+        color: var(--cpd-color-icon-critical-primary);
+    }
 }
