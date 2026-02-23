@@ -5,7 +5,7 @@
  * adding CORS headers so the Nexus frontend (GitHub Pages) can call it.
  *
  * Usage:
- *   POST https://<worker>.workers.dev/sfu/get_token
+ *   POST https://<worker>.workers.dev/sfu/get
  *   Body: { room, openid_token, device_id, livekit_service_url }
  *
  * The worker strips `livekit_service_url` from the body, uses it as the
@@ -63,7 +63,7 @@ export default {
             }
 
             // Forward to upstream LiveKit JWT service
-            const upstreamUrl = `${livekit_service_url.replace(/\/$/, "")}/sfu/get_token`;
+            const upstreamUrl = `${livekit_service_url.replace(/\/$/, "")}/sfu/get`;
             const upstreamResponse = await fetch(upstreamUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

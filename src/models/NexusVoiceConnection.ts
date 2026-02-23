@@ -232,7 +232,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (LIVEKIT_CORS_PROXY_URL) {
             // Route through CORS proxy — include livekit_service_url so the
             // proxy knows where to forward the request.
-            fetchUrl = `${LIVEKIT_CORS_PROXY_URL}/sfu/get_token`;
+            fetchUrl = `${LIVEKIT_CORS_PROXY_URL}/sfu/get`;
             fetchBody = {
                 room: this.room.roomId,
                 openid_token: openIdToken,
@@ -241,7 +241,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             };
         } else {
             // Direct call (self-hosted LiveKit with CORS configured)
-            fetchUrl = `${serviceUrl}/sfu/get_token`;
+            fetchUrl = `${serviceUrl}/sfu/get`;
             fetchBody = {
                 room: this.room.roomId,
                 openid_token: openIdToken,
