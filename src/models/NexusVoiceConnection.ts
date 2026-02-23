@@ -35,6 +35,20 @@ const logger = rootLogger.getChild("NexusVoiceConnection");
 
 const STATS_POLL_INTERVAL_MS = 2000;
 
+// VC join/leave sound effects
+const VC_JOIN_SOUND = "media/message.ogg";
+const VC_LEAVE_SOUND = "media/callend.ogg";
+
+function playVcSound(src: string): void {
+    try {
+        const audio = new Audio(src);
+        audio.volume = 0.5;
+        audio.play().catch(() => {});
+    } catch {
+        // Ignore audio playback errors
+    }
+}
+
 /**
  * Cloudflare Workers CORS proxy URL for LiveKit JWT endpoint.
  * The upstream LiveKit JWT service (e.g. livekit-jwt.call.matrix.org) does not
@@ -156,6 +170,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.room.on(RoomEvent.MyMembership, this.onMyMembership);
             window.addEventListener("beforeunload", this.onBeforeUnload);
             this.connectionState = ConnectionState.Connected;
+            playVcSound(VC_JOIN_SOUND);
 
             // 6. Start latency polling
             this.startStatsPolling();
@@ -183,6 +198,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.room.off(RoomEvent.MyMembership, this.onMyMembership);
         window.removeEventListener("beforeunload", this.onBeforeUnload);
         this.connectionState = ConnectionState.Disconnected;
+        playVcSound(VC_LEAVE_SOUND);
     }
 
     public async clean(): Promise<void> {
@@ -329,7 +345,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Private: Participants ────────────────────────────────
 
     private onMembershipsChanged = (): void => {
+        const prevCount = this._participants.size;
         this.updateParticipants();
+        const newCount = this._participants.size;
+
+        // Play SE when other users join/leave (only while connected)
+        if (this.connected && prevCount !== newCount) {
+            if (newCount > prevCount) {
+                playVcSound(VC_JOIN_SOUND);
+            } else {
+                playVcSound(VC_LEAVE_SOUND);
+            }
+        }
     };
 
     private updateParticipants(): void {
