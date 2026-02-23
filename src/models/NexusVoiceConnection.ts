@@ -227,8 +227,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const dest = this.audioContext.createMediaStreamDestination();
             this.inputGainNode.connect(dest);
             const processedTrack = dest.stream.getAudioTracks()[0];
-            // Publish the processed MediaStreamTrack directly
-            await this.livekitRoom.localParticipant.publishTrack(processedTrack);
+            // Publish the processed MediaStreamTrack with Microphone source
+            // so remote participants can find it via getTrackPublication(Track.Source.Microphone)
+            await this.livekitRoom.localParticipant.publishTrack(processedTrack, {
+                source: Track.Source.Microphone,
+            });
 
             // Start voice gate / input level polling
             this.startVoiceGatePolling();
@@ -307,12 +310,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     public setMicMuted(muted: boolean): void {
-        if (this.localAudioTrack) {
-            // Silence the source track directly instead of using LiveKit's
-            // mute()/unmute() — the original localAudioTrack is not published
-            // (the processed track from Web Audio API is), so LiveKit's mute
-            // protocol would not affect the correct track.
-            this.localAudioTrack.mediaStreamTrack.enabled = !muted;
+        // Use LiveKit publication mute/unmute to signal remote participants.
+        // The published track is the processed one (not this.localAudioTrack),
+        // so we get it via getTrackPublication(Track.Source.Microphone).
+        const pub = this.livekitRoom?.localParticipant.getTrackPublication(Track.Source.Microphone);
+        if (pub?.track) {
+            if (muted) pub.track.mute();
+            else pub.track.unmute();
         }
         if (!muted && this.inputGainNode) {
             // Restore input gain when unmuting (voice gate may have set it to 0)
