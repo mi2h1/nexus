@@ -97,16 +97,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _participantStates = new Map<string, ParticipantState>();
     private speakerPollTimer: ReturnType<typeof setInterval> | null = null;
     private statsTimer: ReturnType<typeof setInterval> | null = null;
-    private audioElements = new Map<string, HTMLAudioElement>();
-
-    // ─── Audio pipeline (output volume via Web Audio API) ────
-    private outputAudioContext: AudioContext | null = null;
+    // ─── Audio pipeline (shared AudioContext) ────────────────
+    private audioContext: AudioContext | null = null;
     private outputMasterGain: GainNode | null = null;
     private outputParticipantGains = new Map<string, GainNode>();
+    private outputSources = new Map<string, MediaStreamAudioSourceNode>();
     private participantVolumes = new Map<string, number>(); // 0-1.0
-
-    // ─── Audio pipeline (input volume + voice gate) ──────────
-    private audioContext: AudioContext | null = null;
     private analyserNode: AnalyserNode | null = null;
     private inputGainNode: GainNode | null = null;
     private voiceGateTimer: ReturnType<typeof setInterval> | null = null;
@@ -209,6 +205,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // Build audio pipeline: source → analyser (monitoring only)
             //                        source → inputGainNode → destination (processed track)
             this.audioContext = new AudioContext();
+
+            // Output master gain (initialized here in user-gesture context)
+            this.outputMasterGain = this.audioContext.createGain();
+            const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
+            this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
+            this.outputMasterGain.connect(this.audioContext.destination);
+
             const source = this.audioContext.createMediaStreamSource(
                 new MediaStream([this.localAudioTrack.mediaStreamTrack]),
             );
@@ -638,20 +641,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._inputLevel = 0;
         this._voiceGateOpen = true;
 
-        // Close output audio pipeline
-        if (this.outputAudioContext) {
-            this.outputAudioContext.close().catch(() => {});
-            this.outputAudioContext = null;
-            this.outputMasterGain = null;
+        // Close output audio nodes
+        this.outputMasterGain = null;
+        for (const source of this.outputSources.values()) {
+            source.disconnect();
+        }
+        this.outputSources.clear();
+        for (const gain of this.outputParticipantGains.values()) {
+            gain.disconnect();
         }
         this.outputParticipantGains.clear();
-
-        // Dispose audio elements
-        for (const audio of this.audioElements.values()) {
-            audio.pause();
-            audio.srcObject = null;
-        }
-        this.audioElements.clear();
 
         // Stop local screen share
         if (this.localScreenTrack) {
@@ -705,31 +704,25 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         if (track.kind !== "audio") return;
+        if (!this.audioContext || !this.outputMasterGain) return;
 
         try {
-            const audio = new Audio();
-            audio.autoplay = true;
-            track.attach(audio);
-            this.audioElements.set(participant.identity, audio);
+            // Get the remote audio track's MediaStream directly
+            const mediaStream = new MediaStream([track.mediaStreamTrack]);
+            const source = this.audioContext.createMediaStreamSource(mediaStream);
 
-            // Route through Web Audio API for volume control (supports > 1.0)
-            if (!this.outputAudioContext) {
-                this.outputAudioContext = new AudioContext();
-                this.outputMasterGain = this.outputAudioContext.createGain();
-                const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
-                this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
-                this.outputMasterGain.connect(this.outputAudioContext.destination);
-            }
-            const source = this.outputAudioContext.createMediaElementSource(audio);
-            const participantGain = this.outputAudioContext.createGain();
+            // Per-participant gain node
+            const participantGain = this.audioContext.createGain();
             participantGain.gain.value = this.participantVolumes.get(participant.identity) ?? 1;
             source.connect(participantGain);
-            participantGain.connect(this.outputMasterGain!);
-            this.outputParticipantGains.set(participant.identity, participantGain);
+            participantGain.connect(this.outputMasterGain);
 
-            // Resume AudioContext if suspended (autoplay policy)
-            if (this.outputAudioContext.state === "suspended") {
-                this.outputAudioContext.resume().catch(() => {});
+            this.outputParticipantGains.set(participant.identity, participantGain);
+            this.outputSources.set(participant.identity, source);
+
+            // Resume AudioContext if suspended (safety net)
+            if (this.audioContext.state === "suspended") {
+                this.audioContext.resume().catch(() => {});
             }
         } catch (e) {
             logger.warn("onTrackSubscribed error:", e);
@@ -754,13 +747,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         if (track.kind !== "audio") return;
 
-        this.outputParticipantGains.delete(participant.identity);
-        const audio = this.audioElements.get(participant.identity);
-        if (audio) {
-            track.detach(audio);
-            audio.pause();
-            audio.srcObject = null;
-            this.audioElements.delete(participant.identity);
+        // Disconnect and clean up Web Audio nodes
+        const source = this.outputSources.get(participant.identity);
+        if (source) {
+            source.disconnect();
+            this.outputSources.delete(participant.identity);
+        }
+        const gain = this.outputParticipantGains.get(participant.identity);
+        if (gain) {
+            gain.disconnect();
+            this.outputParticipantGains.delete(participant.identity);
         }
     };
 
