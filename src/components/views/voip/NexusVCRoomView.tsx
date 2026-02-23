@@ -39,8 +39,37 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
 
     const [layoutMode, setLayoutMode] = useState<VCLayoutMode>("spotlight");
 
-    // Debounced spotlight target based on active speaker
-    const spotlightTarget = useSpotlightTarget(client.getUserId(), members, screenShares, activeSpeakers);
+    // Opt-in screen share watching (Discord-style)
+    const [watchingIds, setWatchingIds] = useState<Set<string>>(new Set());
+
+    // Filter screen shares into watched (local + opted-in) and unwatched
+    const watchedScreenShares = useMemo(
+        () => screenShares.filter((s) => s.isLocal || watchingIds.has(s.participantIdentity)),
+        [screenShares, watchingIds],
+    );
+    const unwatchedScreenShares = useMemo(
+        () => screenShares.filter((s) => !s.isLocal && !watchingIds.has(s.participantIdentity)),
+        [screenShares, watchingIds],
+    );
+
+    const startWatching = useCallback((id: string) => {
+        setWatchingIds((prev) => new Set(prev).add(id));
+    }, []);
+
+    // Auto-cleanup watchingIds when screen shares end
+    useEffect(() => {
+        const currentIds = new Set(screenShares.map((s) => s.participantIdentity));
+        setWatchingIds((prev) => {
+            const next = new Set<string>();
+            for (const id of prev) {
+                if (currentIds.has(id)) next.add(id);
+            }
+            return next.size === prev.size ? prev : next;
+        });
+    }, [screenShares]);
+
+    // Debounced spotlight target based on active speaker (only watched screen shares)
+    const spotlightTarget = useSpotlightTarget(client.getUserId(), members, watchedScreenShares, activeSpeakers);
 
     const onJoinCall = useCallback(() => {
         const room = client.getRoom(roomId);
@@ -71,7 +100,9 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                 {layoutMode === "spotlight" ? (
                     <SpotlightLayout
                         spotlightTarget={spotlightTarget}
-                        screenShares={screenShares}
+                        screenShares={watchedScreenShares}
+                        unwatchedScreenShares={unwatchedScreenShares}
+                        onStartWatching={startWatching}
                         members={members}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
@@ -79,7 +110,9 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                     />
                 ) : (
                     <GridLayout
-                        screenShares={screenShares}
+                        screenShares={watchedScreenShares}
+                        unwatchedScreenShares={unwatchedScreenShares}
+                        onStartWatching={startWatching}
                         members={members}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
@@ -159,6 +192,8 @@ function useSpotlightTarget(
 interface SpotlightLayoutProps {
     spotlightTarget: SpotlightTarget | null;
     screenShares: ScreenShareInfo[];
+    unwatchedScreenShares: ScreenShareInfo[];
+    onStartWatching: (id: string) => void;
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
@@ -168,6 +203,8 @@ interface SpotlightLayoutProps {
 function SpotlightLayout({
     spotlightTarget,
     screenShares,
+    unwatchedScreenShares,
+    onStartWatching,
     members,
     activeSpeakers,
     participantStates,
@@ -208,7 +245,8 @@ function SpotlightLayout({
         return members.filter((m) => m.userId !== effectiveTarget.member.userId);
     }, [effectiveTarget, members]);
 
-    const hasBottomBar = bottomBarScreenShares.length > 0 || bottomBarMembers.length > 0;
+    const hasBottomBar =
+        bottomBarScreenShares.length > 0 || unwatchedScreenShares.length > 0 || bottomBarMembers.length > 0;
 
     return (
         <div className="nx_VCRoomView_spotlight">
@@ -233,6 +271,20 @@ function SpotlightLayout({
                             onClick={() => setManualScreenShareId(share.participantIdentity)}
                         >
                             <ScreenShareTile share={share} />
+                        </div>
+                    ))}
+                    {unwatchedScreenShares.map((share) => (
+                        <div
+                            key={`preview-${share.participantIdentity}`}
+                            className="nx_VCRoomView_spotlightBottomBar_item nx_VCRoomView_screenSharePreview"
+                            onClick={() => onStartWatching(share.participantIdentity)}
+                        >
+                            <ScreenShareTile share={share} />
+                            <div className="nx_VCRoomView_screenSharePreview_overlay">
+                                <div className="nx_VCRoomView_screenSharePreview_button">
+                                    画面を視聴する
+                                </div>
+                            </div>
                         </div>
                     ))}
                     {bottomBarMembers.map((member) => {
@@ -263,17 +315,40 @@ function SpotlightLayout({
 
 interface GridLayoutProps {
     screenShares: ScreenShareInfo[];
+    unwatchedScreenShares: ScreenShareInfo[];
+    onStartWatching: (id: string) => void;
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
 }
 
-function GridLayout({ screenShares, members, activeSpeakers, participantStates }: GridLayoutProps): JSX.Element {
+function GridLayout({
+    screenShares,
+    unwatchedScreenShares,
+    onStartWatching,
+    members,
+    activeSpeakers,
+    participantStates,
+}: GridLayoutProps): JSX.Element {
     return (
         <div className="nx_VCRoomView_grid">
             {screenShares.map((share) => (
                 <div key={`ss-${share.participantIdentity}`} className="nx_VCRoomView_gridScreenShare">
                     <ScreenShareTile share={share} />
+                </div>
+            ))}
+            {unwatchedScreenShares.map((share) => (
+                <div
+                    key={`preview-${share.participantIdentity}`}
+                    className="nx_VCRoomView_gridScreenShare nx_VCRoomView_gridScreenSharePreview"
+                    onClick={() => onStartWatching(share.participantIdentity)}
+                >
+                    <ScreenShareTile share={share} />
+                    <div className="nx_VCRoomView_screenSharePreview_overlay">
+                        <div className="nx_VCRoomView_screenSharePreview_button">
+                            画面を視聴する
+                        </div>
+                    </div>
                 </div>
             ))}
             {members.map((member) => {

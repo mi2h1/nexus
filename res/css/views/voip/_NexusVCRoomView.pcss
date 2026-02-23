@@ -191,3 +191,53 @@
         object-fit: contain;
     }
 }
+
+.nx_VCRoomView_gridScreenSharePreview {
+    position: relative;
+    cursor: pointer;
+}
+
+/* ─── Screen share preview overlay (opt-in) ───────── */
+
+.nx_VCRoomView_screenSharePreview {
+    position: relative;
+    width: 160px;
+    height: 100px;
+    overflow: hidden;
+
+    .mx_NexusScreenShareTile {
+        width: 100%;
+        height: 100%;
+    }
+
+    .mx_NexusScreenShareTile_video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+    .mx_NexusScreenShareTile_label {
+        display: none;
+    }
+}
+
+.nx_VCRoomView_screenSharePreview_overlay {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nx_VCRoomView_screenSharePreview_button {
+    padding: 4px 12px;
+    background-color: var(--cpd-color-bg-action-primary-rest);
+    color: var(--cpd-color-text-on-solid-primary);
+    font: var(--cpd-font-body-sm-medium);
+    border-radius: var(--cpd-space-2x);
+
+    &:hover {
+        background-color: var(--cpd-color-bg-action-primary-hovered);
+    }
+}
