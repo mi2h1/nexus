@@ -15,10 +15,12 @@ import { MatrixClientPeg } from "../MatrixClientPeg";
 
 export enum NexusVoiceStoreEvent {
     ActiveConnection = "active_connection",
+    PreMicMuted = "pre_mic_muted",
 }
 
 type NexusVoiceStoreEventHandlerMap = {
     [NexusVoiceStoreEvent.ActiveConnection]: (connection: NexusVoiceConnection | null) => void;
+    [NexusVoiceStoreEvent.PreMicMuted]: (muted: boolean) => void;
 };
 
 /**
@@ -36,9 +38,30 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
 
     private activeConnection: NexusVoiceConnection | null = null;
     private connections = new Map<string, NexusVoiceConnection>();
+    private _preMicMuted = false;
 
     private constructor() {
         super();
+    }
+
+    /**
+     * Whether the mic is pre-muted (before joining a VC).
+     */
+    public get preMicMuted(): boolean {
+        return this._preMicMuted;
+    }
+
+    /**
+     * Toggle mic mute. Works both in and out of a VC.
+     * When not in a VC, stores the mute state for the next join.
+     */
+    public toggleMic(): void {
+        if (this.activeConnection) {
+            this.activeConnection.setMicMuted(!this.activeConnection.isMicMuted);
+        } else {
+            this._preMicMuted = !this._preMicMuted;
+            this.emit(NexusVoiceStoreEvent.PreMicMuted, this._preMicMuted);
+        }
     }
 
     /**
@@ -76,6 +99,10 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
 
         try {
             await connection.connect();
+            // Apply pre-mute state after connection is established
+            if (this._preMicMuted) {
+                connection.setMicMuted(true);
+            }
         } catch (e) {
             logger.error("Failed to join voice channel", e);
             // Clean up on failure

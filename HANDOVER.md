@@ -22,7 +22,7 @@
   └ Claude Code でコード編集 → git push
       ↓
 GitHub Actions
-  └ yarn install → yarn build → GitHub Pages にデプロイ
+  └ pnpm install → pnpm build → GitHub Pages にデプロイ
       ↓
 https://<github-username>.github.io/nexus/
   └ ユーザーがブラウザでアクセス
@@ -48,9 +48,10 @@ https://<github-username>.github.io/nexus/
 |------|------|
 | Element Web (フォーク) | ベースとなる Matrix クライアント |
 | React + TypeScript | UI フレームワーク |
-| matrix-js-sdk | Matrix プロトコル通信 |
+| matrix-js-sdk | Matrix プロトコル通信 + MatrixRTC シグナリング |
 | matrix-react-sdk | Element Web に統合済み |
-| Element Call | VC・画面共有（ウィジェットとして統合済み） |
+| livekit-client | VC・画面共有（LiveKit SFU 直接接続） |
+| Cloudflare Workers | LiveKit JWT 取得用 CORS プロキシ |
 | Webpack | ビルドツール（Element Web 標準） |
 | GitHub Actions | CI/CD（ビルド & デプロイ） |
 | GitHub Pages | 静的ファイルホスティング |
@@ -61,7 +62,7 @@ https://<github-username>.github.io/nexus/
 
 ### 前提条件
 - Node.js LTS (v20 以上)
-- Yarn 1.x（Element Web は Yarn 1 を使用）
+- pnpm 10.x（Element Web 標準）
 - Git
 
 ### 初期セットアップ手順
@@ -72,7 +73,7 @@ git clone https://github.com/<github-username>/nexus.git
 cd nexus
 
 # 2. 依存関係インストール
-yarn install
+pnpm install
 
 # 3. 設定ファイル作成
 cp config.sample.json config.json
@@ -81,7 +82,7 @@ cp config.sample.json config.json
 # → default_server_config の内容を確認・調整
 
 # 5. ローカル開発サーバー起動（確認用、VPS では不要な場合が多い）
-yarn start
+pnpm start
 ```
 
 ### 重要: matrix-react-sdk は element-web に統合済み
@@ -128,10 +129,10 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: yarn build
+        run: pnpm build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -161,31 +162,27 @@ jobs:
 4. GitHub Actions でビルド & GitHub Pages にデプロイ
 5. ブラウザでアクセスし、ログイン・テキストチャット・VC・画面共有が動作することを確認
 
-### Phase 2: Discord 風 UI カスタマイズ
-主な変更点：
+### Phase 2: Discord 風 UI カスタマイズ ✅
+実装済み：
 
-#### 2.1 レイアウト変更
-- **左サイドバー**: Space アイコンを Discord のサーバーアイコンバー風に（縦並び、丸アイコン、ホバーで角丸変化）
-- **チャンネルサイドバー**: テキストチャンネル（#アイコン）とボイスチャンネル（🔊アイコン）を視覚的に分離
-- **メッセージエリア**: Discord 風のメッセージバブルなしレイアウト
-- **メンバーリスト**: 右サイドバーにロール別グルーピング
+#### 2.1 レイアウト
+- テキスト/VC チャンネル分離（NexusChannelListView）
+- VC チャンネル参加者リスト（VoiceChannelParticipants）
+- Discord 風ユーザーパネル（NexusUserPanel）
+- 通話ステータスパネル（NexusCallStatusPanel）
 
-#### 2.2 カラースキーム
-- Discord のダークテーマ風カラーパレットに変更
-  - 背景: #36393f（メイン）、#2f3136（サイドバー）、#202225（サーバーバー）
-  - テキスト: #dcddde
-  - アクセント: #5865f2（Discord Blurple）
+#### 2.2 テーマ/カラー
+- Element 標準のまま（ライト/ダーク切替可能を維持）
 
-#### 2.3 CSS の変更場所
-- Element Web の CSS クラスは `mx_` プレフィックスが付いている
-- テーマ関連: `res/themes/` ディレクトリ
-- コンポーネント CSS: 各コンポーネントと同じディレクトリに `.css` ファイルがある
-- カスタムテーマを追加するか、既存テーマを上書きする方法がある
+#### 2.3 不要要素の非表示
+- Element ブランディングを Nexus に差し替え
+- 不要機能の無効化（詳細は docs/app-spec.md 参照）
 
-#### 2.4 不要な UI 要素の非表示
-- Element 固有のブランディング（ロゴ、フッター等）
-- 不要な設定項目
-- Element のウェルカム画面をカスタムに差し替え
+### Phase 2.5: 通話機能の内包 ✅
+- Element Call iframe を廃止し livekit-client で直接接続
+- NexusVoiceConnection: LiveKit SFU + MatrixRTC シグナリング
+- VC ルームビュー: 参加者グリッド + コントロールバー + 画面共有
+- 個別音量調整、発話検出、Ping 表示、入退室 SE
 
 ### Phase 3: 将来のネイティブ化（Tauri 2）
 - Web 版の UI が固まった後に着手
@@ -270,8 +267,8 @@ nexus/                          # element-web フォーク
 
 ### VPS での開発について
 - VPS（3コア/4GB RAM）ではコード編集のみ行い、ビルドは GitHub Actions に任せる
-- `yarn install` は VPS 上でも可能だが、ディスク残り 11GB に注意
-- ローカルプレビューが必要な場合は `yarn start` でも動くが、メモリ消費に注意
+- `pnpm install` は VPS 上でも可能だが、ディスク残り 11GB に注意
+- ローカルプレビューが必要な場合は `pnpm start` でも動くが、メモリ消費に注意
 
 ### ビルドの流れ
 1. Claude Code でコード編集

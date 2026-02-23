@@ -20,9 +20,9 @@
 | React | Element Web 同梱 | UI フレームワーク |
 | TypeScript | Element Web 同梱 | 型安全な開発 |
 | Webpack | Element Web 同梱 | バンドラー |
-| matrix-js-sdk | Element Web 同梱 | Matrix プロトコル通信 |
+| matrix-js-sdk | Element Web 同梱 | Matrix プロトコル通信（MatrixRTC シグナリング含む） |
 | matrix-react-sdk | Element Web に統合済み | UI コンポーネント群 |
-| Element Call | Element Web に統合済み | VC・画面共有（LiveKit ベース） |
+| livekit-client | Element Web 同梱 | VC・画面共有（LiveKit SFU 直接接続） |
 
 ## インフラ・サービス
 
@@ -31,7 +31,8 @@
 | matrix.org | Matrix ホームサーバー（公開サーバー利用） | 無料 |
 | GitHub Pages | クライアントホスティング | 無料 |
 | GitHub Actions | CI/CD（ビルド & デプロイ） | 無料 |
-| Element Call (LiveKit) | VC・画面共有のインフラ | 無料（matrix.org 提供） |
+| LiveKit SFU (matrix.org 提供) | VC・画面共有の SFU インフラ | 無料 |
+| Cloudflare Workers | LiveKit JWT 取得用 CORS プロキシ | 無料 |
 
 ## 将来追加予定
 
@@ -42,6 +43,23 @@
 ## CSS アーキテクチャ
 
 - Element Web 既存: `mx_` プレフィックス + CSS カスタムプロパティ (`--cpd-color-*`)
-- Nexus 新規: `nx_` プレフィックス
+- Nexus 新規: `nx_` プレフィックス（`mx_Nexus*` も一部使用）
 - テーマ定義: `res/themes/` ディレクトリ
 - コンポーネント CSS: 各コンポーネントと同ディレクトリに配置
+
+## VC 通信フロー
+
+```
+ブラウザ (Nexus)
+  │
+  ├─ MatrixRTC (matrix-js-sdk)
+  │    └─ m.call.member ステートイベントで参加/退出を通知
+  │
+  ├─ CORS Proxy (Cloudflare Workers)
+  │    └─ LiveKit JWT 取得（livekit-jwt.call.matrix.org へ中継）
+  │
+  └─ LiveKit SFU (livekit-client)
+       ├─ 音声トラック送受信
+       ├─ 画面共有トラック送受信
+       └─ WebRTC stats（遅延計測）
+```

@@ -21,37 +21,58 @@ nexus/                          # element-web フォーク
 │   ├── tech-stack.md           # 技術スタック
 │   └── app-spec.md             # アプリ仕様・UI設計
 ├── src/                        # ソースコード
-├── res/                        # リソース・CSS
+│   ├── models/
+│   │   └── NexusVoiceConnection.ts  # LiveKit 直接接続クラス
+│   ├── stores/
+│   │   └── NexusVoiceStore.ts       # VC 接続管理シングルトン
+│   ├── hooks/
+│   │   ├── useNexusVoice.ts         # VC 状態フック
+│   │   ├── useNexusActiveSpeakers.ts# 発話検出フック
+│   │   ├── useNexusScreenShares.ts  # 画面共有フック
+│   │   └── useNexusParticipantStates.ts # 参加者状態フック
+│   └── components/views/
+│       ├── rooms/RoomListPanel/
+│       │   ├── NexusChannelListView.tsx  # テキスト/VC チャンネル分離
+│       │   ├── NexusChannelIcon.tsx      # チャンネルアイコン
+│       │   ├── NexusUserPanel.tsx        # Discord 風ユーザーパネル
+│       │   ├── NexusCallStatusPanel.tsx  # 通話ステータスパネル
+│       │   └── VoiceChannelParticipants.tsx # VC 参加者リスト
+│       └── voip/
+│           ├── NexusVCRoomView.tsx       # VC ルームビュー
+│           ├── NexusVoiceParticipantGrid.tsx # 参加者グリッド
+│           ├── NexusVCControlBar.tsx     # VC コントロールバー
+│           ├── NexusScreenShareView.tsx  # 画面共有ビュー
+│           └── NexusParticipantContextMenu.tsx # 参加者コンテキストメニュー
+├── res/css/views/              # Nexus カスタム CSS
+│   ├── rooms/RoomListPanel/
+│   │   ├── _NexusChannelList.pcss
+│   │   └── _NexusUserPanel.pcss
+│   └── voip/
+│       ├── _NexusVCRoomView.pcss
+│       ├── _NexusVoiceParticipantGrid.pcss
+│       ├── _NexusVCControlBar.pcss
+│       ├── _NexusScreenShareView.pcss
+│       └── _NexusParticipantContextMenu.pcss
 ├── config.json                 # アプリ設定（Nexus カスタム）
 └── .github/workflows/pages.yml # GitHub Pages デプロイ
 ```
 
-## Phase 2.5: 通話機能の内包（優先度: 高）
+## Phase 2.5: 通話機能の内包 ✅ 完了
 
-> Element Call を iframe 経由で利用する現行方式から、livekit-client-sdk を Nexus 本体に直接組み込む方式へ移行する。
+> Element Call の iframe 方式を廃止し、livekit-client を Nexus 本体に直接組み込み済み。
 
-### 動機
-- iframe 方式では毎回 Element Call を丸ごと起動し直すため VC 参加が遅い（数秒のオーバーヘッド）
-- WebRTC の stats / メディアストリームが iframe 内に閉じており、外部から制御できない
-  - Ping/遅延表示、スピーカーミュート、画面共有の外部制御が不可能
-
-### 内包で可能になること
-| 機能 | 現状 | 内包後 |
-|------|------|--------|
-| VC 参加速度 | iframe ロード + アセット取得で遅い | 事前初期化済みで即接続 |
-| Ping/遅延表示 | API なし | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
-| スピーカーミュート | iframe 内で再生、制御不可 | `AudioContext` / `volume` で制御 |
-| マイクミュート | Jitsi のみ動作、EC は ack のみ | 直接 `MediaStreamTrack.enabled` 制御 |
-| 画面共有の外部制御 | iframe 内部処理 | `getDisplayMedia()` を自前で呼べる |
-
-### 技術方針（暫定）
-1. `livekit-client-sdk` を直接依存に追加
-2. MatrixRTC シグナリング（ステートイベント）は既存の matrix-js-sdk を利用
-3. E2EE は SFrame（LiveKit SDK 内蔵）を利用
-4. Element Call の通話ロジック（参加/退出/メディア管理）を Nexus 内に再実装
-5. 既存の iframe ウィジェット方式は段階的に廃止
-
-### ステータス: 未着手
+### 実装済み機能
+| 機能 | 実装 |
+|------|------|
+| VC 接続/切断 | `NexusVoiceConnection` — LiveKit 直接接続 + MatrixRTC シグナリング |
+| マイクミュート | `setMicMuted()` — `LocalAudioTrack.mute()/unmute()` |
+| 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` |
+| Ping/遅延表示 | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
+| 個別音量調整 | `setParticipantVolume()` — `HTMLAudioElement.volume` |
+| 発話検出 | ポーリング方式（250ms）+ LiveKit `ActiveSpeakersChanged` イベント |
+| 入退室 SE | ボタン押下時に即時再生（接続完了を待たない） |
+| VC 参加者グリッド | spotlight/grid 切替 + コントロールバー |
+| CORS プロキシ | Cloudflare Workers 経由で LiveKit JWT を取得 |
 
 ---
 
@@ -60,18 +81,27 @@ nexus/                          # element-web フォーク
 ### 完了したタスク
 
 #### 2026-02-23
+- **VC 入退室 SE 改善**: ボタン押下時に即時再生、退室を非ブロッキング化
+- **音量コンテキストメニュー**: サイドバー参加者リストに移動
+- **VC 退出後リロード修正**: リロードで参加者が残る問題を修正
+- **ElementCall iframe 排除**: VC ルームで不要な ElementCall が作られるのを防止
+- **個別音量調整**: 参加者タイル右クリックで音量スライダー表示（NexusParticipantContextMenu）
+- **VC 未接続表示**: 「まだ誰もいません」+ 参加ボタンを表示
+- **デザイン調整多数**: チャンネル一覧、スペース選択ノッチ、終話ボタン等
+- **参加者状態アイコン**: ミュート・画面共有状態をリアルタイム表示
+- **VC ルームビュー全面リファクタ**: spotlight/grid 切替 + コントロールバー（NexusVCRoomView / NexusVCControlBar）
+- **接続中ステータス**: 「接続中…」を黄色パルスドットで表示（NexusCallStatusPanel）
+- **発話検出**: ポーリング方式 + identity 解決ロジック、発話中ユーザーに緑ボーダー表示
+- **VC 参加者グリッド**: Discord 風参加者グリッドを追加（NexusVoiceParticipantGrid）
+- **ゴーストメンバー対策**: 未接続時の自分のメンバーシップを非表示
+- **iframe 完全排除**: VC ルームで常に Timeline を表示
 - Discord 風ユーザーパネル & 通話ステータスパネルを追加（NexusUserPanel / NexusCallStatusPanel）
-  - アバター・表示名・マイクミュート・設定ボタン
-  - 通話中: 接続状態ドット + ルーム名 + 終話ボタン
-  - SpacePanel 下部のスレッドボタンを削除
 - Discord 風テキスト/VC チャンネル分離を実装（NexusChannelListView）
 - VC チャンネル参加者表示を実装（VoiceChannelParticipants）
-  - チャンネル名の下にアバター + 名前をリアルタイム表示
-  - useCall / useParticipatingMembers を活用
 - 不要な UI 要素を非表示（インテグレーションマネージャ、Jitsi 等）
 - Element ブランディングを Nexus に差し替え
 
-## Phase 1: 環境構築 & 動作確認
+## Phase 1: 環境構築 & 動作確認 ✅ 完了
 
 #### 2026-02-23
 - プロジェクトドキュメント一式を作成（CLAUDE.md, HANDOVER.md, conventions.md, progress.md, tech-stack.md, app-spec.md）

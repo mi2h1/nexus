@@ -18,8 +18,8 @@ import {
 import { useActiveCall } from "../../../../hooks/useActiveCall";
 import { useConnectionState } from "../../../../hooks/useCall";
 import { ConnectionState } from "../../../../models/Call";
-import { NexusVoiceConnection } from "../../../../models/NexusVoiceConnection";
 import { useNexusVoice } from "../../../../hooks/useNexusVoice";
+import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
 import { OwnProfileStore } from "../../../../stores/OwnProfileStore";
 import { MatrixClientPeg } from "../../../../MatrixClientPeg";
 import { UPDATE_EVENT } from "../../../../stores/AsyncStore";
@@ -48,6 +48,16 @@ const NexusUserPanel: React.FC = () => {
         connectionState === ConnectionState.Connecting;
     const { isMicMuted } = useNexusVoice();
 
+    // Pre-mute state (when not in a VC)
+    const preMicMuted = useEventEmitterState(
+        NexusVoiceStore.instance,
+        NexusVoiceStoreEvent.PreMicMuted,
+        useCallback(() => NexusVoiceStore.instance.preMicMuted, []),
+    );
+
+    // Show muted if in VC and muted, or if not in VC and pre-muted
+    const effectiveMuted = isInCall ? isMicMuted : preMicMuted;
+
     // Profile info (reactive)
     const displayName = useEventEmitterState(OwnProfileStore.instance, UPDATE_EVENT, useCallback(
         () => OwnProfileStore.instance.displayName,
@@ -64,12 +74,8 @@ const NexusUserPanel: React.FC = () => {
     const [menuOpen, setMenuOpen] = useState(false);
 
     const onToggleMic = useCallback(() => {
-        if (!call) return;
-
-        if (call instanceof NexusVoiceConnection) {
-            call.setMicMuted(!call.isMicMuted);
-        }
-    }, [call]);
+        NexusVoiceStore.instance.toggleMic();
+    }, []);
 
     const onAvatarClick = useCallback(() => {
         setMenuOpen((prev) => !prev);
@@ -168,12 +174,11 @@ const NexusUserPanel: React.FC = () => {
                 </div>
                 <div className="mx_NexusUserPanel_actions">
                     <AccessibleButton
-                        className={`mx_NexusUserPanel_button ${isMicMuted ? "mx_NexusUserPanel_button--muted" : ""}`}
+                        className={`mx_NexusUserPanel_button ${effectiveMuted ? "mx_NexusUserPanel_button--muted" : ""}`}
                         onClick={onToggleMic}
-                        disabled={connectionState !== ConnectionState.Connected}
-                        title={isMicMuted ? "マイクをオンにする" : "マイクをミュートする"}
+                        title={effectiveMuted ? "マイクをオンにする" : "マイクをミュートする"}
                     >
-                        {isMicMuted ? (
+                        {effectiveMuted ? (
                             <MicOffSolidIcon width={20} height={20} />
                         ) : (
                             <MicOnSolidIcon width={20} height={20} />

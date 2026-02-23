@@ -18,11 +18,15 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 
 | 機能 | 提供元 | 状態 |
 |------|--------|------|
-| テキストチャット | Element Web (matrix-js-sdk) | Element Web に組み込み済み |
-| ボイスチャット (VC) | Element Call (LiveKit) | Element Web に組み込み済み |
-| 画面共有 | Element Call (LiveKit) | Element Web に組み込み済み |
-| E2E 暗号化 | matrix-js-sdk (Olm/Megolm) | Element Web に組み込み済み |
-| テキスト/VC チャンネル分離 | Nexus カスタマイズ | **これから実装** |
+| テキストチャット | Element Web (matrix-js-sdk) | 組み込み済み |
+| ボイスチャット (VC) | Nexus (livekit-client + MatrixRTC) | 実装済み |
+| 画面共有 | Nexus (livekit-client) | 実装済み |
+| E2E 暗号化 | matrix-js-sdk (Olm/Megolm) | 組み込み済み |
+| テキスト/VC チャンネル分離 | Nexus (NexusChannelListView) | 実装済み |
+| VC 参加者グリッド | Nexus (NexusVoiceParticipantGrid) | 実装済み |
+| 個別音量調整 | Nexus (NexusParticipantContextMenu) | 実装済み |
+| 発話検出 | Nexus (ポーリング + LiveKit イベント) | 実装済み |
+| Ping/遅延表示 | Nexus (RTCPeerConnection.getStats) | 実装済み |
 
 ## UI 構成
 
@@ -35,31 +39,69 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 │ [S2] │              │                           │  ── User1  │
 │ [S3] │ Voice        │  User2         12:35      │  ── User2  │
 │      │ 🔊 VC-1     │  メッセージ内容           │            │
-│      │ 🔊 VC-2     │                           │  Offline   │
-│      │              │                           │  ── User3  │
-│      │              ├──────────────────────────┤            │
-│      │              │  [メッセージ入力欄]       │            │
+│      │   ├ User1    │                           │  Offline   │
+│      │   └ User2    │                           │  ── User3  │
+│      │ 🔊 VC-2     │                           │            │
+│      ├──────────────┤                           │            │
+│      │ Call Status  ├──────────────────────────┤            │
+│      │ 🟢 通話中   │  [メッセージ入力欄]       │            │
+│      ├──────────────┤                           │            │
+│      │ User Panel   │                           │            │
+│      │ 🎤 ⚙️       │                           │            │
 └──────┴──────────────┴──────────────────────────┴────────────┘
 ```
 
 ### 各エリアの詳細
 
 #### Server Bar（左端）
-- **元コンポーネント**: `SpacePanel`
+- **コンポーネント**: `SpacePanel`
 - Space = Discord の「サーバー」に対応
 
 #### Channel List（左サイドバー）
-- **元コンポーネント**: `LeftPanel`, `RoomList`
-- テキストチャンネル（`#` アイコン）とボイスチャンネル（`🔊` アイコン）を視覚的に分離
-- カテゴリ別グルーピング
+- **コンポーネント**: `NexusChannelListView`
+- テキストチャンネル（`#` アイコン）とボイスチャンネル（スピーカーアイコン）を視覚的に分離
+- VC チャンネルの下に参加者リストをリアルタイム表示（`VoiceChannelParticipants`）
+- 未接続の VC チャンネルは「まだ誰もいません」+ 参加ボタンを表示
 
-#### Message Area（中央）
-- **元コンポーネント**: `RoomView`
-- ユーザー名 + タイムスタンプ + メッセージ本文
+#### Call Status Panel（左サイドバー下部）
+- **コンポーネント**: `NexusCallStatusPanel`
+- 接続中: 黄色パルスドット +「接続中…」
+- 通話中: 緑丸 + ルーム名 + 終話ボタン
+- 未接続: 非表示
+
+#### User Panel（左サイドバー最下部）
+- **コンポーネント**: `NexusUserPanel`
+- アバター + 表示名 + マイクミュートボタン + 設定ボタン
+
+#### Message Area / VC Room View（中央）
+- テキストチャンネル: `RoomView`（メッセージタイムライン）
+- VC チャンネル: `NexusVCRoomView`（参加者グリッド + コントロールバー + タイムライン）
+  - spotlight/grid 切替対応
+  - 画面共有時は自動で spotlight モードに切替
 
 #### Member List（右サイドバー）
 - ロール別にグルーピング
 - オンライン/オフライン状態の表示
+
+## VC アーキテクチャ
+
+```
+NexusVoiceStore (シングルトン)
+  └─ NexusVoiceConnection
+       ├─ LiveKit Room (livekit-client)
+       │    ├─ ローカルオーディオトラック
+       │    ├─ リモートオーディオ再生 (HTMLAudioElement)
+       │    └─ 画面共有トラック
+       ├─ MatrixRTC Session (matrix-js-sdk)
+       │    └─ メンバーシップ管理 (参加者リスト)
+       └─ CORS Proxy (Cloudflare Workers)
+            └─ LiveKit JWT 取得
+```
+
+### SE（効果音）タイミング
+- **入室**: ボタン押下時に即時再生 → パネル「接続中…」→ 接続完了で「通話中」
+- **退室**: ボタン押下時に即時再生 → UI 即クリア → バックグラウンドで切断処理
+- **他ユーザー入退室**: MatrixRTC MembershipsChanged イベント時に再生
 
 ## 無効化した機能
 
@@ -75,18 +117,22 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | ルーム一覧フィルター | コードで非表示 |
 | ルームヘッダーの通話ボタン | コードで非表示 |
 | メンバーのステートイベント | setting_defaults で非表示 |
+| Element Call iframe | コードで完全排除（LiveKit 直接接続に移行） |
 
 ## Phase 別の実装計画
 
 ### Phase 1: 環境構築 & 動作確認 ✅
 Element Web をそのままデプロイし、全機能が動作することを確認
 
-### Phase 2: 機能カスタマイズ（進行中）
+### Phase 2: 機能カスタマイズ ✅
 1. ~~カラースキームの変更~~ → Element 標準のまま
 2. 不要機能の無効化 ✅
 3. ブランディング差し替え ✅
-4. テキスト/VC チャンネル分離
+4. テキスト/VC チャンネル分離 ✅
 5. 不要な UI 要素の非表示 ✅
+
+### Phase 2.5: 通話機能の内包 ✅
+Element Call iframe を廃止し、livekit-client を直接組み込み
 
 ### Phase 3: Tauri 2 ネイティブ化
 Web 版の UI が固まった後に着手
