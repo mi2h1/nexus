@@ -20,8 +20,9 @@ import { useChannelSeparation } from "../../../../hooks/useChannelSeparation";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { VoiceChannelParticipants } from "./VoiceChannelParticipants";
 import { TextChannelIcon, VoiceChannelIcon } from "./NexusChannelIcon";
-import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
-import { ConnectionState } from "../../../../models/Call";
+import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
+import { CallEvent, ConnectionState } from "../../../../models/Call";
+import InlineSpinner from "../../elements/InlineSpinner";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 
@@ -172,6 +173,48 @@ function VoiceChannelItem({
     avatarRenderer: (room: SharedRoom) => ReactNode;
     matrixClient: ReturnType<typeof useMatrixClientContext>;
 }): JSX.Element {
+    const [isTransitioning, setIsTransitioning] = useState(false);
+
+    useEffect(() => {
+        const store = NexusVoiceStore.instance;
+        let currentConn = store.getConnection(roomId) ?? null;
+
+        const updateState = (): void => {
+            const conn = store.getConnection(roomId);
+            setIsTransitioning(
+                conn !== null &&
+                    conn !== undefined &&
+                    (conn.connectionState === ConnectionState.Connecting ||
+                        conn.connectionState === ConnectionState.Disconnecting),
+            );
+        };
+
+        const onActiveConnection = (): void => {
+            if (currentConn) {
+                currentConn.off(CallEvent.ConnectionState, updateState);
+            }
+            currentConn = store.getConnection(roomId) ?? null;
+            if (currentConn) {
+                currentConn.on(CallEvent.ConnectionState, updateState);
+            }
+            updateState();
+        };
+
+        store.on(NexusVoiceStoreEvent.ActiveConnection, onActiveConnection);
+        // Initial setup
+        if (currentConn) {
+            currentConn.on(CallEvent.ConnectionState, updateState);
+        }
+        updateState();
+
+        return () => {
+            store.off(NexusVoiceStoreEvent.ActiveConnection, onActiveConnection);
+            if (currentConn) {
+                currentConn.off(CallEvent.ConnectionState, updateState);
+            }
+        };
+    }, [roomId]);
+
     const onVoiceChannelClick = useCallback(
         (e: React.MouseEvent) => {
             e.stopPropagation();
@@ -211,8 +254,13 @@ function VoiceChannelItem({
         <React.Fragment>
             {/* Use onClickCapture to intercept BEFORE RoomListItemView's button onClick fires */}
             {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-            <div onClickCapture={onVoiceChannelClick}>
+            <div onClickCapture={onVoiceChannelClick} className="nx_VoiceChannelItem">
                 {renderItem(roomId, globalIndex, avatarRenderer)}
+                {isTransitioning && (
+                    <div className="nx_VoiceChannelItem_spinner">
+                        <InlineSpinner size={14} />
+                    </div>
+                )}
             </div>
             <VoiceChannelParticipants roomId={roomId} />
         </React.Fragment>
