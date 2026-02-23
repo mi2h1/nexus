@@ -9,15 +9,18 @@ import { useState, useEffect, useCallback } from "react";
 
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../stores/NexusVoiceStore";
 import type { NexusVoiceConnection } from "../models/NexusVoiceConnection";
+import { CallEvent, type ScreenShareInfo } from "../models/Call";
 
 interface NexusVoiceState {
     connection: NexusVoiceConnection | null;
     latencyMs: number | null;
     isMicMuted: boolean;
+    isScreenSharing: boolean;
+    screenShares: ScreenShareInfo[];
 }
 
 /**
- * Hook for accessing NexusVoiceConnection-specific data (latency, mic state).
+ * Hook for accessing NexusVoiceConnection-specific data (latency, mic state, screen shares).
  * Polls latency from the active connection.
  */
 export function useNexusVoice(): NexusVoiceState {
@@ -26,12 +29,16 @@ export function useNexusVoice(): NexusVoiceState {
     );
     const [latencyMs, setLatencyMs] = useState<number | null>(null);
     const [isMicMuted, setIsMicMuted] = useState(false);
+    const [isScreenSharing, setIsScreenSharing] = useState(false);
+    const [screenShares, setScreenShares] = useState<ScreenShareInfo[]>([]);
 
     const onActiveConnection = useCallback((conn: NexusVoiceConnection | null) => {
         setConnection(conn);
         if (!conn) {
             setLatencyMs(null);
             setIsMicMuted(false);
+            setIsScreenSharing(false);
+            setScreenShares([]);
         }
     }, []);
 
@@ -58,5 +65,25 @@ export function useNexusVoice(): NexusVoiceState {
         return () => clearInterval(interval);
     }, [connection]);
 
-    return { connection, latencyMs, isMicMuted };
+    // Listen for screen share changes
+    useEffect(() => {
+        if (!connection) return;
+
+        const onScreenShares = (shares: ScreenShareInfo[]): void => {
+            setScreenShares(shares);
+            setIsScreenSharing(connection.isScreenSharing);
+        };
+
+        connection.on(CallEvent.ScreenShares, onScreenShares);
+
+        // Initial read
+        setScreenShares(connection.screenShares);
+        setIsScreenSharing(connection.isScreenSharing);
+
+        return () => {
+            connection.off(CallEvent.ScreenShares, onScreenShares);
+        };
+    }, [connection]);
+
+    return { connection, latencyMs, isMicMuted, isScreenSharing, screenShares };
 }

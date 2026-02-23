@@ -26,10 +26,13 @@ import {
     type RemoteTrackPublication,
     type RemoteParticipant,
     type LocalAudioTrack,
+    type LocalVideoTrack,
     createLocalAudioTrack,
+    createLocalScreenTracks,
+    Track,
 } from "livekit-client";
 
-import { CallEvent, ConnectionState, type CallEventHandlerMap } from "./Call";
+import { CallEvent, ConnectionState, type CallEventHandlerMap, type ScreenShareInfo } from "./Call";
 
 const logger = rootLogger.getChild("NexusVoiceConnection");
 
@@ -81,6 +84,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     private livekitRoom: LivekitRoom | null = null;
     private localAudioTrack: LocalAudioTrack | null = null;
+    private localScreenTrack: LocalVideoTrack | null = null;
+    private localScreenAudioTrack: LocalAudioTrack | null = null;
+    private _isScreenSharing = false;
+    private _screenShares: ScreenShareInfo[] = [];
     private statsTimer: ReturnType<typeof setInterval> | null = null;
     private audioElements = new Map<string, HTMLAudioElement>();
 
@@ -132,6 +139,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     public get isMicMuted(): boolean {
         return this._isMicMuted;
+    }
+
+    public get isScreenSharing(): boolean {
+        return this._isScreenSharing;
+    }
+
+    public get screenShares(): ScreenShareInfo[] {
+        return this._screenShares;
     }
 
     // ─── Public API ──────────────────────────────────────────
@@ -235,6 +250,118 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._isMicMuted = muted;
     }
 
+    public async toggleScreenShare(): Promise<void> {
+        if (this._isScreenSharing) {
+            await this.stopScreenShare();
+        } else {
+            await this.startScreenShare();
+        }
+    }
+
+    public async startScreenShare(): Promise<void> {
+        if (!this.livekitRoom || !this.connected) return;
+
+        try {
+            const tracks = await createLocalScreenTracks({ audio: true });
+            for (const track of tracks) {
+                if (track.kind === "video") {
+                    this.localScreenTrack = track as LocalVideoTrack;
+                } else if (track.kind === "audio") {
+                    this.localScreenAudioTrack = track as LocalAudioTrack;
+                }
+            }
+
+            if (this.localScreenTrack) {
+                await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
+                    source: Track.Source.ScreenShare,
+                });
+
+                // Listen for browser "stop sharing" event
+                this.localScreenTrack.mediaStreamTrack.addEventListener("ended", this.onLocalScreenTrackEnded);
+            }
+
+            if (this.localScreenAudioTrack) {
+                await this.livekitRoom.localParticipant.publishTrack(this.localScreenAudioTrack, {
+                    source: Track.Source.ScreenShareAudio,
+                });
+            }
+
+            this._isScreenSharing = true;
+            this.updateScreenShares();
+        } catch (e) {
+            logger.warn("Failed to start screen share", e);
+            // User cancelled the screen picker — clean up
+            this.localScreenTrack?.stop();
+            this.localScreenTrack = null;
+            this.localScreenAudioTrack?.stop();
+            this.localScreenAudioTrack = null;
+        }
+    }
+
+    public async stopScreenShare(): Promise<void> {
+        if (!this.livekitRoom) return;
+
+        if (this.localScreenTrack) {
+            this.localScreenTrack.mediaStreamTrack.removeEventListener("ended", this.onLocalScreenTrackEnded);
+            await this.livekitRoom.localParticipant.unpublishTrack(this.localScreenTrack);
+            this.localScreenTrack.stop();
+            this.localScreenTrack = null;
+        }
+
+        if (this.localScreenAudioTrack) {
+            await this.livekitRoom.localParticipant.unpublishTrack(this.localScreenAudioTrack);
+            this.localScreenAudioTrack.stop();
+            this.localScreenAudioTrack = null;
+        }
+
+        this._isScreenSharing = false;
+        this.updateScreenShares();
+    }
+
+    private onLocalScreenTrackEnded = (): void => {
+        // Browser's "Stop sharing" button was clicked
+        this.stopScreenShare().catch((e) => logger.warn("Failed to stop screen share after browser stop", e));
+    };
+
+    private updateScreenShares(): void {
+        const shares: ScreenShareInfo[] = [];
+
+        // Local screen share
+        if (this.localScreenTrack && this._isScreenSharing) {
+            const localName = this.client.getUserId() ?? "You";
+            const member = this.room.getMember(this.client.getUserId()!);
+            shares.push({
+                participantIdentity: this.livekitRoom?.localParticipant.identity ?? localName,
+                participantName: member?.name ?? localName,
+                track: this.localScreenTrack,
+                audioTrack: this.localScreenAudioTrack ?? undefined,
+                isLocal: true,
+            });
+        }
+
+        // Remote screen shares
+        if (this.livekitRoom) {
+            for (const participant of this.livekitRoom.remoteParticipants.values()) {
+                const screenPub = participant.getTrackPublication(Track.Source.ScreenShare);
+                if (screenPub?.track) {
+                    const screenAudioPub = participant.getTrackPublication(Track.Source.ScreenShareAudio);
+                    // Try to resolve participant name from Matrix room membership
+                    const member = this.room.getMember(participant.identity);
+                    shares.push({
+                        participantIdentity: participant.identity,
+                        participantName: member?.name ?? participant.identity,
+                        track: screenPub.track,
+                        audioTrack: screenAudioPub?.track ?? undefined,
+                        isLocal: false,
+                    });
+                }
+            }
+        }
+
+        this._screenShares = shares;
+        this.emit(CallEvent.ScreenShares, shares);
+    }
+
     // ─── Private: JWT ────────────────────────────────────────
 
     private async getJwt(): Promise<LivekitTokenResponse> {
@@ -296,6 +423,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         this.audioElements.clear();
 
+        // Stop local screen share
+        if (this.localScreenTrack) {
+            this.localScreenTrack.mediaStreamTrack.removeEventListener("ended", this.onLocalScreenTrackEnded);
+            this.localScreenTrack.stop();
+            this.localScreenTrack = null;
+        }
+        if (this.localScreenAudioTrack) {
+            this.localScreenAudioTrack.stop();
+            this.localScreenAudioTrack = null;
+        }
+        this._isScreenSharing = false;
+        this._screenShares = [];
+
         // Stop local audio
         if (this.localAudioTrack) {
             this.localAudioTrack.stop();
@@ -318,7 +458,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         publication: RemoteTrackPublication,
         participant: RemoteParticipant,
     ): void => {
-        if (!track || track.kind !== "audio") return;
+        if (!track) return;
+
+        // Handle screen share tracks
+        if (
+            publication.source === Track.Source.ScreenShare ||
+            publication.source === Track.Source.ScreenShareAudio
+        ) {
+            this.updateScreenShares();
+            return;
+        }
+
+        if (track.kind !== "audio") return;
 
         const audio = new Audio();
         audio.autoplay = true;
@@ -328,10 +479,21 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     private onTrackUnsubscribed = (
         track: RemoteTrackPublication["track"],
-        _publication: RemoteTrackPublication,
+        publication: RemoteTrackPublication,
         participant: RemoteParticipant,
     ): void => {
-        if (!track || track.kind !== "audio") return;
+        if (!track) return;
+
+        // Handle screen share tracks
+        if (
+            publication.source === Track.Source.ScreenShare ||
+            publication.source === Track.Source.ScreenShareAudio
+        ) {
+            this.updateScreenShares();
+            return;
+        }
+
+        if (track.kind !== "audio") return;
 
         const audio = this.audioElements.get(participant.identity);
         if (audio) {

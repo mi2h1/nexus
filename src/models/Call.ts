@@ -88,6 +88,15 @@ export enum CallEvent {
     Close = "close",
     Destroy = "destroy",
     CallTypeChanged = "call_type_changed",
+    ScreenShares = "screen_shares",
+}
+
+export interface ScreenShareInfo {
+    participantIdentity: string;
+    participantName: string;
+    track: any; // LiveKit VideoTrack
+    audioTrack?: any; // LiveKit AudioTrack
+    isLocal: boolean;
 }
 
 export interface CallEventHandlerMap {
@@ -99,6 +108,7 @@ export interface CallEventHandlerMap {
     [CallEvent.Close]: () => void;
     [CallEvent.Destroy]: () => void;
     [CallEvent.CallTypeChanged]: (callType: CallType) => void;
+    [CallEvent.ScreenShares]: (screenShares: ScreenShareInfo[]) => void;
 }
 
 /**

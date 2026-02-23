@@ -143,6 +143,36 @@
     white-space: nowrap;
 }
 
+.mx_NexusCallStatusPanel_screenShareButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: none;
+    color: var(--cpd-color-icon-secondary);
+    cursor: pointer;
+    border: none;
+    padding: 0;
+    flex-shrink: 0;
+
+    &:hover {
+        background-color: var(--cpd-color-bg-subtle-primary);
+        color: var(--cpd-color-icon-primary);
+    }
+
+    &.mx_NexusCallStatusPanel_screenShareButton--active {
+        color: var(--cpd-color-icon-success-primary);
+        background-color: var(--cpd-color-bg-success-subtle);
+
+        &:hover {
+            background-color: var(--cpd-color-bg-success-subtle);
+            opacity: 0.8;
+        }
+    }
+}
+
 .mx_NexusCallStatusPanel_disconnectButton {
     display: flex;
     align-items: center;

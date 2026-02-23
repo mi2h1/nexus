@@ -7,6 +7,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { useCallback } from "react";
 import { EndCallIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import ShareScreenIcon from "@vector-im/compound-design-tokens/assets/web/icons/share-screen";
 
 import { type Call, ConnectionState } from "../../../../models/Call";
 import type { NexusVoiceConnection } from "../../../../models/NexusVoiceConnection";
@@ -28,7 +29,7 @@ const statusLabels: Record<ConnectionState, string> = {
 
 const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => {
     const connectionState = useConnectionState(call);
-    const { latencyMs } = useNexusVoice();
+    const { latencyMs, isScreenSharing } = useNexusVoice();
     const client = useMatrixClientContext();
     const room = client.getRoom(call.roomId);
     const roomName = room?.name ?? call.roomId;
@@ -44,6 +45,13 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
             }
         } catch {
             // Already disconnected — ignore
+        }
+    }, [call]);
+
+    const onToggleScreenShare = useCallback(async () => {
+        const voiceConn = NexusVoiceStore.instance.getConnection(call.roomId);
+        if (voiceConn) {
+            await voiceConn.toggleScreenShare();
         }
     }, [call]);
 
@@ -66,6 +74,13 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
                 </div>
                 <span className="mx_NexusCallStatusPanel_roomName">{roomName}</span>
             </div>
+            <AccessibleButton
+                className={`mx_NexusCallStatusPanel_screenShareButton${isScreenSharing ? " mx_NexusCallStatusPanel_screenShareButton--active" : ""}`}
+                onClick={onToggleScreenShare}
+                title={isScreenSharing ? "画面共有を停止" : "画面を共有"}
+            >
+                <ShareScreenIcon width={20} height={20} />
+            </AccessibleButton>
             <AccessibleButton
                 className="mx_NexusCallStatusPanel_disconnectButton"
                 onClick={onDisconnect}

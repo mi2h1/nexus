@@ -122,6 +122,7 @@ import { LargeLoader } from "./LargeLoader";
 import { isVideoRoom } from "../../utils/video-rooms";
 import { CallStore } from "../../stores/CallStore";
 import { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
+import { NexusScreenShareContainer } from "../views/voip/NexusScreenShareView";
 import { SDKContext } from "../../contexts/SDKContext";
 import { RoomSearchView } from "./RoomSearchView";
 import eventSearch, { type SearchInfo, SearchScope } from "../../Searching";
@@ -2676,6 +2677,9 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                 mainSplitBody = (
                     <>
                         <Measured sensor={this.roomViewBody} onMeasurement={this.onMeasurement} />
+                        {this.state.room && isVideoRoom(this.state.room) && (
+                            <NexusScreenShareContainer roomId={this.state.room.roomId} />
+                        )}
                         {auxPanel}
                         {pinnedMessageBanner}
                         <main className={timelineClasses} data-testid="timeline">

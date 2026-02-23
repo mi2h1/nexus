@@ -1,0 +1,132 @@
+/*
+Copyright 2025 Nexus Contributors
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+import React, { useRef, useEffect, useState, useCallback } from "react";
+
+import { useNexusScreenShares } from "../../../hooks/useNexusScreenShares";
+import type { ScreenShareInfo } from "../../../models/Call";
+
+interface NexusScreenShareContainerProps {
+    roomId: string;
+}
+
+/**
+ * Wrapper component that conditionally renders the screen share panel
+ * when there are active screen shares in the room.
+ */
+export const NexusScreenShareContainer: React.FC<NexusScreenShareContainerProps> = ({ roomId }) => {
+    const screenShares = useNexusScreenShares(roomId);
+
+    if (screenShares.length === 0) return null;
+    return <NexusScreenShareView screenShares={screenShares} />;
+};
+
+interface NexusScreenShareViewProps {
+    screenShares: ScreenShareInfo[];
+}
+
+const MIN_HEIGHT = 150;
+const MAX_HEIGHT = 600;
+const DEFAULT_HEIGHT = 300;
+
+/**
+ * Panel that displays screen share video feeds with a resize handle.
+ */
+const NexusScreenShareView: React.FC<NexusScreenShareViewProps> = ({ screenShares }) => {
+    const [height, setHeight] = useState(DEFAULT_HEIGHT);
+    const resizing = useRef(false);
+    const startY = useRef(0);
+    const startHeight = useRef(DEFAULT_HEIGHT);
+
+    const onResizeStart = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        resizing.current = true;
+        startY.current = e.clientY;
+        startHeight.current = height;
+
+        const onMouseMove = (ev: MouseEvent): void => {
+            if (!resizing.current) return;
+            const delta = ev.clientY - startY.current;
+            const newHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight.current + delta));
+            setHeight(newHeight);
+        };
+
+        const onMouseUp = (): void => {
+            resizing.current = false;
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+        };
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+    }, [height]);
+
+    return (
+        <div className="mx_NexusScreenSharePanel" style={{ height }}>
+            <div className="mx_NexusScreenSharePanel_content">
+                {screenShares.map((share) => (
+                    <ScreenShareTile key={share.participantIdentity} share={share} />
+                ))}
+            </div>
+            <div
+                className="mx_NexusScreenSharePanel_resizeHandle"
+                onMouseDown={onResizeStart}
+            />
+        </div>
+    );
+};
+
+interface ScreenShareTileProps {
+    share: ScreenShareInfo;
+}
+
+/**
+ * Individual screen share tile — attaches LiveKit track to <video>.
+ */
+const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
+
+    useEffect(() => {
+        const videoEl = videoRef.current;
+        if (!videoEl || !share.track) return;
+        share.track.attach(videoEl);
+        return () => {
+            share.track.detach(videoEl);
+        };
+    }, [share.track]);
+
+    useEffect(() => {
+        const audioEl = audioRef.current;
+        if (!audioEl || !share.audioTrack || share.isLocal) return;
+        share.audioTrack.attach(audioEl);
+        return () => {
+            share.audioTrack?.detach(audioEl);
+        };
+    }, [share.audioTrack, share.isLocal]);
+
+    const label = `${share.participantName}の画面`;
+
+    return (
+        <div className="mx_NexusScreenShareTile">
+            <video
+                ref={videoRef}
+                className="mx_NexusScreenShareTile_video"
+                autoPlay
+                playsInline
+                muted
+            />
+            {/* Play remote screen share audio (not local to avoid echo) */}
+            {share.audioTrack && !share.isLocal && (
+                <audio ref={audioRef} autoPlay />
+            )}
+            <div className="mx_NexusScreenShareTile_label">{label}</div>
+        </div>
+    );
+};
+
+export default NexusScreenShareView;

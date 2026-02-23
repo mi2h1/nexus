@@ -1,0 +1,67 @@
+/*
+ * Copyright 2025 Nexus Contributors
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+ * Please see LICENSE files in the repository root for full details.
+ */
+
+.mx_NexusScreenSharePanel {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--cpd-color-bg-subtle-primary);
+    background-color: var(--cpd-color-bg-canvas-default);
+    position: relative;
+    overflow: hidden;
+}
+
+.mx_NexusScreenSharePanel_content {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: var(--cpd-space-2x);
+    padding: var(--cpd-space-2x);
+    min-height: 0;
+}
+
+.mx_NexusScreenShareTile {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    border-radius: var(--cpd-space-2x);
+    overflow: hidden;
+}
+
+.mx_NexusScreenShareTile_video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.mx_NexusScreenShareTile_label {
+    position: absolute;
+    bottom: var(--cpd-space-2x);
+    left: var(--cpd-space-2x);
+    padding: var(--cpd-space-1x) var(--cpd-space-2x);
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border-radius: var(--cpd-space-1x);
+    font: var(--cpd-font-body-xs-regular);
+    pointer-events: none;
+}
+
+.mx_NexusScreenSharePanel_resizeHandle {
+    height: 4px;
+    cursor: ns-resize;
+    background-color: transparent;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+        background-color: var(--cpd-color-bg-subtle-primary);
+    }
+}
