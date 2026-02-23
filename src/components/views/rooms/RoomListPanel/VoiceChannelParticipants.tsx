@@ -9,7 +9,7 @@ import React, { type JSX, useEffect, useState } from "react";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 import classNames from "classnames";
-import { MicOffSolidIcon, ShareScreenSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { MicOffSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
@@ -103,17 +103,13 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
                         <span className="mx_VoiceChannelParticipants_name">{member.name}</span>
                         {state?.isMuted && (
                             <MicOffSolidIcon
-                                className="mx_VoiceChannelParticipants_statusIcon"
-                                width={12}
-                                height={12}
+                                className="mx_VoiceChannelParticipants_muteIcon"
+                                width={14}
+                                height={14}
                             />
                         )}
                         {state?.isScreenSharing && (
-                            <ShareScreenSolidIcon
-                                className="mx_VoiceChannelParticipants_statusIcon mx_VoiceChannelParticipants_statusIcon--sharing"
-                                width={12}
-                                height={12}
-                            />
+                            <span className="mx_VoiceChannelParticipants_sharingBadge">配信中</span>
                         )}
                     </div>
                 );
