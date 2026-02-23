@@ -177,25 +177,44 @@ function VoiceChannelItem({
 
     useEffect(() => {
         const store = NexusVoiceStore.instance;
+        const myUserId = matrixClient.getUserId();
         let currentConn = store.getConnection(roomId) ?? null;
 
         const updateState = (): void => {
             const conn = store.getConnection(roomId);
-            setIsTransitioning(
-                conn !== null &&
-                    conn !== undefined &&
-                    (conn.connectionState === ConnectionState.Connecting ||
-                        conn.connectionState === ConnectionState.Disconnecting),
-            );
+            if (!conn) {
+                setIsTransitioning(false);
+                return;
+            }
+            const state = conn.connectionState;
+            if (state === ConnectionState.Connecting || state === ConnectionState.Disconnecting) {
+                setIsTransitioning(true);
+                return;
+            }
+            if (state === ConnectionState.Connected) {
+                // Keep spinner until local user appears in participant list
+                let selfInList = false;
+                for (const [member] of conn.participants) {
+                    if (member.userId === myUserId) {
+                        selfInList = true;
+                        break;
+                    }
+                }
+                setIsTransitioning(!selfInList);
+                return;
+            }
+            setIsTransitioning(false);
         };
 
         const onActiveConnection = (): void => {
             if (currentConn) {
                 currentConn.off(CallEvent.ConnectionState, updateState);
+                currentConn.off(CallEvent.Participants, updateState);
             }
             currentConn = store.getConnection(roomId) ?? null;
             if (currentConn) {
                 currentConn.on(CallEvent.ConnectionState, updateState);
+                currentConn.on(CallEvent.Participants, updateState);
             }
             updateState();
         };
@@ -204,6 +223,7 @@ function VoiceChannelItem({
         // Initial setup
         if (currentConn) {
             currentConn.on(CallEvent.ConnectionState, updateState);
+            currentConn.on(CallEvent.Participants, updateState);
         }
         updateState();
 
@@ -211,30 +231,23 @@ function VoiceChannelItem({
             store.off(NexusVoiceStoreEvent.ActiveConnection, onActiveConnection);
             if (currentConn) {
                 currentConn.off(CallEvent.ConnectionState, updateState);
+                currentConn.off(CallEvent.Participants, updateState);
             }
         };
-    }, [roomId]);
+    }, [roomId, matrixClient]);
 
     const onVoiceChannelClick = useCallback(
         (e: React.MouseEvent) => {
             e.stopPropagation();
             e.preventDefault();
 
+            // Block clicks while transitioning (connecting / waiting for membership / disconnecting)
+            if (isTransitioning) return;
+
             const room = matrixClient.getRoom(roomId);
             if (!room) return;
 
             const store = NexusVoiceStore.instance;
-            const active = store.getActiveConnection();
-
-            // Block clicks while any VC is connecting or disconnecting
-            if (
-                active &&
-                (active.connectionState === ConnectionState.Connecting ||
-                    active.connectionState === ConnectionState.Disconnecting)
-            ) {
-                return;
-            }
-
             const existing = store.getConnection(roomId);
             if (existing?.connected) {
                 // Already in this VC — navigate to room view (show call UI)
@@ -247,7 +260,7 @@ function VoiceChannelItem({
                 store.joinVoiceChannel(room).catch(() => {});
             }
         },
-        [matrixClient, roomId],
+        [matrixClient, roomId, isTransitioning],
     );
 
     return (
