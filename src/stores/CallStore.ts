@@ -221,10 +221,12 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
     public registerVoiceConnection(roomId: string, conn: NexusVoiceConnection): void {
         this.voiceConnections.set(roomId, conn);
 
+        // Add to connectedCalls immediately so the UI shows the status panel
+        // while still connecting
+        this.connectedCalls = new Set([...this.connectedCalls, conn]);
+
         const onConnectionState = (state: ConnectionState): void => {
-            if (state === ConnectionState.Connected) {
-                this.connectedCalls = new Set([...this.connectedCalls, conn]);
-            } else if (state === ConnectionState.Disconnected) {
+            if (state === ConnectionState.Disconnected) {
                 this.connectedCalls = new Set([...this.connectedCalls].filter((c) => c !== conn));
             }
         };

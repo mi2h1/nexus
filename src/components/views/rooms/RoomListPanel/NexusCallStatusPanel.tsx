@@ -22,6 +22,7 @@ interface NexusCallStatusPanelProps {
 }
 
 const statusLabels: Record<ConnectionState, string> = {
+    [ConnectionState.Connecting]: "接続中…",
     [ConnectionState.Connected]: "通話中",
     [ConnectionState.Disconnecting]: "切断中…",
     [ConnectionState.Disconnected]: "切断済み",
@@ -55,10 +56,14 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
         }
     }, [call]);
 
-    const dotClass =
-        connectionState === ConnectionState.Connected
-            ? "mx_NexusCallStatusPanel_dot--connected"
-            : "mx_NexusCallStatusPanel_dot--disconnecting";
+    let dotClass: string;
+    if (connectionState === ConnectionState.Connected) {
+        dotClass = "mx_NexusCallStatusPanel_dot--connected";
+    } else if (connectionState === ConnectionState.Connecting) {
+        dotClass = "mx_NexusCallStatusPanel_dot--connecting";
+    } else {
+        dotClass = "mx_NexusCallStatusPanel_dot--disconnecting";
+    }
 
     const latencyLabel =
         latencyMs !== null ? ` — ${latencyMs}ms` : "";
@@ -68,7 +73,7 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
             <div className="mx_NexusCallStatusPanel_info">
                 <div className="mx_NexusCallStatusPanel_status">
                     <span className={`mx_NexusCallStatusPanel_dot ${dotClass}`} />
-                    <span className="mx_NexusCallStatusPanel_statusText">
+                    <span className={`mx_NexusCallStatusPanel_statusText${connectionState === ConnectionState.Connecting ? " mx_NexusCallStatusPanel_statusText--connecting" : ""}`}>
                         {statusLabels[connectionState]}{latencyLabel}
                     </span>
                 </div>

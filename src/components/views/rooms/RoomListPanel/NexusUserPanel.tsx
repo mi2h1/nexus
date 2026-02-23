@@ -43,7 +43,9 @@ import LogoutDialog, { shouldShowLogoutDialog } from "../../dialogs/LogoutDialog
 const NexusUserPanel: React.FC = () => {
     const call = useActiveCall();
     const connectionState = useConnectionState(call);
-    const isConnected = connectionState === ConnectionState.Connected;
+    const isInCall =
+        connectionState === ConnectionState.Connected ||
+        connectionState === ConnectionState.Connecting;
     const { isMicMuted } = useNexusVoice();
 
     // Profile info (reactive)
@@ -147,7 +149,7 @@ const NexusUserPanel: React.FC = () => {
 
     return (
         <div className="mx_NexusUserPanel">
-            {call && isConnected && <NexusCallStatusPanel call={call} />}
+            {call && isInCall && <NexusCallStatusPanel call={call} />}
             <div className="mx_NexusUserPanel_content">
                 <div className="mx_NexusUserPanel_profile" ref={avatarRef}>
                     <AccessibleButton
@@ -168,7 +170,7 @@ const NexusUserPanel: React.FC = () => {
                     <AccessibleButton
                         className={`mx_NexusUserPanel_button ${isMicMuted ? "mx_NexusUserPanel_button--muted" : ""}`}
                         onClick={onToggleMic}
-                        disabled={!isConnected}
+                        disabled={connectionState !== ConnectionState.Connected}
                         title={isMicMuted ? "マイクをオンにする" : "マイクをミュートする"}
                     >
                         {isMicMuted ? (

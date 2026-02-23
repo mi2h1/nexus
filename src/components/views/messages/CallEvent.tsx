@@ -126,6 +126,8 @@ const ActiveLoadedCallEvent = ({ mxEvent, call, ref }: ActiveLoadedCallEventProp
         switch (connectionState) {
             case ConnectionState.Disconnected:
                 return [_t("action|join"), "primary", connect];
+            case ConnectionState.Connecting:
+                return [_t("action|join"), "primary", null];
             case ConnectionState.Connected:
                 return [_t("action|leave"), "danger", disconnect];
             case ConnectionState.Disconnecting:

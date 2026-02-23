@@ -122,6 +122,11 @@
     flex-shrink: 0;
 }
 
+.mx_NexusCallStatusPanel_dot--connecting {
+    background-color: var(--cpd-color-icon-warning);
+    animation: nexus-pulse 1s ease-in-out infinite;
+}
+
 .mx_NexusCallStatusPanel_dot--connected {
     background-color: var(--cpd-color-icon-success-primary);
 }
@@ -130,9 +135,23 @@
     background-color: var(--cpd-color-icon-warning);
 }
 
+@keyframes nexus-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
+
 .mx_NexusCallStatusPanel_statusText {
     font: var(--cpd-font-body-sm-semibold);
     color: var(--cpd-color-text-success-primary);
+
+    &.mx_NexusCallStatusPanel_statusText--connecting {
+        color: var(--cpd-color-text-warning);
+    }
 }
 
 .mx_NexusCallStatusPanel_roomName {

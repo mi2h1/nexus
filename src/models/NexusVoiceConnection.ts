@@ -161,6 +161,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public async connect(): Promise<void> {
         if (this.connected) throw new Error("Already connected");
 
+        this.connectionState = ConnectionState.Connecting;
+
         try {
             // 1. Get LiveKit JWT
             const { jwt, url } = await this.getJwt();
