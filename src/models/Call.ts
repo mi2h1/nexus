@@ -91,6 +91,8 @@ export enum CallEvent {
     CallTypeChanged = "call_type_changed",
     ScreenShares = "screen_shares",
     ActiveSpeakers = "active_speakers",
+    ParticipantStates = "participant_states",
+    MicMuted = "mic_muted",
 }
 
 export interface ScreenShareInfo {
@@ -99,6 +101,12 @@ export interface ScreenShareInfo {
     track: any; // LiveKit VideoTrack
     audioTrack?: any; // LiveKit AudioTrack
     isLocal: boolean;
+}
+
+/** Per-participant mute / screen-share status (keyed by Matrix userId). */
+export interface ParticipantState {
+    isMuted: boolean;
+    isScreenSharing: boolean;
 }
 
 export interface CallEventHandlerMap {
@@ -112,6 +120,8 @@ export interface CallEventHandlerMap {
     [CallEvent.CallTypeChanged]: (callType: CallType) => void;
     [CallEvent.ScreenShares]: (screenShares: ScreenShareInfo[]) => void;
     [CallEvent.ActiveSpeakers]: (speakerIdentities: Set<string>) => void;
+    [CallEvent.ParticipantStates]: (states: Map<string, ParticipantState>) => void;
+    [CallEvent.MicMuted]: (muted: boolean) => void;
 }
 
 /**

@@ -40,12 +40,42 @@
     &.mx_NexusVoiceParticipantTile--speaking {
         border-color: var(--cpd-color-icon-success-primary);
     }
+
+    &.mx_NexusVoiceParticipantTile--small {
+        width: 100px;
+        height: 100px;
+        gap: var(--cpd-space-1x);
+    }
+}
+
+.mx_NexusVoiceParticipantTile_nameRow {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    max-width: 110px;
+}
+
+.mx_NexusVoiceParticipantTile_muteIcon {
+    flex-shrink: 0;
+    color: var(--cpd-color-icon-secondary);
+}
+
+.mx_NexusVoiceParticipantTile_sharingBadge {
+    flex-shrink: 0;
+    font: var(--cpd-font-body-xs-semibold);
+    color: var(--cpd-color-text-on-solid-primary);
+    background-color: var(--cpd-color-bg-critical-primary);
+    border-radius: 9999px;
+    padding: 0 6px;
+    line-height: 18px;
+    white-space: nowrap;
 }
 
 .mx_NexusVoiceParticipantTile_name {
     font: var(--cpd-font-body-xs-medium);
     color: var(--cpd-color-text-secondary);
-    max-width: 100px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

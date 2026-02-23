@@ -1,0 +1,115 @@
+/*
+ * Copyright 2025 Nexus Contributors
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+ * Please see LICENSE files in the repository root for full details.
+ */
+
+.nx_VCControlBar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+    height: 64px;
+    padding: 0 var(--cpd-space-4x);
+    border-top: 1px solid var(--cpd-color-border-interactive-secondary);
+    background-color: var(--cpd-color-bg-canvas-default);
+}
+
+.nx_VCControlBar_center {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+.nx_VCControlBar_right {
+    position: absolute;
+    right: var(--cpd-space-4x);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ─── Control buttons ──────────────────────────────── */
+
+.nx_VCControlBar_button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    color: var(--cpd-color-icon-primary);
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease;
+
+    &:hover {
+        background-color: var(--cpd-color-bg-subtle-primary);
+    }
+
+    &.nx_VCControlBar_button--disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    &.nx_VCControlBar_button--micMuted {
+        background-color: var(--cpd-color-bg-critical-subtle);
+        color: var(--cpd-color-icon-critical-primary);
+    }
+
+    &.nx_VCControlBar_button--screenSharing {
+        background-color: var(--cpd-color-bg-success-subtle);
+        color: var(--cpd-color-icon-success-primary);
+    }
+
+    &.nx_VCControlBar_button--endCall {
+        background-color: var(--cpd-color-bg-critical-primary);
+        color: var(--cpd-color-icon-on-solid-primary);
+
+        &:hover {
+            background-color: var(--cpd-color-bg-critical-hovered);
+        }
+    }
+}
+
+/* ─── Layout toggle buttons ────────────────────────── */
+
+.nx_VCControlBar_layoutButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--cpd-space-2x);
+    border: none;
+    cursor: pointer;
+    background-color: transparent;
+    color: var(--cpd-color-icon-secondary);
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease;
+
+    &:hover {
+        background-color: var(--cpd-color-bg-subtle-secondary);
+    }
+
+    &.nx_VCControlBar_layoutButton--active {
+        background-color: var(--cpd-color-bg-subtle-primary);
+        color: var(--cpd-color-icon-primary);
+    }
+}
+
+.nx_VCControlBar_participantCount {
+    font: var(--cpd-font-body-sm-regular);
+    color: var(--cpd-color-text-secondary);
+    min-width: 16px;
+    text-align: center;
+}

@@ -49,13 +49,12 @@ export function useNexusVoice(): NexusVoiceState {
         };
     }, [onActiveConnection]);
 
-    // Poll latency and mic state from the connection
+    // Poll latency from the connection
     useEffect(() => {
         if (!connection) return;
 
         const interval = setInterval(() => {
             setLatencyMs(connection.latencyMs);
-            setIsMicMuted(connection.isMicMuted);
         }, 2000);
 
         // Initial read
@@ -63,6 +62,22 @@ export function useNexusVoice(): NexusVoiceState {
         setIsMicMuted(connection.isMicMuted);
 
         return () => clearInterval(interval);
+    }, [connection]);
+
+    // Listen for mic mute changes (instant sync between control bar and user panel)
+    useEffect(() => {
+        if (!connection) return;
+
+        const onMicMuted = (muted: boolean): void => {
+            setIsMicMuted(muted);
+        };
+
+        connection.on(CallEvent.MicMuted, onMicMuted);
+        setIsMicMuted(connection.isMicMuted);
+
+        return () => {
+            connection.off(CallEvent.MicMuted, onMicMuted);
+        };
     }, [connection]);
 
     // Listen for screen share changes

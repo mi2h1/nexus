@@ -33,7 +33,7 @@ import {
     Track,
 } from "livekit-client";
 
-import { CallEvent, ConnectionState, type CallEventHandlerMap, type ScreenShareInfo } from "./Call";
+import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
 
 const logger = rootLogger.getChild("NexusVoiceConnection");
 
@@ -90,6 +90,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _isScreenSharing = false;
     private _screenShares: ScreenShareInfo[] = [];
     private _activeSpeakers = new Set<string>();
+    private _participantStates = new Map<string, ParticipantState>();
     private speakerPollTimer: ReturnType<typeof setInterval> | null = null;
     private statsTimer: ReturnType<typeof setInterval> | null = null;
     private audioElements = new Map<string, HTMLAudioElement>();
@@ -154,6 +155,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     public get activeSpeakers(): Set<string> {
         return this._activeSpeakers;
+    }
+
+    public get participantStates(): Map<string, ParticipantState> {
+        return this._participantStates;
     }
 
     // ─── Public API ──────────────────────────────────────────
@@ -259,6 +264,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             }
         }
         this._isMicMuted = muted;
+        this.emit(CallEvent.MicMuted, muted);
     }
 
     public async toggleScreenShare(): Promise<void> {
@@ -454,8 +460,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.localAudioTrack = null;
         }
 
-        // Clear active speakers
+        // Clear active speakers & participant states
         this._activeSpeakers = new Set();
+        this._participantStates = new Map();
 
         // Disconnect LiveKit room
         if (this.livekitRoom) {
@@ -597,11 +604,27 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.livekitRoom) return;
 
         const speakingUserIds = new Set<string>();
+        const newStates = new Map<string, ParticipantState>();
         const myUserId = this.client.getUserId();
+
+        // Build set of user IDs that are currently screen-sharing
+        const screenSharingUserIds = new Set<string>();
+        for (const share of this._screenShares) {
+            const uid = share.isLocal
+                ? myUserId
+                : this.resolveIdentityToUserId(share.participantIdentity);
+            if (uid) screenSharingUserIds.add(uid);
+        }
 
         // Check local participant
         if (this.livekitRoom.localParticipant.isSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
+        }
+        if (myUserId) {
+            newStates.set(myUserId, {
+                isMuted: this._isMicMuted,
+                isScreenSharing: this._isScreenSharing,
+            });
         }
 
         // Check remote participants
@@ -612,6 +635,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     speakingUserIds.add(userId);
                 }
             }
+
+            const userId = this.resolveIdentityToUserId(participant.identity);
+            if (userId) {
+                const micPub = participant.getTrackPublication(Track.Source.Microphone);
+                // Muted = track is muted OR track is not published at all
+                const isMuted = micPub ? micPub.isMuted : true;
+                newStates.set(userId, {
+                    isMuted,
+                    isScreenSharing: screenSharingUserIds.has(userId),
+                });
+            }
         }
 
         // Only emit if the set actually changed
@@ -619,6 +653,26 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this._activeSpeakers = speakingUserIds;
             this.emit(CallEvent.ActiveSpeakers, speakingUserIds);
         }
+
+        // Emit participant states if changed
+        if (!this.participantStatesEqual(this._participantStates, newStates)) {
+            this._participantStates = newStates;
+            this.emit(CallEvent.ParticipantStates, newStates);
+        }
+    }
+
+    private participantStatesEqual(
+        a: Map<string, ParticipantState>,
+        b: Map<string, ParticipantState>,
+    ): boolean {
+        if (a.size !== b.size) return false;
+        for (const [key, val] of a) {
+            const other = b.get(key);
+            if (!other || val.isMuted !== other.isMuted || val.isScreenSharing !== other.isScreenSharing) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private setsEqual(a: Set<string>, b: Set<string>): boolean {

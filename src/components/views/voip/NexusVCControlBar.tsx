@@ -1,0 +1,156 @@
+/*
+Copyright 2025 Nexus Contributors
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+import React, { useCallback, type JSX } from "react";
+import classNames from "classnames";
+import {
+    MicOnSolidIcon,
+    MicOffSolidIcon,
+    VideoCallOffSolidIcon,
+    ShareScreenSolidIcon,
+    ReactionIcon,
+    SettingsSolidIcon,
+    EndCallIcon,
+    SpotlightIcon,
+    GridIcon,
+} from "@vector-im/compound-design-tokens/assets/web/icons";
+
+import { useNexusVoice } from "../../../hooks/useNexusVoice";
+import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
+import dis from "../../../dispatcher/dispatcher";
+import { Action } from "../../../dispatcher/actions";
+import AccessibleButton from "../elements/AccessibleButton";
+
+export type VCLayoutMode = "spotlight" | "grid";
+
+interface NexusVCControlBarProps {
+    roomId: string;
+    layoutMode: VCLayoutMode;
+    onLayoutModeChange: (mode: VCLayoutMode) => void;
+    participantCount: number;
+}
+
+export function NexusVCControlBar({
+    roomId,
+    layoutMode,
+    onLayoutModeChange,
+    participantCount,
+}: NexusVCControlBarProps): JSX.Element {
+    const { connection, isMicMuted, isScreenSharing } = useNexusVoice();
+
+    const onToggleMic = useCallback(() => {
+        connection?.setMicMuted(!isMicMuted);
+    }, [connection, isMicMuted]);
+
+    const onToggleScreenShare = useCallback(() => {
+        connection?.toggleScreenShare();
+    }, [connection]);
+
+    const onEndCall = useCallback(() => {
+        NexusVoiceStore.instance.leaveVoiceChannel();
+    }, []);
+
+    const onSettings = useCallback(() => {
+        dis.dispatch({ action: Action.ViewUserSettings });
+    }, []);
+
+    return (
+        <div className="nx_VCControlBar">
+            <div className="nx_VCControlBar_center">
+                {/* Mic toggle */}
+                <AccessibleButton
+                    className={classNames("nx_VCControlBar_button", {
+                        "nx_VCControlBar_button--micMuted": isMicMuted,
+                    })}
+                    onClick={onToggleMic}
+                    title={isMicMuted ? "マイクをオンにする" : "マイクをミュートする"}
+                >
+                    {isMicMuted ? (
+                        <MicOffSolidIcon width={22} height={22} />
+                    ) : (
+                        <MicOnSolidIcon width={22} height={22} />
+                    )}
+                </AccessibleButton>
+
+                {/* Camera (disabled, future) */}
+                <AccessibleButton
+                    className="nx_VCControlBar_button nx_VCControlBar_button--disabled"
+                    onClick={() => {}}
+                    disabled
+                    title="カメラ（将来対応）"
+                >
+                    <VideoCallOffSolidIcon width={22} height={22} />
+                </AccessibleButton>
+
+                {/* Screen share */}
+                <AccessibleButton
+                    className={classNames("nx_VCControlBar_button", {
+                        "nx_VCControlBar_button--screenSharing": isScreenSharing,
+                    })}
+                    onClick={onToggleScreenShare}
+                    title={isScreenSharing ? "画面共有を停止" : "画面を共有"}
+                >
+                    <ShareScreenSolidIcon width={22} height={22} />
+                </AccessibleButton>
+
+                {/* Reaction (disabled, future) */}
+                <AccessibleButton
+                    className="nx_VCControlBar_button nx_VCControlBar_button--disabled"
+                    onClick={() => {}}
+                    disabled
+                    title="リアクション（将来対応）"
+                >
+                    <ReactionIcon width={22} height={22} />
+                </AccessibleButton>
+
+                {/* Settings */}
+                <AccessibleButton
+                    className="nx_VCControlBar_button"
+                    onClick={onSettings}
+                    title="設定"
+                >
+                    <SettingsSolidIcon width={22} height={22} />
+                </AccessibleButton>
+
+                {/* End call */}
+                <AccessibleButton
+                    className="nx_VCControlBar_button nx_VCControlBar_button--endCall"
+                    onClick={onEndCall}
+                    title="通話を終了"
+                >
+                    <EndCallIcon width={22} height={22} />
+                </AccessibleButton>
+            </div>
+
+            <div className="nx_VCControlBar_right">
+                {/* Spotlight view */}
+                <AccessibleButton
+                    className={classNames("nx_VCControlBar_layoutButton", {
+                        "nx_VCControlBar_layoutButton--active": layoutMode === "spotlight",
+                    })}
+                    onClick={() => onLayoutModeChange("spotlight")}
+                    title="スポットライト表示"
+                >
+                    <SpotlightIcon width={20} height={20} />
+                </AccessibleButton>
+
+                {/* Grid view */}
+                <AccessibleButton
+                    className={classNames("nx_VCControlBar_layoutButton", {
+                        "nx_VCControlBar_layoutButton--active": layoutMode === "grid",
+                    })}
+                    onClick={() => onLayoutModeChange("grid")}
+                    title="グリッド表示"
+                >
+                    <GridIcon width={20} height={20} />
+                </AccessibleButton>
+
+                <span className="nx_VCControlBar_participantCount">{participantCount}</span>
+            </div>
+        </div>
+    );
+}

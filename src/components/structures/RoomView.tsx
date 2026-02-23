@@ -120,10 +120,7 @@ import { isLocalRoom } from "../../utils/localRoom/isLocalRoom";
 import { type ShowThreadPayload } from "../../dispatcher/payloads/ShowThreadPayload";
 import { LargeLoader } from "./LargeLoader";
 import { isVideoRoom } from "../../utils/video-rooms";
-import { CallStore } from "../../stores/CallStore";
-import { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
-import { NexusScreenShareContainer } from "../views/voip/NexusScreenShareView";
-import { NexusVoiceParticipantGrid } from "../views/voip/NexusVoiceParticipantGrid";
+import { NexusVCRoomView } from "../views/voip/NexusVCRoomView";
 import { SDKContext } from "../../contexts/SDKContext";
 import { RoomSearchView } from "./RoomSearchView";
 import eventSearch, { type SearchInfo, SearchScope } from "../../Searching";
@@ -2687,14 +2684,13 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             case MainSplitContentType.Timeline:
                 mainSplitContentClassName = "mx_MainSplit_timeline";
                 if (this.state.room && isVideoRoom(this.state.room)) {
-                    // Nexus: VC rooms show a Discord-style participant grid
-                    // with screen shares above it. Chat timeline moves to
-                    // the right panel.
+                    // Nexus: VC rooms use the unified VC view with
+                    // spotlight/grid layout + control bar.
+                    // Chat timeline moves to the right panel.
                     mainSplitBody = (
                         <>
                             <Measured sensor={this.roomViewBody} onMeasurement={this.onMeasurement} />
-                            <NexusScreenShareContainer roomId={this.state.room.roomId} />
-                            <NexusVoiceParticipantGrid roomId={this.state.room.roomId} />
+                            <NexusVCRoomView roomId={this.state.room.roomId} />
                         </>
                     );
                 } else {

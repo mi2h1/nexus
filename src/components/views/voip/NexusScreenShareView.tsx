@@ -87,7 +87,7 @@ interface ScreenShareTileProps {
 /**
  * Individual screen share tile — attaches LiveKit track to <video>.
  */
-const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share }) => {
+export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
 
