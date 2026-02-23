@@ -186,7 +186,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     public async clean(): Promise<void> {
-        // No-op for compatibility with Call interface
+        // Clean up stale MatrixRTC membership from unclean disconnect
+        // (e.g. browser refresh while in VC)
+        try {
+            await this.session.leaveRoomSession(5000);
+        } catch (e) {
+            logger.warn("Failed to clean up stale MatrixRTC session", e);
+        }
     }
 
     public destroy(): void {

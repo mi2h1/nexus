@@ -98,7 +98,23 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
             await Promise.all([
                 ...uncleanlyDisconnectedRoomIds.map(async (uncleanlyDisconnectedRoomId): Promise<void> => {
                     logger.log(`Cleaning up call state for room ${uncleanlyDisconnectedRoomId}`);
-                    await this.getCall(uncleanlyDisconnectedRoomId)?.clean();
+                    const call = this.getCall(uncleanlyDisconnectedRoomId);
+                    if (call) {
+                        await call.clean();
+                    } else {
+                        // Voice connection doesn't persist across reloads —
+                        // clean up stale MatrixRTC membership directly
+                        const room = this.matrixClient?.getRoom(uncleanlyDisconnectedRoomId);
+                        if (room) {
+                            const session = this.matrixClient!.matrixRTC.getRoomSession(room);
+                            try {
+                                await session.leaveRoomSession(5000);
+                                logger.log(`Cleaned up stale MatrixRTC session for ${uncleanlyDisconnectedRoomId}`);
+                            } catch (e) {
+                                logger.warn(`Failed to clean up MatrixRTC session for ${uncleanlyDisconnectedRoomId}`, e);
+                            }
+                        }
+                    }
                 }),
                 SettingsStore.setValue("activeCallRoomIds", null, SettingLevel.DEVICE, []),
             ]);
