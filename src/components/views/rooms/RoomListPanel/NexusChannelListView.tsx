@@ -21,6 +21,7 @@ import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext
 import { VoiceChannelParticipants } from "./VoiceChannelParticipants";
 import { TextChannelIcon, VoiceChannelIcon } from "./NexusChannelIcon";
 import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
+import { ConnectionState } from "../../../../models/Call";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 
@@ -180,6 +181,17 @@ function VoiceChannelItem({
             if (!room) return;
 
             const store = NexusVoiceStore.instance;
+            const active = store.getActiveConnection();
+
+            // Block clicks while any VC is connecting or disconnecting
+            if (
+                active &&
+                (active.connectionState === ConnectionState.Connecting ||
+                    active.connectionState === ConnectionState.Disconnecting)
+            ) {
+                return;
+            }
+
             const existing = store.getConnection(roomId);
             if (existing?.connected) {
                 // Already in this VC — navigate to room view (show call UI)
