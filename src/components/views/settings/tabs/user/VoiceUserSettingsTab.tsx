@@ -332,9 +332,9 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
         } else if (this.state.mediaDevices) {
             speakerDropdown = this.renderDropdown(
                 MediaDeviceKindEnum.AudioOutput,
-                _t("settings|voip|audio_output"),
+                "",
             ) || <p>{_t("settings|voip|audio_output_empty")}</p>;
-            microphoneDropdown = this.renderDropdown(MediaDeviceKindEnum.AudioInput, _t("common|microphone")) || (
+            microphoneDropdown = this.renderDropdown(MediaDeviceKindEnum.AudioInput, "") || (
                 <p>{_t("settings|voip|audio_input_empty")}</p>
             );
             webcamDropdown = this.renderDropdown(MediaDeviceKindEnum.VideoInput, _t("common|camera")) || (

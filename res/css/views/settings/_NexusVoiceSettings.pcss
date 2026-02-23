@@ -19,10 +19,15 @@ Please see LICENSE files in the repository root for full details.
 
     /* Align device dropdown heights across columns and add spacing below */
     .mx_Field {
-        margin-bottom: 8px;
+        margin: 0 0 8px;
 
         select {
             height: 36px;
+        }
+
+        /* Hide empty floating label left by Field component */
+        label {
+            display: none;
         }
     }
 }

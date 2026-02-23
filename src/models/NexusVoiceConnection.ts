@@ -302,16 +302,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     public setMicMuted(muted: boolean): void {
         if (this.localAudioTrack) {
-            if (muted) {
-                this.localAudioTrack.mute();
-            } else {
-                this.localAudioTrack.unmute();
-                // Restore input gain when unmuting (voice gate may have set it to 0)
-                if (this.inputGainNode) {
-                    this.inputGainNode.gain.value =
-                        (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
-                }
-            }
+            // Silence the source track directly instead of using LiveKit's
+            // mute()/unmute() — the original localAudioTrack is not published
+            // (the processed track from Web Audio API is), so LiveKit's mute
+            // protocol would not affect the correct track.
+            this.localAudioTrack.mediaStreamTrack.enabled = !muted;
+        }
+        if (!muted && this.inputGainNode) {
+            // Restore input gain when unmuting (voice gate may have set it to 0)
+            this.inputGainNode.gain.value =
+                (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
         }
         this._isMicMuted = muted;
         this._voiceGateOpen = true;
@@ -808,8 +808,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             if (uid) screenSharingUserIds.add(uid);
         }
 
-        // Check local participant
-        if (this.livekitRoom.localParticipant.isSpeaking && myUserId) {
+        // Check local participant — use own input level because we publish a
+        // processed MediaStreamTrack via Web Audio API, so LiveKit's
+        // localParticipant.isSpeaking may not fire correctly.
+        const localSpeaking = !this._isMicMuted && this._inputLevel > 5;
+        if (localSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
         }
         if (myUserId) {
