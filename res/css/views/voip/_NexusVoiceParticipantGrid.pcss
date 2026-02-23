@@ -1,0 +1,46 @@
+/*
+ * Copyright 2025 Nexus Contributors
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+ * Please see LICENSE files in the repository root for full details.
+ */
+
+.mx_NexusVoiceParticipantGrid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: center;
+    gap: var(--cpd-space-4x);
+    padding: var(--cpd-space-6x);
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background-color: var(--cpd-color-bg-canvas-default);
+}
+
+.mx_NexusVoiceParticipantTile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cpd-space-2x);
+    width: 120px;
+    height: 120px;
+    border-radius: var(--cpd-space-3x);
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    transition: background-color 0.15s ease;
+
+    &:hover {
+        background-color: var(--cpd-color-bg-subtle-primary);
+    }
+}
+
+.mx_NexusVoiceParticipantTile_name {
+    font: var(--cpd-font-body-xs-medium);
+    color: var(--cpd-color-text-secondary);
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+}

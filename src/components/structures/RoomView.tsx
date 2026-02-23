@@ -123,6 +123,7 @@ import { isVideoRoom } from "../../utils/video-rooms";
 import { CallStore } from "../../stores/CallStore";
 import { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
 import { NexusScreenShareContainer } from "../views/voip/NexusScreenShareView";
+import { NexusVoiceParticipantGrid } from "../views/voip/NexusVoiceParticipantGrid";
 import { SDKContext } from "../../contexts/SDKContext";
 import { RoomSearchView } from "./RoomSearchView";
 import eventSearch, { type SearchInfo, SearchScope } from "../../Searching";
@@ -674,10 +675,25 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             this.context.rightPanelStore.currentCard.phase === RightPanelPhases.Timeline &&
             this.context.rightPanelStore.roomPhaseHistory.some((card) => card.phase === RightPanelPhases.Timeline)
         ) {
-            // The main split shows the main timeline, so hide the right panel timeline
-            this.context.rightPanelStore.setCard({ phase: RightPanelPhases.RoomSummary });
-            this.context.rightPanelStore.togglePanel(this.state.roomId ?? null);
-            newState.showRightPanel = false;
+            // Nexus: For VC rooms, always keep the right panel timeline open
+            // since the main split shows the participant grid instead of chat.
+            if (!(room && isVideoRoom(room))) {
+                // The main split shows the main timeline, so hide the right panel timeline
+                this.context.rightPanelStore.setCard({ phase: RightPanelPhases.RoomSummary });
+                this.context.rightPanelStore.togglePanel(this.state.roomId ?? null);
+                newState.showRightPanel = false;
+            }
+        }
+
+        // Nexus: Auto-open chat timeline in right panel for VC rooms
+        if (room && isVideoRoom(room) && newState.mainSplitContentType === MainSplitContentType.Timeline) {
+            if (
+                !this.context.rightPanelStore.isOpen ||
+                this.context.rightPanelStore.currentCard.phase !== RightPanelPhases.Timeline
+            ) {
+                this.context.rightPanelStore.setCard({ phase: RightPanelPhases.Timeline }, true, room.roomId);
+                newState.showRightPanel = true;
+            }
         }
 
         const initialEventId = this.roomViewStore.getInitialEventId() ?? this.state.initialEventId;
@@ -2670,30 +2686,40 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         switch (mainSplitContentType) {
             case MainSplitContentType.Timeline:
                 mainSplitContentClassName = "mx_MainSplit_timeline";
-                mainSplitBody = (
-                    <>
-                        <Measured sensor={this.roomViewBody} onMeasurement={this.onMeasurement} />
-                        {this.state.room && isVideoRoom(this.state.room) && (
+                if (this.state.room && isVideoRoom(this.state.room)) {
+                    // Nexus: VC rooms show a Discord-style participant grid
+                    // with screen shares above it. Chat timeline moves to
+                    // the right panel.
+                    mainSplitBody = (
+                        <>
+                            <Measured sensor={this.roomViewBody} onMeasurement={this.onMeasurement} />
                             <NexusScreenShareContainer roomId={this.state.room.roomId} />
-                        )}
-                        {auxPanel}
-                        {pinnedMessageBanner}
-                        <main className={timelineClasses} data-testid="timeline">
-                            <FileDropTarget
-                                parent={this.roomView.current}
-                                onFileDrop={this.onFileDrop}
-                                room={this.state.room}
-                            />
-                            {topUnreadMessagesBar}
-                            {jumpToBottom}
-                            {messagePanel}
-                            {searchResultsPanel}
-                        </main>
-                        {statusBarArea}
-                        {previewBar}
-                        {messageComposer}
-                    </>
-                );
+                            <NexusVoiceParticipantGrid roomId={this.state.room.roomId} />
+                        </>
+                    );
+                } else {
+                    mainSplitBody = (
+                        <>
+                            <Measured sensor={this.roomViewBody} onMeasurement={this.onMeasurement} />
+                            {auxPanel}
+                            {pinnedMessageBanner}
+                            <main className={timelineClasses} data-testid="timeline">
+                                <FileDropTarget
+                                    parent={this.roomView.current}
+                                    onFileDrop={this.onFileDrop}
+                                    room={this.state.room}
+                                />
+                                {topUnreadMessagesBar}
+                                {jumpToBottom}
+                                {messagePanel}
+                                {searchResultsPanel}
+                            </main>
+                            {statusBarArea}
+                            {previewBar}
+                            {messageComposer}
+                        </>
+                    );
+                }
                 break;
             case MainSplitContentType.MaximisedWidget:
                 mainSplitContentClassName = "mx_MainSplit_maximisedWidget";
