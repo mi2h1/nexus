@@ -21,6 +21,8 @@ import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext
 import { VoiceChannelParticipants } from "./VoiceChannelParticipants";
 import { TextChannelIcon, VoiceChannelIcon } from "./NexusChannelIcon";
 import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
+import defaultDispatcher from "../../../../dispatcher/dispatcher";
+import { Action } from "../../../../dispatcher/actions";
 
 export interface NexusChannelListViewProps {
     vm: RoomListViewModel;
@@ -180,8 +182,11 @@ function VoiceChannelItem({
             const store = NexusVoiceStore.instance;
             const existing = store.getConnection(roomId);
             if (existing?.connected) {
-                // Already in this VC — leave
-                store.leaveVoiceChannel().catch(() => {});
+                // Already in this VC — navigate to room view (show call UI)
+                defaultDispatcher.dispatch({
+                    action: Action.ViewRoom,
+                    room_id: roomId,
+                });
             } else {
                 // Join (will disconnect from any other VC)
                 store.joinVoiceChannel(room).catch(() => {});
