@@ -50,7 +50,7 @@ export const VC_UNMUTE_SOUND = "media/sfx_unmute.mp3";
 export function playVcSound(src: string): void {
     try {
         const audio = new Audio(src);
-        audio.volume = 0.15;
+        audio.volume = 0.25;
         audio.play().catch(() => {});
     } catch {
         // Ignore audio playback errors
