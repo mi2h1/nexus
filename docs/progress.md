@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-23
+> 最終更新: 2026-02-24
 
 ## リポジトリ情報
 
@@ -68,7 +68,7 @@ nexus/                          # element-web フォーク
 |------|------|
 | VC 接続/切断 | `NexusVoiceConnection` — LiveKit 直接接続 + MatrixRTC シグナリング |
 | マイクミュート | `setMicMuted()` — `mediaStreamTrack.enabled` 直接操作（非publish トラック経由） |
-| 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` |
+| 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` + 720p30/simulcast エンコーディング |
 | Ping/遅延表示 | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
 | 個別音量調整 | `setParticipantVolume()` — `HTMLAudioElement.volume` |
 | 入力音量調整 | Web Audio API `GainNode` — 0-200% スライダー |
@@ -85,6 +85,14 @@ nexus/                          # element-web フォーク
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-24
+- **画面共有エンコーディング修正**: 高解像度モニターで受信側が真っ暗になる問題を修正
+  - `ScreenSharePresets.h720fps30` (2Mbps/30fps) をエンコーディング上限に設定
+  - `ScreenSharePresets.h360fps15` (400kbps/15fps) の simulcast 層で低帯域対応
+  - `contentHint: "detail"` でテキスト/UI の鮮明さを優先
+  - `degradationPreference: "maintain-resolution"` で帯域不足時はFPSを落として解像度維持
+  - Discord 無料版と同等の品質設定（720p/30fps 上限）
 
 #### 2026-02-23
 - **Discord 風音声設定**: 入力音量・出力音量・入力感度（ボイスゲート）を追加

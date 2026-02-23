@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-23
+> 最終更新: 2026-02-24
 
 ## 概要
 
@@ -20,7 +20,7 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 |------|--------|------|
 | テキストチャット | Element Web (matrix-js-sdk) | 組み込み済み |
 | ボイスチャット (VC) | Nexus (livekit-client + MatrixRTC) | 実装済み |
-| 画面共有 | Nexus (livekit-client) | 実装済み |
+| 画面共有 | Nexus (livekit-client, 720p30 simulcast) | 実装済み |
 | E2E 暗号化 | matrix-js-sdk (Olm/Megolm) | 組み込み済み |
 | テキスト/VC チャンネル分離 | Nexus (NexusChannelListView) | 実装済み |
 | VC 参加者グリッド | Nexus (NexusVoiceParticipantGrid) | 実装済み |
@@ -99,7 +99,7 @@ NexusVoiceStore (シングルトン)
        ├─ LiveKit Room (livekit-client)
        │    ├─ 処理済みオーディオトラック (GainNode 経由)
        │    ├─ リモートオーディオ再生 (HTMLAudioElement + マスター音量)
-       │    └─ 画面共有トラック
+       │    └─ 画面共有トラック (720p30 + 360p15 simulcast, contentHint: detail)
        ├─ MatrixRTC Session (matrix-js-sdk)
        │    └─ メンバーシップ管理 (参加者リスト)
        └─ CORS Proxy (Cloudflare Workers)
@@ -128,6 +128,18 @@ NexusVoiceStore (シングルトン)
 - **ローカルユーザー**: Web Audio API の AnalyserNode で計測した `inputLevel > 5` で判定（LiveKit の `isSpeaking` は処理済みトラック publish のため不動作）
 - **リモートユーザー**: LiveKit の `participant.isSpeaking` をポーリング（250ms 間隔）
 - **ミュート方式**: `mediaStreamTrack.enabled` 直接操作（LiveKit の `mute()/unmute()` は非 publish トラックのため不使用）
+
+### 画面共有エンコーディング（Discord 準拠）
+
+| 項目 | 設定値 | 理由 |
+|------|--------|------|
+| 解像度上限 | 720p | Discord 無料版と同等 |
+| FPS | 30（帯域不足時 15 に自動低下） | simulcast で適応 |
+| ビットレート上限 | 2Mbps (高層) / 400kbps (低層) | 過剰にしない方針 |
+| コーデック | VP8（LiveKit デフォルト） | 互換性最高 |
+| simulcast | h720fps30 + h360fps15 | 低帯域ユーザー向けフォールバック |
+| contentHint | `"detail"` | テキスト/UI の鮮明さ優先 |
+| degradationPreference | `"maintain-resolution"` | 帯域不足時は FPS を落として解像度維持 |
 
 ## 無効化した機能
 
