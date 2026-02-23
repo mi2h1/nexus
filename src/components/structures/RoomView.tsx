@@ -120,6 +120,8 @@ import { isLocalRoom } from "../../utils/localRoom/isLocalRoom";
 import { type ShowThreadPayload } from "../../dispatcher/payloads/ShowThreadPayload";
 import { LargeLoader } from "./LargeLoader";
 import { isVideoRoom } from "../../utils/video-rooms";
+import { CallStore } from "../../stores/CallStore";
+import { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
 import { SDKContext } from "../../contexts/SDKContext";
 import { RoomSearchView } from "./RoomSearchView";
 import eventSearch, { type SearchInfo, SearchScope } from "../../Searching";
@@ -597,7 +599,16 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
     };
 
     private getMainSplitContentType = (room: Room): MainSplitContentType => {
-        if (this.roomViewStore.isViewingCall() || isVideoRoom(room)) {
+        // Nexus: When using NexusVoiceConnection (direct LiveKit), show the
+        // timeline instead of the empty CallView iframe wrapper.
+        if (isVideoRoom(room)) {
+            const call = CallStore.instance.getCall(room.roomId);
+            if (call instanceof NexusVoiceConnection || !call) {
+                return MainSplitContentType.Timeline;
+            }
+            return MainSplitContentType.Call;
+        }
+        if (this.roomViewStore.isViewingCall()) {
             return MainSplitContentType.Call;
         }
         if (this.context.widgetLayoutStore.hasMaximisedWidget(room)) {

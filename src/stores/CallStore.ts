@@ -98,27 +98,16 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
             await Promise.all([
                 ...uncleanlyDisconnectedRoomIds.map(async (uncleanlyDisconnectedRoomId): Promise<void> => {
                     logger.log(`Cleaning up call state for room ${uncleanlyDisconnectedRoomId}`);
-                    const call = this.getCall(uncleanlyDisconnectedRoomId);
-                    if (call) {
-                        await call.clean();
-                    } else {
-                        // Voice connection doesn't persist across reloads —
-                        // clean up stale MatrixRTC membership directly
-                        const room = this.matrixClient?.getRoom(uncleanlyDisconnectedRoomId);
-                        if (room) {
-                            const session = this.matrixClient!.matrixRTC.getRoomSession(room);
-                            try {
-                                await session.leaveRoomSession(5000);
-                                logger.log(`Cleaned up stale MatrixRTC session for ${uncleanlyDisconnectedRoomId}`);
-                            } catch (e) {
-                                logger.warn(`Failed to clean up MatrixRTC session for ${uncleanlyDisconnectedRoomId}`, e);
-                            }
-                        }
-                    }
+                    await this.getCall(uncleanlyDisconnectedRoomId)?.clean();
                 }),
                 SettingsStore.setValue("activeCallRoomIds", null, SettingLevel.DEVICE, []),
             ]);
         }
+
+        // Nexus: Clean up stale MatrixRTC memberships from our own device.
+        // This handles unclean disconnects (browser refresh/close while in VC)
+        // where activeCallRoomIds may already have been cleared synchronously.
+        await this.cleanupStaleMatrixRTCMemberships();
     }
 
     protected async onNotReady(): Promise<any> {
@@ -278,4 +267,34 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
     private onRTCSessionStart = (roomId: string, session: MatrixRTCSession): void => {
         this.updateRoom(session.room);
     };
+
+    /**
+     * Nexus: Scan all rooms for stale MatrixRTC memberships from our own device
+     * and leave those sessions. This handles unclean disconnects (browser refresh
+     * or close while in a VC) where activeCallRoomIds may have already been
+     * cleared synchronously by destroy().
+     */
+    private async cleanupStaleMatrixRTCMemberships(): Promise<void> {
+        if (!this.matrixClient) return;
+
+        const myUserId = this.matrixClient.getUserId();
+        const myDeviceId = this.matrixClient.getDeviceId();
+        if (!myUserId || !myDeviceId) return;
+
+        for (const room of this.matrixClient.getRooms()) {
+            const session = this.matrixClient.matrixRTC.getRoomSession(room);
+            const myMembership = session.memberships.find(
+                (m) => m.sender === myUserId && m.deviceId === myDeviceId,
+            );
+            if (myMembership) {
+                // We have a stale membership — we're not actually connected
+                logger.log(`Cleaning up stale MatrixRTC membership in room ${room.roomId}`);
+                try {
+                    await session.leaveRoomSession(5000);
+                } catch (e) {
+                    logger.warn(`Failed to clean stale MatrixRTC membership in ${room.roomId}`, e);
+                }
+            }
+        }
+    }
 }
