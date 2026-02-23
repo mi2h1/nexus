@@ -82,6 +82,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                         members={members}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
+                        myUserId={client.getUserId()}
                     />
                 )}
             </div>
@@ -207,6 +208,7 @@ function SpotlightLayout({
                                 isSpeaking={activeSpeakers.has(member.userId)}
                                 isMuted={state?.isMuted ?? false}
                                 isScreenSharing={state?.isScreenSharing ?? false}
+                                myUserId={myUserId}
                                 size="small"
                             />
                         );
@@ -224,9 +226,10 @@ interface GridLayoutProps {
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
+    myUserId: string | null;
 }
 
-function GridLayout({ screenShares, members, activeSpeakers, participantStates }: GridLayoutProps): JSX.Element {
+function GridLayout({ screenShares, members, activeSpeakers, participantStates, myUserId }: GridLayoutProps): JSX.Element {
     return (
         <div className="nx_VCRoomView_grid">
             {screenShares.map((share) => (
@@ -243,6 +246,7 @@ function GridLayout({ screenShares, members, activeSpeakers, participantStates }
                         isSpeaking={activeSpeakers.has(member.userId)}
                         isMuted={state?.isMuted ?? false}
                         isScreenSharing={state?.isScreenSharing ?? false}
+                        myUserId={myUserId}
                     />
                 );
             })}

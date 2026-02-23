@@ -379,6 +379,44 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.emit(CallEvent.ScreenShares, shares);
     }
 
+    // ─── Public: Per-participant volume ─────────────────────
+
+    /**
+     * Look up a LiveKit participant identity for a given Matrix user ID.
+     * Returns the identity string or null if no matching remote participant.
+     */
+    public findIdentityForUserId(userId: string): string | null {
+        if (!this.livekitRoom) return null;
+        for (const [identity] of this.livekitRoom.remoteParticipants) {
+            const resolved = this.resolveIdentityToUserId(identity);
+            if (resolved === userId) return identity;
+        }
+        return null;
+    }
+
+    /**
+     * Set the audio volume for a remote participant (0.0–1.0).
+     */
+    public setParticipantVolume(userId: string, volume: number): void {
+        const identity = this.findIdentityForUserId(userId);
+        if (!identity) return;
+        const audio = this.audioElements.get(identity);
+        if (audio) {
+            audio.volume = Math.max(0, Math.min(1, volume));
+        }
+    }
+
+    /**
+     * Get the current audio volume for a remote participant (0.0–1.0).
+     * Returns 1 if participant not found.
+     */
+    public getParticipantVolume(userId: string): number {
+        const identity = this.findIdentityForUserId(userId);
+        if (!identity) return 1;
+        const audio = this.audioElements.get(identity);
+        return audio?.volume ?? 1;
+    }
+
     // ─── Private: JWT ────────────────────────────────────────
 
     private async getJwt(): Promise<LivekitTokenResponse> {
