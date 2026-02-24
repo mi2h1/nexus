@@ -128,6 +128,8 @@ declare global {
 
         // electron-only
         electron?: Electron;
+        // tauri-only
+        __TAURI_INTERNALS__?: Record<string, unknown>;
         // opera-only
         opera?: any;
 

@@ -22,6 +22,7 @@ import { setTheme } from "../theme";
 import { ModuleRunner } from "../modules/ModuleRunner";
 import type MatrixChat from "../components/structures/MatrixChat";
 import ElectronPlatform from "./platform/ElectronPlatform";
+import TauriPlatform from "./platform/TauriPlatform";
 import PWAPlatform from "./platform/PWAPlatform";
 import WebPlatform from "./platform/WebPlatform";
 import { initRageshake, initRageshakeStore } from "./rageshakesetup";
@@ -33,6 +34,9 @@ export function preparePlatform(): void {
     if (window.electron) {
         logger.log("Using Electron platform");
         PlatformPeg.set(new ElectronPlatform());
+    } else if (window.__TAURI_INTERNALS__) {
+        logger.log("Using Tauri platform");
+        PlatformPeg.set(new TauriPlatform());
     } else if (window.matchMedia("(display-mode: standalone)").matches) {
         logger.log("Using PWA platform");
         PlatformPeg.set(new PWAPlatform());

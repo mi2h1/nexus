@@ -37,6 +37,8 @@
         "test:playwright:screenshots": "playwright-screenshots-experimental pnpm playwright test --update-snapshots --project=Chrome --grep @screenshot",
         "coverage": "pnpm test --coverage",
         "analyse:webpack-bundles": "webpack-bundle-analyzer webpack-stats.json webapp",
+        "tauri:dev": "tauri dev",
+        "tauri:build": "tauri build",
         "postinstall": "node scripts/pnpm-link.ts"
     },
     "resolutions": {
@@ -65,6 +67,10 @@
         "@matrix-org/react-sdk-module-api": "^2.4.0",
         "@sapphi-red/web-noise-suppressor": "^0.3.5",
         "@sentry/browser": "^10.0.0",
+        "@tauri-apps/api": "^2.10.1",
+        "@tauri-apps/plugin-http": "^2.5.7",
+        "@tauri-apps/plugin-process": "^2.3.1",
+        "@tauri-apps/plugin-updater": "^2.10.0",
         "@types/png-chunks-extract": "^1.0.2",
         "@vector-im/compound-design-tokens": "catalog:",
         "@vector-im/compound-web": "catalog:",
@@ -165,6 +171,7 @@
         "@sentry/webpack-plugin": "^4.0.0",
         "@stylistic/eslint-plugin": "^5.0.0",
         "@svgr/webpack": "^8.0.0",
+        "@tauri-apps/cli": "^2.10.0",
         "@testing-library/dom": "^10.4.0",
         "@testing-library/jest-dom": "^6.4.8",
         "@testing-library/react": "^16.0.0",

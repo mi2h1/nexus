@@ -818,6 +818,9 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
                 stats: "minimal",
             },
 
+            // Fixed port for Tauri devUrl compatibility
+            port: 1420,
+
             // Enable Hot Module Replacement without page refresh as a fallback in
             // case of build failures
             hot: "only",

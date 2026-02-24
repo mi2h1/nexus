@@ -38,6 +38,7 @@ import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppresso
 
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
 import SettingsStore from "../settings/SettingsStore";
+import { isTauri, corsFreePost } from "../utils/tauriHttp";
 
 const logger = rootLogger.getChild("NexusVoiceConnection");
 
@@ -132,6 +133,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Screen share audio ──────────────────────────────────
     private screenShareAudioElements = new Map<string, HTMLAudioElement>();
     private screenShareVolumes = new Map<string, number>(); // 0-1.0
+    // ─── Tauri output audio pipeline (>100% volume) ──────────
+    // In Tauri, we use createMediaElementSource() to route <audio> through
+    // Web Audio API GainNodes, enabling volume amplification beyond 1.0.
+    private outputAudioContext: AudioContext | null = null;
+    private outputMasterGain: GainNode | null = null;
+    private outputMediaSources = new Map<string, MediaElementAudioSourceNode>();
+    private outputParticipantGains = new Map<string, GainNode>();
+    private ssMediaSources = new Map<string, MediaElementAudioSourceNode>();
+    private ssParticipantGains = new Map<string, GainNode>();
     private watchingScreenShares = new Set<string>(); // opt-in watching state
     private analyserNode: AnalyserNode | null = null;
     private inputGainNode: GainNode | null = null;
@@ -238,6 +248,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // MediaStreamAudioSourceNode at all.
             this.audioContext = new AudioContext();
             this._masterOutputVolume = 0; // starts muted until unmutePipelines()
+
+            // Tauri: create output AudioContext for >100% volume amplification.
+            // createMediaElementSource(<audio>) works (unlike createMediaStreamSource
+            // which is broken for WebRTC audio in Chrome).
+            if (isTauri()) {
+                this.outputAudioContext = new AudioContext();
+                this.outputMasterGain = this.outputAudioContext.createGain();
+                this.outputMasterGain.gain.value = 0; // starts muted
+                this.outputMasterGain.connect(this.outputAudioContext.destination);
+            }
 
             // ── Phase 1: Parallel pre-fetch ──────────────────────────
             // JWT, mic access, and RNNoise WASM download run concurrently
@@ -422,7 +442,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.audioContext?.state === "suspended") {
             this.audioContext.resume().catch(() => {});
         }
-        // Restore master output volume and apply to all <audio> elements
+        // Tauri: resume output AudioContext too
+        if (this.outputAudioContext?.state === "suspended") {
+            this.outputAudioContext.resume().catch(() => {});
+        }
+        // Restore master output volume and apply to all audio outputs
         const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
         this._masterOutputVolume = Math.max(0, Math.min(2, masterVol / 100));
         this.applyAllOutputVolumes();
@@ -653,9 +677,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!identity) return;
         const clamped = Math.max(0, Math.min(1, volume));
         this.participantVolumes.set(identity, clamped);
-        const audio = this.outputAudioElements.get(identity);
-        if (audio) {
-            audio.volume = Math.min(1, clamped * this._masterOutputVolume);
+
+        // Tauri: update per-participant GainNode
+        const participantGain = this.outputParticipantGains.get(identity);
+        if (participantGain) {
+            participantGain.gain.value = clamped;
+        } else {
+            // Browser fallback
+            const audio = this.outputAudioElements.get(identity);
+            if (audio) {
+                audio.volume = Math.min(1, clamped * this._masterOutputVolume);
+            }
         }
         this.persistVolume(NexusVoiceConnection.PARTICIPANT_VOLUMES_KEY, userId, clamped);
     }
@@ -682,9 +714,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public setScreenShareVolume(participantIdentity: string, volume: number): void {
         const clamped = Math.max(0, Math.min(1, volume));
         this.screenShareVolumes.set(participantIdentity, clamped);
-        const audio = this.screenShareAudioElements.get(participantIdentity);
-        if (audio && this.watchingScreenShares.has(participantIdentity)) {
-            audio.volume = Math.min(1, clamped * this._masterOutputVolume);
+
+        // Tauri: update per-screen-share GainNode
+        const ssGain = this.ssParticipantGains.get(participantIdentity);
+        if (ssGain) {
+            ssGain.gain.value = this.watchingScreenShares.has(participantIdentity) ? clamped : 0;
+        } else {
+            // Browser fallback
+            const audio = this.screenShareAudioElements.get(participantIdentity);
+            if (audio && this.watchingScreenShares.has(participantIdentity)) {
+                audio.volume = Math.min(1, clamped * this._masterOutputVolume);
+            }
         }
         // Persist by resolved userId (stable across sessions)
         const userId = this.resolveIdentityToUserId(participantIdentity);
@@ -719,13 +759,26 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         } else {
             this.watchingScreenShares.delete(participantIdentity);
         }
-        const audio = this.screenShareAudioElements.get(participantIdentity);
-        if (audio) {
+
+        // Tauri: control via GainNode
+        const ssGain = this.ssParticipantGains.get(participantIdentity);
+        if (ssGain) {
             if (watching) {
                 const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
-                audio.volume = Math.min(1, vol * this._masterOutputVolume);
+                ssGain.gain.value = vol;
             } else {
-                audio.volume = 0;
+                ssGain.gain.value = 0;
+            }
+        } else {
+            // Browser fallback
+            const audio = this.screenShareAudioElements.get(participantIdentity);
+            if (audio) {
+                if (watching) {
+                    const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
+                    audio.volume = Math.min(1, vol * this._masterOutputVolume);
+                } else {
+                    audio.volume = 0;
+                }
             }
         }
         this.emit(CallEvent.WatchingChanged, new Set(this.watchingScreenShares));
@@ -756,9 +809,28 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     /**
      * Apply the current master volume to all participant and screen share
-     * <audio> elements. Called when master volume changes or pipelines unmute.
+     * audio outputs. Called when master volume changes or pipelines unmute.
      */
     private applyAllOutputVolumes(): void {
+        // Tauri: use GainNodes for >100% amplification
+        if (this.outputMasterGain) {
+            this.outputMasterGain.gain.value = this._masterOutputVolume;
+            // Per-screen-share gains need watching state applied
+            for (const [identity] of this.screenShareAudioElements) {
+                const ssGain = this.ssParticipantGains.get(identity);
+                if (ssGain) {
+                    if (this.watchingScreenShares.has(identity)) {
+                        const vol = this.screenShareVolumes.get(identity) ?? 1;
+                        ssGain.gain.value = vol;
+                    } else {
+                        ssGain.gain.value = 0;
+                    }
+                }
+            }
+            return;
+        }
+
+        // Browser: audio.volume capped at 1.0
         for (const [identity, audio] of this.outputAudioElements) {
             const vol = this.participantVolumes.get(identity) ?? 1;
             audio.volume = Math.min(1, vol * this._masterOutputVolume);
@@ -966,12 +1038,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const serviceUrl = livekitTransport.livekit_service_url as string;
         const openIdToken = await this.client.getOpenIdToken();
 
+        // Tauri: direct access (no CORS restrictions via Rust HTTP plugin)
+        if (isTauri()) {
+            return corsFreePost<LivekitTokenResponse>(`${serviceUrl}/sfu/get`, {
+                room: this.room.roomId,
+                openid_token: openIdToken,
+                device_id: this.client.getDeviceId(),
+            });
+        }
+
+        // Browser: route through CORS proxy if configured
         let fetchUrl: string;
         let fetchBody: Record<string, unknown>;
 
         if (LIVEKIT_CORS_PROXY_URL) {
-            // Route through CORS proxy — include livekit_service_url so the
-            // proxy knows where to forward the request.
             fetchUrl = `${LIVEKIT_CORS_PROXY_URL}/sfu/get`;
             fetchBody = {
                 room: this.room.roomId,
@@ -980,7 +1060,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 livekit_service_url: serviceUrl,
             };
         } else {
-            // Direct call (self-hosted LiveKit with CORS configured)
             fetchUrl = `${serviceUrl}/sfu/get`;
             fetchBody = {
                 room: this.room.roomId,
@@ -1038,6 +1117,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         this.outputAudioElements.clear();
         this._masterOutputVolume = 0;
+
+        // Clean up Tauri output audio pipeline
+        for (const source of this.outputMediaSources.values()) source.disconnect();
+        this.outputMediaSources.clear();
+        for (const gain of this.outputParticipantGains.values()) gain.disconnect();
+        this.outputParticipantGains.clear();
+        for (const source of this.ssMediaSources.values()) source.disconnect();
+        this.ssMediaSources.clear();
+        for (const gain of this.ssParticipantGains.values()) gain.disconnect();
+        this.ssParticipantGains.clear();
+        if (this.outputMasterGain) {
+            this.outputMasterGain.disconnect();
+            this.outputMasterGain = null;
+        }
+        if (this.outputAudioContext) {
+            this.outputAudioContext.close().catch(() => {});
+            this.outputAudioContext = null;
+        }
 
         // Clean up screen share <audio> elements
         for (const audio of this.screenShareAudioElements.values()) {
@@ -1121,10 +1218,23 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     : null;
                 const ssInitialVol = ssSavedVol ?? this.screenShareVolumes.get(participant.identity) ?? 1;
                 if (ssSavedVol !== null) this.screenShareVolumes.set(participant.identity, ssSavedVol);
-                // Audio muted until user opts in to watch (volume=0)
                 const watching = this.watchingScreenShares.has(participant.identity);
-                audio.volume = watching ? Math.min(1, ssInitialVol * this._masterOutputVolume) : 0;
-                audio.play().catch(() => {});
+
+                // Tauri: route through Web Audio for >100% volume
+                if (this.outputAudioContext && this.outputMasterGain) {
+                    audio.volume = 1; // let GainNode control volume
+                    audio.play().catch(() => {});
+                    const source = this.outputAudioContext.createMediaElementSource(audio);
+                    const gain = this.outputAudioContext.createGain();
+                    gain.gain.value = watching ? ssInitialVol : 0;
+                    source.connect(gain).connect(this.outputMasterGain);
+                    this.ssMediaSources.set(participant.identity, source);
+                    this.ssParticipantGains.set(participant.identity, gain);
+                } else {
+                    // Browser: audio.volume capped at 1.0
+                    audio.volume = watching ? Math.min(1, ssInitialVol * this._masterOutputVolume) : 0;
+                    audio.play().catch(() => {});
+                }
                 this.screenShareAudioElements.set(participant.identity, audio);
             } catch (e) {
                 logger.warn("onTrackSubscribed (ScreenShareAudio) error:", e);
@@ -1147,8 +1257,22 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 : null;
             const initialVol = savedVol ?? this.participantVolumes.get(participant.identity) ?? 1;
             if (savedVol !== null) this.participantVolumes.set(participant.identity, savedVol);
-            audio.volume = Math.min(1, initialVol * this._masterOutputVolume);
-            audio.play().catch(() => {});
+
+            // Tauri: route through Web Audio for >100% volume
+            if (this.outputAudioContext && this.outputMasterGain) {
+                audio.volume = 1; // let GainNode control volume
+                audio.play().catch(() => {});
+                const source = this.outputAudioContext.createMediaElementSource(audio);
+                const gain = this.outputAudioContext.createGain();
+                gain.gain.value = initialVol;
+                source.connect(gain).connect(this.outputMasterGain);
+                this.outputMediaSources.set(participant.identity, source);
+                this.outputParticipantGains.set(participant.identity, gain);
+            } else {
+                // Browser: audio.volume capped at 1.0
+                audio.volume = Math.min(1, initialVol * this._masterOutputVolume);
+                audio.play().catch(() => {});
+            }
 
             this.outputAudioElements.set(participant.identity, audio);
         } catch (e) {
@@ -1188,6 +1312,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 ssAudio.srcObject = null;
                 this.screenShareAudioElements.delete(participant.identity);
             }
+            // Clean up Tauri audio nodes
+            this.ssMediaSources.get(participant.identity)?.disconnect();
+            this.ssMediaSources.delete(participant.identity);
+            this.ssParticipantGains.get(participant.identity)?.disconnect();
+            this.ssParticipantGains.delete(participant.identity);
             this.watchingScreenShares.delete(participant.identity);
             return;
         }
@@ -1201,6 +1330,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             audio.srcObject = null;
             this.outputAudioElements.delete(participant.identity);
         }
+        // Clean up Tauri audio nodes
+        this.outputMediaSources.get(participant.identity)?.disconnect();
+        this.outputMediaSources.delete(participant.identity);
+        this.outputParticipantGains.get(participant.identity)?.disconnect();
+        this.outputParticipantGains.delete(participant.identity);
     };
 
     // ─── Private: Active Speakers ─────────────────────────────

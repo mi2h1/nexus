@@ -50,3 +50,7 @@ storybook-static
 .nx/workspace-data
 
 .pnpm-store
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/

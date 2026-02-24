@@ -1,0 +1,21 @@
+{
+    "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-utils/schema.json",
+    "identifier": "default",
+    "description": "Capability for the main window",
+    "windows": ["main"],
+    "permissions": [
+        "core:default",
+        "opener:default",
+        "http:default",
+        {
+            "identifier": "http:default",
+            "allow": [
+                {
+                    "url": "https://*"
+                }
+            ]
+        },
+        "updater:default",
+        "process:default"
+    ]
+}
