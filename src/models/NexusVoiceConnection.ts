@@ -136,6 +136,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private analyserNode: AnalyserNode | null = null;
     private inputGainNode: GainNode | null = null;
     private sourceNode: MediaStreamAudioSourceNode | null = null;
+    private highPassFilter: BiquadFilterNode | null = null;
+    private compressorNode: DynamicsCompressorNode | null = null;
     // ─── RNNoise noise cancellation ───────────────────────────
     private rnnoiseNode: RnnoiseWorkletNode | null = null;
     private static rnnoiseWasmBinary: ArrayBuffer | null = null;
@@ -145,6 +147,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _voiceGateOpen = true;
     private voiceGateReleaseTimeout: ReturnType<typeof setTimeout> | null = null;
     private static readonly VOICE_GATE_RELEASE_MS = 300;
+    /** Gain ramp duration to avoid click/pop when voice gate opens/closes. */
+    private static readonly VOICE_GATE_RAMP_SEC = 0.02;
     private participantRetryTimer: ReturnType<typeof setInterval> | null = null;
 
     // ─── Volume persistence keys ──────────────────────────────
@@ -261,12 +265,25 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
             // ── Phase 4: Build input pipeline ────────────────────────
             // Audio pipeline:
-            //   NC disabled: source → analyser + inputGainNode → dest
-            //   NC enabled:  source → rnnoiseNode → analyser + inputGainNode → dest
+            //   source → [RNNoise] → HPF → compressor → analyser + inputGain → dest
 
             this.sourceNode = this.audioContext.createMediaStreamSource(
                 new MediaStream([this.localAudioTrack.mediaStreamTrack]),
             );
+
+            // High-pass filter — removes low-frequency noise (AC hum, rumble, pops)
+            this.highPassFilter = this.audioContext.createBiquadFilter();
+            this.highPassFilter.type = "highpass";
+            this.highPassFilter.frequency.value = 80;
+            this.highPassFilter.Q.value = 0.7;
+
+            // Compressor — evens out volume, prevents clipping on loud input
+            this.compressorNode = this.audioContext.createDynamicsCompressor();
+            this.compressorNode.threshold.value = -24;
+            this.compressorNode.knee.value = 12;
+            this.compressorNode.ratio.value = 4;
+            this.compressorNode.attack.value = 0.003;
+            this.compressorNode.release.value = 0.25;
 
             // AnalyserNode — monitors input level
             this.analyserNode = this.audioContext.createAnalyser();
@@ -283,25 +300,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 await this.setupRnnoiseNode();
             }
 
-            if (this.rnnoiseNode) {
-                // NC pipeline: source → rnnoise → analyser + inputGainNode
-                this.sourceNode.connect(this.rnnoiseNode);
-                this.rnnoiseNode.connect(this.analyserNode);
-                this.rnnoiseNode.connect(this.inputGainNode);
-            } else {
-                // Standard pipeline: source → analyser + inputGainNode
-                this.sourceNode.connect(this.analyserNode);
-                this.sourceNode.connect(this.inputGainNode);
-            }
+            // Connect the pipeline chain:
+            // source → [rnnoise] → HPF → compressor → analyser + inputGain → dest
+            this.connectInputPipeline();
 
             // Create processed stream and publish that instead of raw mic
             const dest = this.audioContext.createMediaStreamDestination();
             this.inputGainNode.connect(dest);
             const processedTrack = dest.stream.getAudioTracks()[0];
-            // Publish the processed MediaStreamTrack with Microphone source
-            // so remote participants can find it via getTrackPublication(Track.Source.Microphone)
+            // Publish with optimized Opus settings
             await this.livekitRoom.localParticipant.publishTrack(processedTrack, {
                 source: Track.Source.Microphone,
+                audioPreset: { maxBitrate: 64_000 }, // 64kbps (default ~32kbps)
+                dtx: true, // Discontinuous Transmission — saves bandwidth in silence
+                red: true, // Redundant audio encoding — resilience to packet loss
             });
 
             // Start voice gate / input level polling
@@ -753,32 +765,52 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public async setNoiseCancellation(enabled: boolean): Promise<void> {
         if (!this.audioContext || !this.sourceNode || !this.analyserNode || !this.inputGainNode) return;
 
-        // Disconnect current pipeline from source
-        this.sourceNode.disconnect();
+        // Disconnect the full pipeline to rewire
+        this.disconnectInputPipeline();
 
         if (enabled && this.audioContext.sampleRate === 48000) {
-            // Set up RNNoise node if not already created
             if (!this.rnnoiseNode) {
                 await this.setupRnnoiseNode();
             }
-            if (this.rnnoiseNode) {
-                this.sourceNode.connect(this.rnnoiseNode);
-                this.rnnoiseNode.connect(this.analyserNode);
-                this.rnnoiseNode.connect(this.inputGainNode);
-                logger.info("Noise cancellation enabled (RNNoise)");
-                return;
-            }
-        }
-
-        // Disable: tear down RNNoise node and reconnect directly
-        if (this.rnnoiseNode) {
+        } else if (this.rnnoiseNode) {
             this.rnnoiseNode.disconnect();
             this.rnnoiseNode.destroy();
             this.rnnoiseNode = null;
         }
-        this.sourceNode.connect(this.analyserNode);
-        this.sourceNode.connect(this.inputGainNode);
-        logger.info("Noise cancellation disabled");
+
+        this.connectInputPipeline();
+        logger.info(enabled && this.rnnoiseNode ? "Noise cancellation enabled (RNNoise)" : "Noise cancellation disabled");
+    }
+
+    /**
+     * Connect the input audio pipeline chain:
+     *   source → [rnnoise] → HPF → compressor → analyser + inputGain
+     */
+    private connectInputPipeline(): void {
+        if (!this.sourceNode || !this.highPassFilter || !this.compressorNode
+            || !this.analyserNode || !this.inputGainNode) return;
+
+        if (this.rnnoiseNode) {
+            this.sourceNode.connect(this.rnnoiseNode);
+            this.rnnoiseNode.connect(this.highPassFilter);
+        } else {
+            this.sourceNode.connect(this.highPassFilter);
+        }
+        this.highPassFilter.connect(this.compressorNode);
+        this.compressorNode.connect(this.analyserNode);
+        this.compressorNode.connect(this.inputGainNode);
+    }
+
+    /**
+     * Disconnect the input pipeline so it can be rewired.
+     * Does NOT destroy nodes — only breaks connections.
+     */
+    private disconnectInputPipeline(): void {
+        this.sourceNode?.disconnect();
+        this.rnnoiseNode?.disconnect();
+        this.highPassFilter?.disconnect();
+        this.compressorNode?.disconnect();
+        // Don't disconnect analyserNode or inputGainNode — they connect to dest
     }
 
     // ─── Private: RNNoise setup ──────────────────────────────
@@ -875,9 +907,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this._inputLevel > threshold) {
             // Above threshold → open gate, reset release timer
             this._voiceGateOpen = true;
-            if (this.inputGainNode) {
-                this.inputGainNode.gain.value =
-                    (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+            if (this.inputGainNode && this.audioContext) {
+                // Use linearRamp to avoid click/pop noise from abrupt gain changes
+                const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+                this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                this.inputGainNode.gain.linearRampToValueAtTime(
+                    targetVol,
+                    this.audioContext.currentTime + NexusVoiceConnection.VOICE_GATE_RAMP_SEC,
+                );
             }
             if (this.voiceGateReleaseTimeout) {
                 clearTimeout(this.voiceGateReleaseTimeout);
@@ -887,8 +924,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // Below threshold → close gate after release delay
             this.voiceGateReleaseTimeout = setTimeout(() => {
                 this._voiceGateOpen = false;
-                if (this.inputGainNode && !this._isMicMuted) {
-                    this.inputGainNode.gain.value = 0;
+                if (this.inputGainNode && this.audioContext && !this._isMicMuted) {
+                    this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                    this.inputGainNode.gain.linearRampToValueAtTime(
+                        0,
+                        this.audioContext.currentTime + NexusVoiceConnection.VOICE_GATE_RAMP_SEC,
+                    );
                 }
                 this.voiceGateReleaseTimeout = null;
             }, NexusVoiceConnection.VOICE_GATE_RELEASE_MS);
@@ -968,6 +1009,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         this.analyserNode = null;
         this.inputGainNode = null;
+        this.highPassFilter = null;
+        this.compressorNode = null;
         this._inputLevel = 0;
         this._voiceGateOpen = true;
 
