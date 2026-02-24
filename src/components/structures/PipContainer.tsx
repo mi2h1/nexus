@@ -191,7 +191,8 @@ class PipContainerInner extends React.Component<IProps, IState> {
         this.updateNexusPipScreenShare();
     };
 
-    private updateNexusPipScreenShare(): void {
+    private updateNexusPipScreenShare(viewedRoomId?: string): void {
+        const currentViewedRoomId = viewedRoomId ?? this.state.viewedRoomId;
         const conn = NexusVoiceStore.instance.getActiveConnection();
         if (!conn) {
             this.setState({ nexusPipScreenShare: null });
@@ -199,7 +200,7 @@ class PipContainerInner extends React.Component<IProps, IState> {
         }
         const vcRoomId = conn.roomId;
         // If viewing the VC room, the inline view handles display — no PiP
-        if (this.state.viewedRoomId === vcRoomId) {
+        if (currentViewedRoomId === vcRoomId) {
             this.setState({ nexusPipScreenShare: null });
             return;
         }
@@ -236,7 +237,7 @@ class PipContainerInner extends React.Component<IProps, IState> {
             secondaryCall: secondaryCalls[0],
         });
         this.updateShowWidgetInPip();
-        this.updateNexusPipScreenShare();
+        this.updateNexusPipScreenShare(newRoomId);
     };
 
     private onWidgetPersistence = (): void => {
