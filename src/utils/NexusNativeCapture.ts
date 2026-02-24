@@ -125,8 +125,7 @@ export class NativeVideoCaptureStream {
 export class NativeAudioCaptureStream {
     private audioContext: AudioContext;
     private scriptProcessor: ScriptProcessorNode;
-    private silentSource: OscillatorNode;
-    private silentGain: GainNode;
+    private silentSource: ConstantSourceNode;
     private destination: MediaStreamAudioDestinationNode;
     private ringBuffer: Float32Array;
     private writePos = 0;
@@ -136,25 +135,24 @@ export class NativeAudioCaptureStream {
     private unlisten: (() => void) | null = null;
     private stopped = false;
     private dataReceived = false;
+    /** Number of unread samples available in the ring buffer. */
+    private available = 0;
 
     constructor(sampleRate = 48000, channels = 2) {
         this.channelCount = channels;
         this.audioContext = new AudioContext({ sampleRate });
-        // Ring buffer: 1 second of audio
+        // Ring buffer: 1 second of audio (interleaved)
         this.bufferSize = sampleRate * channels;
         this.ringBuffer = new Float32Array(this.bufferSize);
 
         // ScriptProcessorNode needs an active input to fire onaudioprocess in WebView2.
-        // Use a silent oscillator to drive it.
-        this.scriptProcessor = this.audioContext.createScriptProcessor(4096, channels, channels);
+        // Use a ConstantSourceNode (DC 0) — no frequency component, zero noise.
+        this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, channels);
         this.destination = this.audioContext.createMediaStreamDestination();
 
-        // Silent driver: oscillator → gain(0) → scriptProcessor → destination
-        this.silentSource = this.audioContext.createOscillator();
-        this.silentGain = this.audioContext.createGain();
-        this.silentGain.gain.value = 0;
-        this.silentSource.connect(this.silentGain);
-        this.silentGain.connect(this.scriptProcessor);
+        this.silentSource = this.audioContext.createConstantSource();
+        this.silentSource.offset.value = 0;
+        this.silentSource.connect(this.scriptProcessor);
         this.scriptProcessor.connect(this.destination);
         this.silentSource.start();
 
@@ -188,12 +186,27 @@ export class NativeAudioCaptureStream {
             this.ringBuffer[this.writePos] = data[i];
             this.writePos = (this.writePos + 1) % this.bufferSize;
         }
+        this.available = Math.min(this.available + data.length, this.bufferSize);
     }
 
     private fillOutputBuffer(e: AudioProcessingEvent): void {
         const outputBuffer = e.outputBuffer;
         const framesNeeded = outputBuffer.length;
         const channels = outputBuffer.numberOfChannels;
+        const samplesNeeded = framesNeeded * channels;
+
+        // If not enough data in ring buffer, output silence to avoid noise
+        if (this.available < samplesNeeded) {
+            for (let ch = 0; ch < channels; ch++) {
+                const channelData = outputBuffer.getChannelData(ch);
+                for (let frame = 0; frame < framesNeeded; frame++) {
+                    channelData[frame] = 0;
+                }
+            }
+            return;
+        }
+
+        this.available -= samplesNeeded;
 
         for (let frame = 0; frame < framesNeeded; frame++) {
             for (let ch = 0; ch < channels; ch++) {
@@ -217,7 +230,6 @@ export class NativeAudioCaptureStream {
         }
         this.silentSource.stop();
         this.silentSource.disconnect();
-        this.silentGain.disconnect();
         this.scriptProcessor.disconnect();
         this.destination.disconnect();
         this.audioContext.close().catch(() => {});
