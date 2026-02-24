@@ -54,7 +54,7 @@ interface NexusParticipantContextMenuProps {
  * Rendered via portal to avoid ContextMenu's focus/event management
  * which interferes with range input dragging in Firefox.
  */
-export function NexusParticipantContextMenu({
+export const NexusParticipantContextMenu = React.memo(function NexusParticipantContextMenu({
     member,
     left,
     top,
@@ -103,7 +103,7 @@ export function NexusParticipantContextMenu({
         </div>,
         document.body,
     );
-}
+});
 
 // ─── Screen share context menu ──────────────────────────────
 
@@ -117,7 +117,7 @@ interface NexusScreenShareContextMenuProps {
 /**
  * Context menu with a volume slider for a remote screen share's audio.
  */
-export function NexusScreenShareContextMenu({
+export const NexusScreenShareContextMenu = React.memo(function NexusScreenShareContextMenu({
     share,
     left,
     top,
@@ -166,4 +166,4 @@ export function NexusScreenShareContextMenu({
         </div>,
         document.body,
     );
-}
+});
