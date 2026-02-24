@@ -6,27 +6,40 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { useState, useCallback, useEffect, useRef, type JSX } from "react";
+import ReactDOM from "react-dom";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 
-import ContextMenu, { ChevronFace } from "../../structures/ContextMenu";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
 import type { ScreenShareInfo } from "../../../models/Call";
 
 /**
- * Close the menu when clicking outside. We use our own handler instead of
- * ContextMenu's `hasBackground` overlay because Firefox dispatches mouse
- * events from range-input drags to the overlay, closing the menu.
+ * Close the menu when clicking/tapping outside.
+ * Uses pointerdown (not mousedown) because Firefox dispatches spurious
+ * mouse events from range-input drags that can close the menu.
  */
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void): void {
     useEffect(() => {
-        const handler = (e: MouseEvent): void => {
+        const handler = (e: PointerEvent): void => {
             if (ref.current && !ref.current.contains(e.target as Node)) {
                 onClose();
             }
         };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
+        document.addEventListener("pointerdown", handler);
+        return () => document.removeEventListener("pointerdown", handler);
     }, [ref, onClose]);
+}
+
+/**
+ * Close the menu on Escape key.
+ */
+function useEscapeKey(onClose: () => void): void {
+    useEffect(() => {
+        const handler = (e: KeyboardEvent): void => {
+            if (e.key === "Escape") onClose();
+        };
+        document.addEventListener("keydown", handler);
+        return () => document.removeEventListener("keydown", handler);
+    }, [onClose]);
 }
 
 interface NexusParticipantContextMenuProps {
@@ -38,6 +51,8 @@ interface NexusParticipantContextMenuProps {
 
 /**
  * Context menu with a volume slider for a remote VC participant.
+ * Rendered via portal to avoid ContextMenu's focus/event management
+ * which interferes with range input dragging in Firefox.
  */
 export function NexusParticipantContextMenu({
     member,
@@ -51,6 +66,7 @@ export function NexusParticipantContextMenu({
     const menuRef = useRef<HTMLDivElement>(null);
 
     useClickOutside(menuRef, onFinished);
+    useEscapeKey(onFinished);
 
     const onVolumeChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,35 +77,31 @@ export function NexusParticipantContextMenu({
         [conn, member.userId],
     );
 
-    return (
-        <ContextMenu
-            chevronFace={ChevronFace.None}
-            left={left}
-            top={top}
-            onFinished={onFinished}
-            managed={false}
-            hasBackground={false}
+    return ReactDOM.createPortal(
+        <div
+            className="nx_ParticipantContextMenu"
+            ref={menuRef}
+            style={{ left, top, position: "fixed", zIndex: 5000 }}
         >
-            <div className="nx_ParticipantContextMenu" ref={menuRef}>
-                <div className="nx_ParticipantContextMenu_label">
-                    {member.name} の音量
-                </div>
-                <div className="nx_ParticipantContextMenu_sliderRow">
-                    <input
-                        type="range"
-                        className="nx_ParticipantContextMenu_slider"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={volume}
-                        onChange={onVolumeChange}
-                    />
-                    <span className="nx_ParticipantContextMenu_percent">
-                        {Math.round(volume * 100)}%
-                    </span>
-                </div>
+            <div className="nx_ParticipantContextMenu_label">
+                {member.name} の音量
             </div>
-        </ContextMenu>
+            <div className="nx_ParticipantContextMenu_sliderRow">
+                <input
+                    type="range"
+                    className="nx_ParticipantContextMenu_slider"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={volume}
+                    onChange={onVolumeChange}
+                />
+                <span className="nx_ParticipantContextMenu_percent">
+                    {Math.round(volume * 100)}%
+                </span>
+            </div>
+        </div>,
+        document.body,
     );
 }
 
@@ -117,6 +129,7 @@ export function NexusScreenShareContextMenu({
     const menuRef = useRef<HTMLDivElement>(null);
 
     useClickOutside(menuRef, onFinished);
+    useEscapeKey(onFinished);
 
     const onVolumeChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,34 +140,30 @@ export function NexusScreenShareContextMenu({
         [conn, share.participantIdentity],
     );
 
-    return (
-        <ContextMenu
-            chevronFace={ChevronFace.None}
-            left={left}
-            top={top}
-            onFinished={onFinished}
-            managed={false}
-            hasBackground={false}
+    return ReactDOM.createPortal(
+        <div
+            className="nx_ParticipantContextMenu"
+            ref={menuRef}
+            style={{ left, top, position: "fixed", zIndex: 5000 }}
         >
-            <div className="nx_ParticipantContextMenu" ref={menuRef}>
-                <div className="nx_ParticipantContextMenu_label">
-                    {share.participantName} の配信音量
-                </div>
-                <div className="nx_ParticipantContextMenu_sliderRow">
-                    <input
-                        type="range"
-                        className="nx_ParticipantContextMenu_slider"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={volume}
-                        onChange={onVolumeChange}
-                    />
-                    <span className="nx_ParticipantContextMenu_percent">
-                        {Math.round(volume * 100)}%
-                    </span>
-                </div>
+            <div className="nx_ParticipantContextMenu_label">
+                {share.participantName} の配信音量
             </div>
-        </ContextMenu>
+            <div className="nx_ParticipantContextMenu_sliderRow">
+                <input
+                    type="range"
+                    className="nx_ParticipantContextMenu_slider"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={volume}
+                    onChange={onVolumeChange}
+                />
+                <span className="nx_ParticipantContextMenu_percent">
+                    {Math.round(volume * 100)}%
+                </span>
+            </div>
+        </div>,
+        document.body,
     );
 }

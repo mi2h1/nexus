@@ -504,8 +504,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const screenPub = participant.getTrackPublication(Track.Source.ScreenShare);
                 if (screenPub?.track && screenPub.track.mediaStreamTrack?.readyState !== "ended") {
                     const screenAudioPub = participant.getTrackPublication(Track.Source.ScreenShareAudio);
-                    // Try to resolve participant name from Matrix room membership
-                    const member = this.room.getMember(participant.identity);
+                    // Resolve participant name from Matrix room membership
+                    // (identity may be "userId:deviceId", so use resolveIdentityToUserId)
+                    const userId = this.resolveIdentityToUserId(participant.identity);
+                    const member = userId ? this.room.getMember(userId) : null;
                     shares.push({
                         participantIdentity: participant.identity,
                         participantName: member?.name ?? participant.name ?? participant.identity,
