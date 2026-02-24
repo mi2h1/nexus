@@ -140,9 +140,14 @@ export class NativeAudioCaptureStream {
 
     constructor(sampleRate = 48000, channels = 2) {
         this.channelCount = channels;
-        this.audioContext = new AudioContext({ sampleRate });
-        // Ring buffer: 1 second of audio (interleaved)
-        this.bufferSize = sampleRate * channels;
+        // Don't force sampleRate — let AudioContext use the device's native rate.
+        // The ScriptProcessorNode will resample automatically if needed.
+        this.audioContext = new AudioContext();
+        // Ring buffer: 2 seconds of audio (interleaved) at the device sample rate.
+        // Use a generous buffer to handle jitter between WASAPI and ScriptProcessorNode.
+        const actualRate = this.audioContext.sampleRate;
+        logger.info(`Audio capture: AudioContext sampleRate=${actualRate}, WASAPI=${sampleRate}`);
+        this.bufferSize = actualRate * channels * 2;
         this.ringBuffer = new Float32Array(this.bufferSize);
 
         // ScriptProcessorNode needs an active input to fire onaudioprocess in WebView2.

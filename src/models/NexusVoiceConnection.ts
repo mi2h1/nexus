@@ -584,7 +584,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.updateScreenShares();
             logger.info("Native screen share started:", targetId);
 
-            // Listen for capture-stopped event (e.g. target window closed)
+            // Listen for capture events
             import("@tauri-apps/api/event").then(({ listen }) => {
                 listen("capture-stopped", () => {
                     if (this._isNativeCapture && this._isScreenSharing) {
@@ -592,6 +592,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                             logger.warn("Failed to stop after capture-stopped", e),
                         );
                     }
+                });
+                // WASAPI format diagnostics
+                listen<string>("wasapi-info", (event) => {
+                    logger.info(event.payload);
                 });
             });
         } catch (e) {

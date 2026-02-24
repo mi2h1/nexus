@@ -405,10 +405,10 @@ mod platform {
     fn run_wasapi_loopback(app: AppHandle, stop_flag: Arc<AtomicBool>) -> Result<(), String> {
         use wasapi::*;
 
-        // Initialize COM for this thread (returns HRESULT, ignore it — panics on failure)
+        // Initialize COM for this thread
         initialize_mta();
 
-        // Get default render (output) device for loopback via DeviceEnumerator
+        // Get default render (output) device for loopback
         let enumerator =
             DeviceEnumerator::new().map_err(|e| format!("DeviceEnumerator: {}", e))?;
         let device = enumerator
@@ -423,15 +423,26 @@ mod platform {
             .get_mixformat()
             .map_err(|e| format!("get format: {}", e))?;
 
-        let sample_rate = format.get_samplespersec();
-        let channels = format.get_nchannels();
+        let device_sample_rate = format.get_samplespersec();
+        let device_channels = format.get_nchannels() as usize;
         let bytes_per_sample = (format.get_bitspersample() / 8) as usize;
 
+        // Log the WASAPI format for diagnostics
+        println!(
+            "[WASAPI] Format: {}Hz, {}ch, {}bit ({}B/sample)",
+            device_sample_rate, device_channels, format.get_bitspersample(), bytes_per_sample
+        );
+        // Also emit to JS console for easy diagnostics
+        let _ = app.emit("wasapi-info", format!(
+            "WASAPI: {}Hz {}ch {}bit",
+            device_sample_rate, device_channels, format.get_bitspersample()
+        ));
+
         // Initialize in event-driven shared mode for loopback
-        // Use Render device + Capture direction = system audio loopback
+        // Render device + Capture direction = system audio loopback
         let mode = StreamMode::EventsShared {
             autoconvert: true,
-            buffer_duration_hns: 0, // default buffer
+            buffer_duration_hns: 0,
         };
         audio_client
             .initialize_client(&format, &Direction::Capture, &mode)
@@ -449,67 +460,99 @@ mod platform {
             .start_stream()
             .map_err(|e| format!("start stream: {}", e))?;
 
+        println!("[WASAPI] Loopback capture started");
+
         // Audio capture loop — runs until stop_flag is set
         let mut sample_queue: VecDeque<u8> = VecDeque::new();
+        let mut first_data = true;
 
         while !stop_flag.load(Ordering::SeqCst) {
-            // Wait for audio data (timeout 100ms to check stop_flag)
             if event.wait_for_event(100).is_err() {
                 continue;
             }
 
-            // Read raw bytes into deque
             match capture_client.read_from_device_to_deque(&mut sample_queue) {
                 Ok(_buffer_info) => {
                     if sample_queue.is_empty() {
                         continue;
                     }
 
-                    // Convert raw bytes to f32 interleaved samples
+                    // Decode raw bytes → f32 samples (all channels)
                     let total_bytes = sample_queue.len();
-                    let sample_count = total_bytes / bytes_per_sample;
-                    let frame_count = sample_count / channels as usize;
+                    let total_samples = total_bytes / bytes_per_sample;
+                    let frame_count = total_samples / device_channels;
 
                     if frame_count == 0 {
                         continue;
                     }
 
-                    let mut interleaved = Vec::with_capacity(sample_count);
-                    for _ in 0..sample_count {
+                    if first_data {
+                        first_data = false;
+                        println!(
+                            "[WASAPI] First audio data: {} bytes, {} frames, {} samples",
+                            total_bytes, frame_count, total_samples
+                        );
+                    }
+
+                    // Decode all samples from raw bytes
+                    let mut all_samples = Vec::with_capacity(total_samples);
+                    for _ in 0..total_samples {
                         if sample_queue.len() >= bytes_per_sample {
-                            if bytes_per_sample == 4 {
-                                // 32-bit float
+                            let sample = if bytes_per_sample == 4 {
                                 let b0 = sample_queue.pop_front().unwrap();
                                 let b1 = sample_queue.pop_front().unwrap();
                                 let b2 = sample_queue.pop_front().unwrap();
                                 let b3 = sample_queue.pop_front().unwrap();
-                                interleaved.push(f32::from_le_bytes([b0, b1, b2, b3]));
+                                f32::from_le_bytes([b0, b1, b2, b3])
                             } else if bytes_per_sample == 2 {
-                                // 16-bit int → f32
                                 let b0 = sample_queue.pop_front().unwrap();
                                 let b1 = sample_queue.pop_front().unwrap();
-                                let i16_val = i16::from_le_bytes([b0, b1]);
-                                interleaved.push(i16_val as f32 / 32768.0);
+                                i16::from_le_bytes([b0, b1]) as f32 / 32768.0
                             } else {
-                                // Skip unknown format
                                 for _ in 0..bytes_per_sample {
                                     sample_queue.pop_front();
                                 }
-                                interleaved.push(0.0);
-                            }
+                                0.0
+                            };
+                            all_samples.push(sample);
                         }
                     }
 
+                    // Downmix to stereo if needed.
+                    // Always output 2ch interleaved regardless of device channels.
+                    let stereo: Vec<f32> = if device_channels == 2 {
+                        all_samples
+                    } else if device_channels == 1 {
+                        // Mono → stereo (duplicate)
+                        let mut s = Vec::with_capacity(frame_count * 2);
+                        for i in 0..frame_count {
+                            s.push(all_samples[i]);
+                            s.push(all_samples[i]);
+                        }
+                        s
+                    } else {
+                        // Multi-channel (5.1, 7.1, etc.) → stereo
+                        // Take L (ch0) and R (ch1), ignore rest
+                        let mut s = Vec::with_capacity(frame_count * 2);
+                        for f in 0..frame_count {
+                            let base = f * device_channels;
+                            let l = all_samples.get(base).copied().unwrap_or(0.0);
+                            let r = all_samples.get(base + 1).copied().unwrap_or(0.0);
+                            s.push(l);
+                            s.push(r);
+                        }
+                        s
+                    };
+
                     let payload = AudioPayload {
-                        data: interleaved,
-                        sample_rate,
-                        channels,
+                        data: stereo,
+                        sample_rate: device_sample_rate,
+                        channels: 2,
                         frames: frame_count as u32,
                     };
                     let _ = app.emit("capture-audio", &payload);
                 }
                 Err(_) => {
-                    // Buffer underrun or device change — continue
                     continue;
                 }
             }
@@ -519,6 +562,7 @@ mod platform {
             .stop_stream()
             .map_err(|e| format!("stop stream: {}", e))?;
 
+        println!("[WASAPI] Loopback capture stopped");
         Ok(())
     }
 }
