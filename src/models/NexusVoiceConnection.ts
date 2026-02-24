@@ -112,6 +112,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private screenShareSources = new Map<string, MediaStreamAudioSourceNode>();
     private screenShareStreams = new Map<string, MediaStream>(); // prevent GC
     private screenShareVolumes = new Map<string, number>(); // 0-1.0
+    private watchingScreenShares = new Set<string>(); // opt-in watching state
     private analyserNode: AnalyserNode | null = null;
     private inputGainNode: GainNode | null = null;
     private sourceNode: MediaStreamAudioSourceNode | null = null;
@@ -478,7 +479,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.livekitRoom) {
             for (const participant of this.livekitRoom.remoteParticipants.values()) {
                 const screenPub = participant.getTrackPublication(Track.Source.ScreenShare);
-                if (screenPub?.track) {
+                if (screenPub?.track && screenPub.track.mediaStreamTrack?.readyState !== "ended") {
                     const screenAudioPub = participant.getTrackPublication(Track.Source.ScreenShareAudio);
                     // Try to resolve participant name from Matrix room membership
                     const member = this.room.getMember(participant.identity);
@@ -550,7 +551,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const clamped = Math.max(0, Math.min(1, volume));
         this.screenShareVolumes.set(participantIdentity, clamped);
         const gain = this.screenShareGains.get(participantIdentity);
-        if (gain) {
+        if (gain && this.watchingScreenShares.has(participantIdentity)) {
             gain.gain.value = clamped;
         }
         // Persist by resolved userId (stable across sessions)
@@ -568,6 +569,26 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const userId = this.resolveIdentityToUserId(participantIdentity);
         if (userId) return this.loadPersistedVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, userId) ?? 1;
         return 1;
+    }
+
+    // ─── Public: Screen share watching ──────────────────────
+
+    /**
+     * Mark a screen share as actively watched/unwatched.
+     * Audio is muted (gain=0) until the user opts in to watch.
+     */
+    public setScreenShareWatching(participantIdentity: string, watching: boolean): void {
+        if (watching) {
+            this.watchingScreenShares.add(participantIdentity);
+        } else {
+            this.watchingScreenShares.delete(participantIdentity);
+        }
+        const gain = this.screenShareGains.get(participantIdentity);
+        if (gain) {
+            gain.gain.value = watching
+                ? (this.screenShareVolumes.get(participantIdentity) ?? 1)
+                : 0;
+        }
     }
 
     // ─── Public: Audio pipeline accessors ──────────────────────
@@ -835,6 +856,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.screenShareStreams.clear();
         for (const gain of this.screenShareGains.values()) gain.disconnect();
         this.screenShareGains.clear();
+        this.watchingScreenShares.clear();
 
         // Stop local screen share
         if (this.localScreenTrack) {
@@ -883,6 +905,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Handle screen share video track
         if (publication.source === Track.Source.ScreenShare) {
             this.updateScreenShares();
+            // Listen for track ended to promptly remove stale screen shares
+            // (e.g. remote user stops sharing but TrackUnsubscribed is delayed)
+            const onEnded = (): void => {
+                track.mediaStreamTrack.removeEventListener("ended", onEnded);
+                this.updateScreenShares();
+            };
+            track.mediaStreamTrack.addEventListener("ended", onEnded);
             return;
         }
 
@@ -902,8 +931,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     ? this.loadPersistedVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, ssUserId)
                     : null;
                 const ssInitialVol = ssSavedVol ?? this.screenShareVolumes.get(participant.identity) ?? 1;
-                gain.gain.value = ssInitialVol;
                 if (ssSavedVol !== null) this.screenShareVolumes.set(participant.identity, ssSavedVol);
+                // Audio muted until user opts in to watch (gain=0)
+                gain.gain.value = this.watchingScreenShares.has(participant.identity) ? ssInitialVol : 0;
                 source.connect(gain);
                 gain.connect(this.outputMasterGain);
                 this.screenShareStreams.set(participant.identity, mediaStream);
@@ -972,6 +1002,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const ssGain = this.screenShareGains.get(participant.identity);
             if (ssGain) { ssGain.disconnect(); this.screenShareGains.delete(participant.identity); }
             this.screenShareStreams.delete(participant.identity);
+            this.watchingScreenShares.delete(participant.identity);
             return;
         }
 
@@ -1176,6 +1207,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     private onParticipantDisconnected = (): void => {
         this.updateParticipants();
+        this.updateScreenShares();
     };
 
     private onMembershipsChanged = (): void => {

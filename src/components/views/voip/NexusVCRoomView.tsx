@@ -54,6 +54,8 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
 
     const startWatching = useCallback((id: string) => {
         setWatchingIds((prev) => new Set(prev).add(id));
+        // Unmute screen share audio now that user opted in
+        NexusVoiceStore.instance.getActiveConnection()?.setScreenShareWatching(id, true);
     }, []);
 
     // Auto-cleanup watchingIds when screen shares end
@@ -62,7 +64,12 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
         setWatchingIds((prev) => {
             const next = new Set<string>();
             for (const id of prev) {
-                if (currentIds.has(id)) next.add(id);
+                if (currentIds.has(id)) {
+                    next.add(id);
+                } else {
+                    // Mute audio for ended screen shares
+                    NexusVoiceStore.instance.getActiveConnection()?.setScreenShareWatching(id, false);
+                }
             }
             return next.size === prev.size ? prev : next;
         });
