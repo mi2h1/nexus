@@ -9,6 +9,7 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 
 import { useNexusScreenShares } from "../../../hooks/useNexusScreenShares";
 import type { ScreenShareInfo } from "../../../models/Call";
+import { NexusScreenShareContextMenu } from "./NexusParticipantContextMenu";
 
 interface NexusScreenShareContainerProps {
     roomId: string;
@@ -86,10 +87,11 @@ interface ScreenShareTileProps {
 
 /**
  * Individual screen share tile — attaches LiveKit track to <video>.
+ * Audio is routed through Web Audio API (NexusVoiceConnection), not <audio>.
  */
 export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const audioRef = useRef<HTMLAudioElement>(null);
+    const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
 
     useEffect(() => {
         const videoEl = videoRef.current;
@@ -100,19 +102,17 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share }) => {
         };
     }, [share.track]);
 
-    useEffect(() => {
-        const audioEl = audioRef.current;
-        if (!audioEl || !share.audioTrack || share.isLocal) return;
-        share.audioTrack.attach(audioEl);
-        return () => {
-            share.audioTrack?.detach(audioEl);
-        };
-    }, [share.audioTrack, share.isLocal]);
+    const onContextMenu = useCallback((e: React.MouseEvent) => {
+        // Only show context menu for remote screen shares with audio
+        if (share.isLocal || !share.audioTrack) return;
+        e.preventDefault();
+        setContextMenu({ left: e.clientX, top: e.clientY });
+    }, [share.isLocal, share.audioTrack]);
 
     const label = `${share.participantName}の画面`;
 
     return (
-        <div className="mx_NexusScreenShareTile">
+        <div className="mx_NexusScreenShareTile" onContextMenu={onContextMenu}>
             <video
                 ref={videoRef}
                 className="mx_NexusScreenShareTile_video"
@@ -120,11 +120,15 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share }) => {
                 playsInline
                 muted
             />
-            {/* Play remote screen share audio (not local to avoid echo) */}
-            {share.audioTrack && !share.isLocal && (
-                <audio ref={audioRef} autoPlay />
-            )}
             <div className="mx_NexusScreenShareTile_label">{label}</div>
+            {contextMenu && (
+                <NexusScreenShareContextMenu
+                    share={share}
+                    left={contextMenu.left}
+                    top={contextMenu.top}
+                    onFinished={() => setContextMenu(null)}
+                />
+            )}
         </div>
     );
 };

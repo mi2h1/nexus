@@ -118,7 +118,7 @@ export function ParticipantTile({ member, isSpeaking, isMuted, isScreenSharing, 
                     />
                 )}
                 {isScreenSharing && (
-                    <span className="mx_NexusVoiceParticipantTile_sharingBadge">共有中</span>
+                    <span className="mx_NexusVoiceParticipantTile_sharingBadge">配信中</span>
                 )}
                 <span className="mx_NexusVoiceParticipantTile_name">{member.name}</span>
             </div>
