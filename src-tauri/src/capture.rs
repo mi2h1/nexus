@@ -624,9 +624,10 @@ mod platform {
             // Step 3: Initialize with the device's native format.
             // Cast wasapi's WaveFormat pointer to windows crate WAVEFORMATEX pointer
             // (same C ABI layout — both are #[repr(C)] WAVEFORMATEX/WAVEFORMATEXTENSIBLE).
+            // wasapi's WaveFormat internally wraps windows::Win32::Media::Audio::WAVEFORMATEX,
+            // so we can cast the reference pointer directly.
             let format_ptr = device_format.as_waveformatex_ref()
-                as *const wasapi::WaveFormatEx
-                as *const WAVEFORMATEX;
+                as *const _ as *const WAVEFORMATEX;
 
             let _ = app.emit(
                 "wasapi-info",
