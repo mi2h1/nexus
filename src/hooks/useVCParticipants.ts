@@ -55,7 +55,14 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
 
             // 接続中: NexusVoiceConnection.participants を使う（LiveKit + MatrixRTC マージ済み）
             if (conn && isConnected) {
-                setMembers([...conn.participants.keys()]);
+                const participantMembers = [...conn.participants.keys()];
+                // Ensure self stays in list even if MatrixRTC membership hasn't arrived yet
+                // (prevents flicker when transitioning from Connecting → Connected)
+                if (myUserId && !participantMembers.some((m) => m.userId === myUserId)) {
+                    const myMember = room.getMember(myUserId);
+                    if (myMember) participantMembers.push(myMember);
+                }
+                setMembers(participantMembers);
                 return;
             }
 

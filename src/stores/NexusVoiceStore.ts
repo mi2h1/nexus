@@ -11,6 +11,7 @@ import { logger } from "matrix-js-sdk/src/logger";
 
 import { NexusVoiceConnection, playVcSound, VC_STANDBY_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
 import { CallStore, CallStoreEvent } from "./CallStore";
+import { ConnectionState } from "../models/Call";
 import { MatrixClientPeg } from "../MatrixClientPeg";
 
 export enum NexusVoiceStoreEvent {
@@ -78,6 +79,14 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
             return;
         }
 
+        // Block if currently transitioning (connecting or disconnecting)
+        if (this.activeConnection) {
+            const state = this.activeConnection.connectionState;
+            if (state === ConnectionState.Connecting || state === ConnectionState.Disconnecting) {
+                return;
+            }
+        }
+
         // Disconnect from current VC if any
         if (this.activeConnection?.connected) {
             await this.leaveVoiceChannel();
@@ -138,6 +147,7 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
 
     /**
      * Leave the currently connected voice channel.
+     * Connection stays in map during disconnect so UI can show spinner.
      */
     public async leaveVoiceChannel(): Promise<void> {
         if (!this.activeConnection) return;
@@ -148,18 +158,20 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
         // Play leave SE immediately for instant feedback
         playVcSound(VC_LEAVE_SOUND);
 
-        // Clear state immediately so UI updates right away
+        // Disconnect (Disconnecting → Disconnected).
+        // Connection stays in map so useVCParticipants can show the spinner.
+        try {
+            await connection.disconnect();
+        } catch (e) {
+            logger.warn("Disconnect error", e);
+        }
+
+        // Clean up after disconnect completes
         CallStore.instance.unregisterVoiceConnection(roomId);
         this.connections.delete(roomId);
         this.activeConnection = null;
+        connection.destroy();
         this.emit(NexusVoiceStoreEvent.ActiveConnection, null);
-
-        // Background disconnect (MatrixRTC leave + LiveKit cleanup)
-        connection.disconnect().catch((e) => {
-            logger.warn("Background disconnect error", e);
-        }).finally(() => {
-            connection.destroy();
-        });
     }
 
     /**
