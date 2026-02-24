@@ -922,6 +922,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.watchingScreenShares.delete(participantIdentity);
         }
 
+        // Play/pause the screen share <audio> element based on watching state.
+        // This prevents any audio from leaking when the user is not watching.
+        const ssAudio = this.screenShareAudioElements.get(participantIdentity);
+        if (ssAudio) {
+            if (watching) {
+                ssAudio.play().catch(() => {});
+            } else {
+                ssAudio.pause();
+            }
+        }
+
         // Tauri: control via GainNode
         const ssGain = this.ssParticipantGains.get(participantIdentity);
         if (ssGain) {
@@ -933,13 +944,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             }
         } else {
             // Browser fallback
-            const audio = this.screenShareAudioElements.get(participantIdentity);
-            if (audio) {
+            if (ssAudio) {
                 if (watching) {
                     const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
-                    audio.volume = Math.min(1, vol * this._masterOutputVolume);
+                    ssAudio.volume = Math.min(1, vol * this._masterOutputVolume);
                 } else {
-                    audio.volume = 0;
+                    ssAudio.volume = 0;
                 }
             }
         }
@@ -1453,18 +1463,25 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
                 // Tauri: route through Web Audio for >100% volume
                 if (this.outputAudioContext && this.outputMasterGain) {
-                    audio.volume = 1; // let GainNode control volume
-                    audio.play().catch(() => {});
+                    // IMPORTANT: createMediaElementSource BEFORE play() so audio
+                    // is routed through Web Audio API from the start.
                     const source = this.outputAudioContext.createMediaElementSource(audio);
                     const gain = this.outputAudioContext.createGain();
                     gain.gain.value = watching ? ssInitialVol : 0;
                     source.connect(gain).connect(this.outputMasterGain);
                     this.ssMediaSources.set(participant.identity, source);
                     this.ssParticipantGains.set(participant.identity, gain);
+                    // Only play when actively watching — prevents audio leak
+                    if (watching) {
+                        audio.play().catch(() => {});
+                    }
                 } else {
                     // Browser: audio.volume capped at 1.0
                     audio.volume = watching ? Math.min(1, ssInitialVol * this._masterOutputVolume) : 0;
-                    audio.play().catch(() => {});
+                    // Only play when actively watching
+                    if (watching) {
+                        audio.play().catch(() => {});
+                    }
                 }
                 this.screenShareAudioElements.set(participant.identity, audio);
             } catch (e) {

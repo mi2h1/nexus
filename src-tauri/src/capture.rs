@@ -36,6 +36,12 @@ mod platform {
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
     use tauri::{AppHandle, Emitter};
+    // windows crate — used for process-excluded loopback (Win10 2004+)
+    use windows::Win32::Media::Audio::{
+        IActivateAudioInterfaceCompletionHandler,
+        IActivateAudioInterfaceCompletionHandler_Impl,
+        IActivateAudioInterfaceAsyncOperation,
+    };
     use windows_capture::{
         capture::{CaptureControl, Context, GraphicsCaptureApiHandler},
         frame::Frame,
@@ -401,8 +407,324 @@ mod platform {
         Ok(())
     }
 
-    // ─── WASAPI loopback capture ────────────────────────────────────
+    // ─── Shared audio helpers ────────────────────────────────────────
+
+    /// Decode raw bytes to f32 samples.
+    fn decode_samples(raw: &[u8], bytes_per_sample: usize, total_samples: usize) -> Vec<f32> {
+        let mut samples = Vec::with_capacity(total_samples);
+        for i in 0..total_samples {
+            let offset = i * bytes_per_sample;
+            if offset + bytes_per_sample > raw.len() {
+                break;
+            }
+            let sample = if bytes_per_sample == 4 {
+                f32::from_le_bytes([raw[offset], raw[offset + 1], raw[offset + 2], raw[offset + 3]])
+            } else if bytes_per_sample == 2 {
+                i16::from_le_bytes([raw[offset], raw[offset + 1]]) as f32 / 32768.0
+            } else {
+                0.0
+            };
+            samples.push(sample);
+        }
+        samples
+    }
+
+    /// Downmix multi-channel audio to stereo (interleaved).
+    fn downmix_to_stereo(all_samples: &[f32], channels: usize, frame_count: usize) -> Vec<f32> {
+        if channels == 2 {
+            all_samples.to_vec()
+        } else if channels == 1 {
+            let mut s = Vec::with_capacity(frame_count * 2);
+            for i in 0..frame_count {
+                let v = all_samples.get(i).copied().unwrap_or(0.0);
+                s.push(v);
+                s.push(v);
+            }
+            s
+        } else {
+            // Multi-channel (5.1, 7.1, etc.) → stereo: take L (ch0) and R (ch1)
+            let mut s = Vec::with_capacity(frame_count * 2);
+            for f in 0..frame_count {
+                let base = f * channels;
+                let l = all_samples.get(base).copied().unwrap_or(0.0);
+                let r = all_samples.get(base + 1).copied().unwrap_or(0.0);
+                s.push(l);
+                s.push(r);
+            }
+            s
+        }
+    }
+
+    // ─── WASAPI loopback capture (entry point) ───────────────────────
+
+    /// Try process-excluded loopback first (Win10 2004+), fall back to regular.
     fn run_wasapi_loopback(app: AppHandle, stop_flag: Arc<AtomicBool>) -> Result<(), String> {
+        // Try process-excluded loopback: captures all system audio EXCEPT
+        // audio from our own process (prevents voice chat echo).
+        match run_process_excluded_loopback(&app, &stop_flag) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                println!(
+                    "[WASAPI] Process-excluded loopback unavailable: {}. \
+                     Falling back to regular loopback (voice echo possible).",
+                    e
+                );
+                let _ = app.emit(
+                    "wasapi-info",
+                    "WASAPI: regular loopback (process exclusion unavailable)",
+                );
+            }
+        }
+        run_regular_loopback(app, stop_flag)
+    }
+
+    // ─── Process-excluded loopback (Windows 10 2004+) ────────────────
+    //
+    // Uses ActivateAudioInterfaceAsync with PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
+    // to capture all system audio EXCEPT our own process's output.
+    // This prevents voice chat audio from being captured and echoed back.
+
+    /// Raw PROPVARIANT layout for VT_BLOB on x64.
+    /// Used to pass AUDIOCLIENT_ACTIVATION_PARAMS to ActivateAudioInterfaceAsync.
+    #[repr(C)]
+    struct PropVariantBlob {
+        vt: u16,             // VT_BLOB = 0x0041
+        reserved1: u16,
+        reserved2: u16,
+        reserved3: u16,
+        cb_size: u32,        // BLOB.cbSize
+        _pad: u32,           // alignment padding on x64
+        p_blob_data: *const u8, // BLOB.pBlobData
+    }
+
+    /// Activation params for process loopback.
+    #[repr(C)]
+    struct ProcessLoopbackActivationParams {
+        activation_type: i32,        // AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK = 1
+        target_process_id: u32,      // our PID
+        process_loopback_mode: i32,  // PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE = 1
+    }
+
+    /// COM completion handler for ActivateAudioInterfaceAsync.
+    #[windows::core::implement(IActivateAudioInterfaceCompletionHandler)]
+    struct ActivateCompletionHandler {
+        event: isize, // HANDLE as isize (Send-safe)
+    }
+
+    impl IActivateAudioInterfaceCompletionHandler_Impl for ActivateCompletionHandler_Impl {
+        fn ActivateCompleted(
+            &self,
+            _operation: Option<&IActivateAudioInterfaceAsyncOperation>,
+        ) -> windows::core::Result<()> {
+            unsafe {
+                windows::Win32::System::Threading::SetEvent(
+                    windows::Win32::Foundation::HANDLE(self.event as *mut std::ffi::c_void),
+                )
+            }
+            .ok();
+            Ok(())
+        }
+    }
+
+    fn run_process_excluded_loopback(
+        app: &AppHandle,
+        stop_flag: &Arc<AtomicBool>,
+    ) -> Result<(), String> {
+        use windows::core::Interface;
+        use windows::Win32::Foundation::*;
+        use windows::Win32::Media::Audio::*;
+        use windows::Win32::System::Com::*;
+        use windows::Win32::System::Threading::*;
+
+        println!("[WASAPI] Attempting process-excluded loopback (Win10 2004+)");
+
+        unsafe {
+            // Initialize COM for this thread
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+
+            // Build activation params: exclude our own process
+            let params = ProcessLoopbackActivationParams {
+                activation_type: 1,        // AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
+                target_process_id: std::process::id(),
+                process_loopback_mode: 1,  // PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
+            };
+
+            // Wrap in a raw PROPVARIANT with VT_BLOB
+            let prop = PropVariantBlob {
+                vt: 0x0041, // VT_BLOB
+                reserved1: 0,
+                reserved2: 0,
+                reserved3: 0,
+                cb_size: std::mem::size_of::<ProcessLoopbackActivationParams>() as u32,
+                _pad: 0,
+                p_blob_data: &params as *const _ as *const u8,
+            };
+
+            // Create event for synchronous wait
+            let event = CreateEventW(None, TRUE, FALSE, None)
+                .map_err(|e| format!("CreateEventW: {}", e))?;
+
+            // Create completion handler
+            let handler: IActivateAudioInterfaceCompletionHandler =
+                ActivateCompletionHandler {
+                    event: event.0 as isize,
+                }
+                .into();
+
+            // Activate the process-excluded loopback audio client
+            let prop_ptr =
+                &prop as *const PropVariantBlob as *const windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
+            let mut operation: Option<IActivateAudioInterfaceAsyncOperation> = None;
+            ActivateAudioInterfaceAsync(
+                windows::core::w!("VAD\\Process_Loopback"),
+                &IAudioClient::IID,
+                Some(prop_ptr),
+                &handler,
+                &mut operation,
+            )
+            .map_err(|e| format!("ActivateAudioInterfaceAsync: {}", e))?;
+
+            // Wait for completion (5 seconds)
+            let _ = WaitForSingleObject(event, 5000);
+            let _ = CloseHandle(event);
+
+            // Get activation result
+            let op = operation.ok_or("No activation operation returned")?;
+            let mut hr = HRESULT(0);
+            let mut unk: Option<windows::core::IUnknown> = None;
+            op.GetActivateResult(&mut hr, &mut unk)
+                .map_err(|e| format!("GetActivateResult: {}", e))?;
+            hr.ok().map_err(|e| format!("Activation HRESULT: {}", e))?;
+
+            let client: IAudioClient = unk
+                .ok_or("No audio client returned")?
+                .cast()
+                .map_err(|e| format!("Cast IAudioClient: {}", e))?;
+
+            println!("[WASAPI] Process-excluded loopback client activated (PID={} excluded)", std::process::id());
+
+            // Get mix format
+            let format_ptr = client
+                .GetMixFormat()
+                .map_err(|e| format!("GetMixFormat: {}", e))?;
+            let format = &*format_ptr;
+            let sample_rate = format.nSamplesPerSec;
+            let channels = format.nChannels as usize;
+            let bits = format.wBitsPerSample;
+            let bytes_per_sample = (bits / 8) as usize;
+
+            println!(
+                "[WASAPI] Process-excluded format: {}Hz, {}ch, {}bit",
+                sample_rate, channels, bits
+            );
+            let _ = app.emit(
+                "wasapi-info",
+                format!("WASAPI (process-excluded): {}Hz {}ch {}bit", sample_rate, channels, bits),
+            );
+
+            // Initialize client: shared mode, event-driven, auto-convert PCM
+            // Note: no AUDCLNT_STREAMFLAGS_LOOPBACK needed — the virtual device
+            // is already a loopback interface.
+            let init_flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK.0
+                | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM.0
+                | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY.0;
+            client
+                .Initialize(
+                    AUDCLNT_SHAREMODE_SHARED,
+                    AUDCLNT_STREAMFLAGS(init_flags),
+                    0,
+                    0,
+                    format_ptr,
+                    None,
+                )
+                .map_err(|e| format!("Initialize: {}", e))?;
+
+            // Get capture client and set up event handle
+            let capture_client: IAudioCaptureClient = client
+                .GetService()
+                .map_err(|e| format!("GetService(IAudioCaptureClient): {}", e))?;
+
+            let event_handle = CreateEventW(None, FALSE, FALSE, None)
+                .map_err(|e| format!("CreateEventW: {}", e))?;
+            client
+                .SetEventHandle(event_handle)
+                .map_err(|e| format!("SetEventHandle: {}", e))?;
+
+            // Start the stream
+            client.Start().map_err(|e| format!("Start: {}", e))?;
+            println!("[WASAPI] Process-excluded loopback capture started");
+
+            // Capture loop
+            let mut first_data = true;
+            while !stop_flag.load(Ordering::SeqCst) {
+                let wait_result = WaitForSingleObject(event_handle, 100);
+                if wait_result == WAIT_TIMEOUT {
+                    continue;
+                }
+
+                // Read all available packets
+                loop {
+                    let mut buffer_ptr: *mut u8 = std::ptr::null_mut();
+                    let mut frames_available: u32 = 0;
+                    let mut flags: u32 = 0;
+
+                    if capture_client
+                        .GetBuffer(
+                            &mut buffer_ptr,
+                            &mut frames_available,
+                            &mut flags,
+                            None,
+                            None,
+                        )
+                        .is_err()
+                        || frames_available == 0
+                    {
+                        break;
+                    }
+
+                    if first_data {
+                        first_data = false;
+                        println!(
+                            "[WASAPI] Process-excluded: first {} frames captured",
+                            frames_available
+                        );
+                    }
+
+                    let total_samples = frames_available as usize * channels;
+                    let buffer_bytes = total_samples * bytes_per_sample;
+                    let raw_data = std::slice::from_raw_parts(buffer_ptr, buffer_bytes);
+
+                    let all_samples = decode_samples(raw_data, bytes_per_sample, total_samples);
+                    let stereo =
+                        downmix_to_stereo(&all_samples, channels, frames_available as usize);
+
+                    let payload = AudioPayload {
+                        data: stereo,
+                        sample_rate: sample_rate,
+                        channels: 2,
+                        frames: frames_available,
+                    };
+                    let _ = app.emit("capture-audio", &payload);
+
+                    let _ = capture_client.ReleaseBuffer(frames_available);
+                }
+            }
+
+            // Stop
+            let _ = client.Stop();
+            let _ = CloseHandle(event_handle);
+
+            println!("[WASAPI] Process-excluded loopback capture stopped");
+            Ok(())
+        }
+    }
+
+    // ─── Regular WASAPI loopback (fallback) ──────────────────────────
+    //
+    // Used when process-excluded loopback is unavailable (Windows < 10 2004).
+    // Captures ALL system audio, including voice chat (may cause echo).
+
+    fn run_regular_loopback(app: AppHandle, stop_flag: Arc<AtomicBool>) -> Result<(), String> {
         use wasapi::*;
 
         // Initialize COM for this thread
@@ -427,19 +749,18 @@ mod platform {
         let device_channels = format.get_nchannels() as usize;
         let bytes_per_sample = (format.get_bitspersample() / 8) as usize;
 
-        // Log the WASAPI format for diagnostics
         println!(
-            "[WASAPI] Format: {}Hz, {}ch, {}bit ({}B/sample)",
+            "[WASAPI] Regular loopback format: {}Hz, {}ch, {}bit ({}B/sample)",
             device_sample_rate, device_channels, format.get_bitspersample(), bytes_per_sample
         );
-        // Also emit to JS console for easy diagnostics
-        let _ = app.emit("wasapi-info", format!(
-            "WASAPI: {}Hz {}ch {}bit",
-            device_sample_rate, device_channels, format.get_bitspersample()
-        ));
+        let _ = app.emit(
+            "wasapi-info",
+            format!(
+                "WASAPI (regular): {}Hz {}ch {}bit",
+                device_sample_rate, device_channels, format.get_bitspersample()
+            ),
+        );
 
-        // Initialize in event-driven shared mode for loopback
-        // Render device + Capture direction = system audio loopback
         let mode = StreamMode::EventsShared {
             autoconvert: true,
             buffer_duration_hns: 0,
@@ -460,9 +781,8 @@ mod platform {
             .start_stream()
             .map_err(|e| format!("start stream: {}", e))?;
 
-        println!("[WASAPI] Loopback capture started");
+        println!("[WASAPI] Regular loopback capture started");
 
-        // Audio capture loop — runs until stop_flag is set
         let mut sample_queue: VecDeque<u8> = VecDeque::new();
         let mut first_data = true;
 
@@ -477,7 +797,6 @@ mod platform {
                         continue;
                     }
 
-                    // Decode raw bytes → f32 samples (all channels)
                     let total_bytes = sample_queue.len();
                     let total_samples = total_bytes / bytes_per_sample;
                     let frame_count = total_samples / device_channels;
@@ -494,7 +813,7 @@ mod platform {
                         );
                     }
 
-                    // Decode all samples from raw bytes
+                    // Decode raw bytes → f32 from the deque
                     let mut all_samples = Vec::with_capacity(total_samples);
                     for _ in 0..total_samples {
                         if sample_queue.len() >= bytes_per_sample {
@@ -518,31 +837,7 @@ mod platform {
                         }
                     }
 
-                    // Downmix to stereo if needed.
-                    // Always output 2ch interleaved regardless of device channels.
-                    let stereo: Vec<f32> = if device_channels == 2 {
-                        all_samples
-                    } else if device_channels == 1 {
-                        // Mono → stereo (duplicate)
-                        let mut s = Vec::with_capacity(frame_count * 2);
-                        for i in 0..frame_count {
-                            s.push(all_samples[i]);
-                            s.push(all_samples[i]);
-                        }
-                        s
-                    } else {
-                        // Multi-channel (5.1, 7.1, etc.) → stereo
-                        // Take L (ch0) and R (ch1), ignore rest
-                        let mut s = Vec::with_capacity(frame_count * 2);
-                        for f in 0..frame_count {
-                            let base = f * device_channels;
-                            let l = all_samples.get(base).copied().unwrap_or(0.0);
-                            let r = all_samples.get(base + 1).copied().unwrap_or(0.0);
-                            s.push(l);
-                            s.push(r);
-                        }
-                        s
-                    };
+                    let stereo = downmix_to_stereo(&all_samples, device_channels, frame_count);
 
                     let payload = AudioPayload {
                         data: stereo,
@@ -562,7 +857,7 @@ mod platform {
             .stop_stream()
             .map_err(|e| format!("stop stream: {}", e))?;
 
-        println!("[WASAPI] Loopback capture stopped");
+        println!("[WASAPI] Regular loopback capture stopped");
         Ok(())
     }
 }
