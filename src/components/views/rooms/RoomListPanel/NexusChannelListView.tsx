@@ -22,7 +22,6 @@ import { VoiceChannelParticipants } from "./VoiceChannelParticipants";
 import { TextChannelIcon, VoiceChannelIcon } from "./NexusChannelIcon";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
 import { CallEvent, ConnectionState } from "../../../../models/Call";
-import InlineSpinner from "../../elements/InlineSpinner";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 
@@ -269,11 +268,6 @@ function VoiceChannelItem({
             {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
             <div onClickCapture={onVoiceChannelClick} className="nx_VoiceChannelItem">
                 {renderItem(roomId, globalIndex, avatarRenderer)}
-                {isTransitioning && (
-                    <div className="nx_VoiceChannelItem_spinner">
-                        <InlineSpinner size={14} />
-                    </div>
-                )}
             </div>
             <VoiceChannelParticipants roomId={roomId} />
         </React.Fragment>
