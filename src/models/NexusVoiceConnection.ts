@@ -49,6 +49,8 @@ export const VC_LEAVE_SOUND = "media/sfx_leave.mp3";
 export const VC_STANDBY_SOUND = "media/sfx_standby.mp3";
 export const VC_MUTE_SOUND = "media/sfx_mute.mp3";
 export const VC_UNMUTE_SOUND = "media/sfx_unmute.mp3";
+export const VC_SCREEN_ON_SOUND = "media/sfx_screen-on.mp3";
+export const VC_SCREEN_OFF_SOUND = "media/sfx_screen-off.mp3";
 
 export function playVcSound(src: string): void {
     try {
@@ -227,8 +229,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.audioContext = new AudioContext();
 
             this.outputMasterGain = this.audioContext.createGain();
-            const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
-            this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
+            // Start muted — unmutePipelines() restores the real volume
+            // after connectionState=Connected so audio doesn't flow
+            // before the UI grayout is removed.
+            this.outputMasterGain.gain.value = 0;
             this.outputMasterGain.connect(this.audioContext.destination);
 
             // ── Phase 3: Connect to LiveKit (requires JWT) ───────────
@@ -254,9 +258,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.analyserNode.fftSize = 256;
 
             // Input GainNode — adjusts input volume before sending to LiveKit
+            // Start muted — unmutePipelines() restores the real volume.
             this.inputGainNode = this.audioContext.createGain();
-            const inputVolume = SettingsStore.getValue("nexus_input_volume") ?? 100;
-            this.inputGainNode.gain.value = inputVolume / 100;
+            this.inputGainNode.gain.value = 0;
 
             // Insert RNNoise if enabled and sample rate is 48kHz
             // (WASM binary is already preloaded from Phase 1)
@@ -380,6 +384,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.emit(CallEvent.MicMuted, muted);
     }
 
+    /**
+     * Restore output and input gain to their configured values.
+     * Called by NexusVoiceStore after connectionState=Connected and
+     * pre-mute is applied, so audio starts exactly when the UI
+     * grayout is removed.
+     */
+    public unmutePipelines(): void {
+        if (this.outputMasterGain) {
+            const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
+            this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
+        }
+        // Only restore input gain if not muted — if muted, keep at 0.
+        if (this.inputGainNode && !this._isMicMuted) {
+            const inputVolume = SettingsStore.getValue("nexus_input_volume") ?? 100;
+            this.inputGainNode.gain.value = inputVolume / 100;
+        }
+    }
+
     public async toggleScreenShare(): Promise<void> {
         if (this._isScreenSharing) {
             await this.stopScreenShare();
@@ -460,6 +482,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     };
 
     private updateScreenShares(): void {
+        const prevIds = new Set(this._screenShares.map((s) => s.participantIdentity));
         const shares: ScreenShareInfo[] = [];
 
         // Local screen share
@@ -492,6 +515,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     });
                 }
             }
+        }
+
+        // Play screen share SE based on diff (only while connected)
+        if (this.connected) {
+            const newIds = new Set(shares.map((s) => s.participantIdentity));
+            const added = [...newIds].some((id) => !prevIds.has(id));
+            const removed = [...prevIds].some((id) => !newIds.has(id));
+            if (added) playVcSound(VC_SCREEN_ON_SOUND);
+            else if (removed) playVcSound(VC_SCREEN_OFF_SOUND);
         }
 
         this._screenShares = shares;
@@ -996,9 +1028,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // (publication may still hold a stale track reference at this point,
         // so updateScreenShares() alone would fail to exclude it)
         if (publication.source === Track.Source.ScreenShare) {
+            const had = this._screenShares.some((s) => s.participantIdentity === participant.identity);
             this._screenShares = this._screenShares.filter(
                 (s) => s.participantIdentity !== participant.identity,
             );
+            if (had && this.connected) playVcSound(VC_SCREEN_OFF_SOUND);
             this.emit(CallEvent.ScreenShares, this._screenShares);
             return;
         }

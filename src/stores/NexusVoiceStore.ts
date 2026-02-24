@@ -9,7 +9,7 @@ import { TypedEventEmitter } from "matrix-js-sdk/src/matrix";
 import { type Room } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
-import { NexusVoiceConnection, playVcSound, VC_STANDBY_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
+import { NexusVoiceConnection, playVcSound, VC_STANDBY_SOUND, VC_JOIN_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
 import { CallStore, CallStoreEvent } from "./CallStore";
 import { ConnectionState } from "../models/Call";
 import { MatrixClientPeg } from "../MatrixClientPeg";
@@ -133,6 +133,14 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
             if (this._preMicMuted) {
                 connection.setMicMuted(true);
             }
+            // Unmute audio pipelines now that Connected state is set.
+            // During connect(), output/input gain are kept at 0 so that
+            // audio doesn't flow before the UI grayout is removed.
+            connection.unmutePipelines();
+            // Play join SE explicitly — onMembershipsChanged count-based
+            // detection is unreliable because updateParticipants() includes
+            // self via fallback before membership arrives.
+            playVcSound(VC_JOIN_SOUND);
         } catch (e) {
             logger.error("Failed to join voice channel", e);
             // Clean up on failure
@@ -154,6 +162,13 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
 
         const connection = this.activeConnection;
         const roomId = connection.roomId;
+
+        // Sync mic mute state so it persists after disconnect.
+        // Without this, muting during a call and then disconnecting
+        // would lose the mute state because _preMicMuted only gets
+        // toggled in the else branch of toggleMic() (when not connected).
+        this._preMicMuted = connection.isMicMuted;
+        this.emit(NexusVoiceStoreEvent.PreMicMuted, this._preMicMuted);
 
         // Play leave SE immediately for instant feedback
         playVcSound(VC_LEAVE_SOUND);
