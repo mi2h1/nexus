@@ -104,13 +104,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private audioContext: AudioContext | null = null;
     private outputMasterGain: GainNode | null = null;
     private outputParticipantGains = new Map<string, GainNode>();
-    private outputSources = new Map<string, AudioNode>();
-    private outputAudioElements = new Map<string, HTMLAudioElement>();
+    private outputSources = new Map<string, MediaStreamAudioSourceNode>();
+    private outputStreams = new Map<string, MediaStream>(); // prevent GC
     private participantVolumes = new Map<string, number>(); // 0-1.0
     // ─── Screen share audio pipeline ─────────────────────────
     private screenShareGains = new Map<string, GainNode>();
-    private screenShareSources = new Map<string, AudioNode>();
-    private screenShareAudioElements = new Map<string, HTMLAudioElement>();
+    private screenShareSources = new Map<string, MediaStreamAudioSourceNode>();
+    private screenShareStreams = new Map<string, MediaStream>(); // prevent GC
     private screenShareVolumes = new Map<string, number>(); // 0-1.0
     private analyserNode: AnalyserNode | null = null;
     private inputGainNode: GainNode | null = null;
@@ -806,35 +806,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._inputLevel = 0;
         this._voiceGateOpen = true;
 
-        // Close output audio nodes + <audio> elements
+        // Close output audio nodes
         this.outputMasterGain = null;
-        for (const el of this.outputAudioElements.values()) {
-            el.srcObject = null;
-            el.remove();
-        }
-        this.outputAudioElements.clear();
-        for (const source of this.outputSources.values()) {
-            source.disconnect();
-        }
+        for (const source of this.outputSources.values()) source.disconnect();
         this.outputSources.clear();
-        for (const gain of this.outputParticipantGains.values()) {
-            gain.disconnect();
-        }
+        this.outputStreams.clear();
+        for (const gain of this.outputParticipantGains.values()) gain.disconnect();
         this.outputParticipantGains.clear();
 
-        // Close screen share audio nodes + <audio> elements
-        for (const el of this.screenShareAudioElements.values()) {
-            el.srcObject = null;
-            el.remove();
-        }
-        this.screenShareAudioElements.clear();
-        for (const source of this.screenShareSources.values()) {
-            source.disconnect();
-        }
+        // Close screen share audio nodes
+        for (const source of this.screenShareSources.values()) source.disconnect();
         this.screenShareSources.clear();
-        for (const gain of this.screenShareGains.values()) {
-            gain.disconnect();
-        }
+        this.screenShareStreams.clear();
+        for (const gain of this.screenShareGains.values()) gain.disconnect();
         this.screenShareGains.clear();
 
         // Stop local screen share
@@ -874,26 +858,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Private: Remote Audio ───────────────────────────────
 
-    /** Stop and remove an <audio> element from a map. */
-    private cleanupAudioElement(map: Map<string, HTMLAudioElement>, key: string): void {
-        const el = map.get(key);
-        if (el) {
-            el.pause();
-            el.srcObject = null;
-            el.remove();
-            map.delete(key);
-        }
-    }
-
-    /** Disconnect and remove an AudioNode from a map. */
-    private cleanupAudioNode(map: Map<string, AudioNode>, key: string): void {
-        const node = map.get(key);
-        if (node) {
-            node.disconnect();
-            map.delete(key);
-        }
-    }
-
     private onTrackSubscribed = (
         track: RemoteTrackPublication["track"],
         publication: RemoteTrackPublication,
@@ -912,21 +876,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.updateScreenShares();
             if (!this.audioContext || !this.outputMasterGain) return;
             try {
-                // Order matters: createMediaElementSource MUST be called
-                // before srcObject/play() so that audio never leaks to
-                // speakers directly — it all goes through GainNodes.
-                const audioEl = document.createElement("audio");
-                const source = this.audioContext.createMediaElementSource(audioEl);
-                audioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
-                audioEl.play().catch(() => {});
-
+                // MediaStream is stored in screenShareStreams to prevent GC —
+                // if the wrapper is collected, the source node goes silent.
+                const mediaStream = new MediaStream([track.mediaStreamTrack]);
+                const source = this.audioContext.createMediaStreamSource(mediaStream);
                 const gain = this.audioContext.createGain();
                 gain.gain.value = this.screenShareVolumes.get(participant.identity) ?? 1;
                 source.connect(gain);
                 gain.connect(this.outputMasterGain);
+                this.screenShareStreams.set(participant.identity, mediaStream);
                 this.screenShareSources.set(participant.identity, source);
                 this.screenShareGains.set(participant.identity, gain);
-                this.screenShareAudioElements.set(participant.identity, audioEl);
+                if (this.audioContext.state === "suspended") {
+                    this.audioContext.resume().catch(() => {});
+                }
             } catch (e) {
                 logger.warn("onTrackSubscribed (ScreenShareAudio) error:", e);
             }
@@ -937,13 +900,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.audioContext || !this.outputMasterGain) return;
 
         try {
-            // Order matters: createMediaElementSource MUST be called
-            // before srcObject/play() so that audio never leaks to
-            // speakers directly — it all goes through GainNodes.
-            const audioEl = document.createElement("audio");
-            const source = this.audioContext.createMediaElementSource(audioEl);
-            audioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
-            audioEl.play().catch(() => {});
+            // MediaStream is stored in outputStreams to prevent GC —
+            // if the wrapper is collected, the source node goes silent.
+            const mediaStream = new MediaStream([track.mediaStreamTrack]);
+            const source = this.audioContext.createMediaStreamSource(mediaStream);
 
             // Per-participant gain node
             const participantGain = this.audioContext.createGain();
@@ -951,9 +911,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             source.connect(participantGain);
             participantGain.connect(this.outputMasterGain);
 
+            this.outputStreams.set(participant.identity, mediaStream);
             this.outputParticipantGains.set(participant.identity, participantGain);
             this.outputSources.set(participant.identity, source);
-            this.outputAudioElements.set(participant.identity, audioEl);
+
+            if (this.audioContext.state === "suspended") {
+                this.audioContext.resume().catch(() => {});
+            }
         } catch (e) {
             logger.warn("onTrackSubscribed error:", e);
         }
@@ -972,21 +936,25 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             return;
         }
 
-        // Handle screen share audio — clean up Web Audio nodes + <audio>
+        // Handle screen share audio — clean up Web Audio nodes
         if (publication.source === Track.Source.ScreenShareAudio) {
             this.updateScreenShares();
-            this.cleanupAudioElement(this.screenShareAudioElements, participant.identity);
-            this.cleanupAudioNode(this.screenShareSources, participant.identity);
-            this.cleanupAudioNode(this.screenShareGains, participant.identity);
+            const ssSource = this.screenShareSources.get(participant.identity);
+            if (ssSource) { ssSource.disconnect(); this.screenShareSources.delete(participant.identity); }
+            const ssGain = this.screenShareGains.get(participant.identity);
+            if (ssGain) { ssGain.disconnect(); this.screenShareGains.delete(participant.identity); }
+            this.screenShareStreams.delete(participant.identity);
             return;
         }
 
         if (track.kind !== "audio") return;
 
-        // Disconnect and clean up Web Audio nodes + <audio>
-        this.cleanupAudioElement(this.outputAudioElements, participant.identity);
-        this.cleanupAudioNode(this.outputSources, participant.identity);
-        this.cleanupAudioNode(this.outputParticipantGains, participant.identity);
+        // Disconnect and clean up Web Audio nodes
+        const source = this.outputSources.get(participant.identity);
+        if (source) { source.disconnect(); this.outputSources.delete(participant.identity); }
+        const gain = this.outputParticipantGains.get(participant.identity);
+        if (gain) { gain.disconnect(); this.outputParticipantGains.delete(participant.identity); }
+        this.outputStreams.delete(participant.identity);
     };
 
     // ─── Private: Active Speakers ─────────────────────────────
