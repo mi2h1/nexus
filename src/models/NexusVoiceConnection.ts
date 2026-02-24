@@ -419,18 +419,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     public setMicMuted(muted: boolean): void {
-        // Use LiveKit publication mute/unmute to signal remote participants.
-        // The published track is the processed one (not this.localAudioTrack),
-        // so we get it via getTrackPublication(Track.Source.Microphone).
-        const pub = this.livekitRoom?.localParticipant.getTrackPublication(Track.Source.Microphone);
-        if (pub?.track) {
-            if (muted) pub.track.mute();
-            else pub.track.unmute();
-        }
-        if (!muted && this.inputGainNode) {
-            // Restore input gain when unmuting (voice gate may have set it to 0)
-            this.inputGainNode.gain.value =
-                (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+        // Mute via inputGainNode only — do NOT use LiveKit's track.mute()/unmute().
+        // LiveKit's unmute() calls restartTrack() on Firefox when the underlying
+        // MediaStreamTrack is ended, which replaces our AudioContext pipeline track
+        // with a raw getUserMedia track, breaking the pipeline and causing a brief
+        // disconnect visible to remote participants.
+        // With DTX enabled, gain=0 produces silence that Opus encodes efficiently.
+        if (this.inputGainNode) {
+            this.inputGainNode.gain.value = muted
+                ? 0
+                : (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
         }
         this._isMicMuted = muted;
         this._voiceGateOpen = true;
