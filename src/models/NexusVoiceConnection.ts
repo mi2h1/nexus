@@ -874,22 +874,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Private: Remote Audio ───────────────────────────────
 
-    /**
-     * Create a hidden <audio> element and attach a LiveKit track to it.
-     * Using <audio> + MediaElementAudioSourceNode instead of raw
-     * MediaStreamAudioSourceNode avoids GC-related audio dropout and
-     * browser autoplay policy issues.
-     */
-    private createAttachedAudioElement(track: NonNullable<RemoteTrackPublication["track"]>): HTMLAudioElement {
-        const audioEl = document.createElement("audio");
-        // createMediaElementSource will be called BEFORE attach, so that
-        // audio output is captured by Web Audio from the very first sample
-        // and never leaks to speakers directly.
-        // Note: attach() sets srcObject and calls play().
-        track.attach(audioEl);
-        return audioEl;
-    }
-
     private onTrackSubscribed = (
         track: RemoteTrackPublication["track"],
         publication: RemoteTrackPublication,
@@ -908,8 +892,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.updateScreenShares();
             if (!this.audioContext || !this.outputMasterGain) return;
             try {
-                const audioEl = this.createAttachedAudioElement(track);
+                // Create <audio>, capture into Web Audio FIRST, then attach track.
+                // This order ensures audio never plays directly from the element —
+                // it always goes through our GainNode pipeline.
+                const audioEl = document.createElement("audio");
                 const source = this.audioContext.createMediaElementSource(audioEl);
+                track.attach(audioEl);
+
                 const gain = this.audioContext.createGain();
                 gain.gain.value = this.screenShareVolumes.get(participant.identity) ?? 1;
                 source.connect(gain);
@@ -927,11 +916,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.audioContext || !this.outputMasterGain) return;
 
         try {
-            // Use <audio> element + MediaElementAudioSourceNode for reliable
-            // playback. MediaStreamAudioSourceNode can lose audio when the
-            // local MediaStream wrapper is garbage-collected.
-            const audioEl = this.createAttachedAudioElement(track);
+            // Create <audio>, capture into Web Audio FIRST, then attach track.
+            // This order ensures audio never plays directly from the element —
+            // it always goes through our GainNode pipeline for volume control.
+            // Using <audio> + MediaElementAudioSourceNode instead of raw
+            // MediaStreamAudioSourceNode avoids GC-related audio dropout.
+            const audioEl = document.createElement("audio");
             const source = this.audioContext.createMediaElementSource(audioEl);
+            track.attach(audioEl);
 
             // Per-participant gain node
             const participantGain = this.audioContext.createGain();
