@@ -62,6 +62,7 @@ export function NexusParticipantContextMenu({
                         step="0.01"
                         value={volume}
                         onChange={onVolumeChange}
+                        onPointerDown={(e) => (e.target as HTMLElement).setPointerCapture(e.pointerId)}
                     />
                     <span className="nx_ParticipantContextMenu_percent">
                         {Math.round(volume * 100)}%
@@ -124,6 +125,7 @@ export function NexusScreenShareContextMenu({
                         step="0.01"
                         value={volume}
                         onChange={onVolumeChange}
+                        onPointerDown={(e) => (e.target as HTMLElement).setPointerCapture(e.pointerId)}
                     />
                     <span className="nx_ParticipantContextMenu_percent">
                         {Math.round(volume * 100)}%
