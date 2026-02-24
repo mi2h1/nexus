@@ -126,6 +126,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private static readonly VOICE_GATE_RELEASE_MS = 300;
     private participantRetryTimer: ReturnType<typeof setInterval> | null = null;
 
+    // ─── Volume persistence keys ──────────────────────────────
+    private static readonly PARTICIPANT_VOLUMES_KEY = "nexus_participant_volumes";
+    private static readonly SCREENSHARE_VOLUMES_KEY = "nexus_screenshare_volumes";
+
     public constructor(
         public readonly room: Room,
         private readonly client: MatrixClient,
@@ -520,6 +524,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (gain) {
             gain.gain.value = clamped;
         }
+        this.persistVolume(NexusVoiceConnection.PARTICIPANT_VOLUMES_KEY, userId, clamped);
     }
 
     /**
@@ -528,8 +533,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      */
     public getParticipantVolume(userId: string): number {
         const identity = this.findIdentityForUserId(userId);
-        if (!identity) return 1;
-        return this.participantVolumes.get(identity) ?? 1;
+        if (identity) {
+            const vol = this.participantVolumes.get(identity);
+            if (vol !== undefined) return vol;
+        }
+        return this.loadPersistedVolume(NexusVoiceConnection.PARTICIPANT_VOLUMES_KEY, userId) ?? 1;
     }
 
     // ─── Public: Per-screen-share volume ─────────────────────
@@ -545,6 +553,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (gain) {
             gain.gain.value = clamped;
         }
+        // Persist by resolved userId (stable across sessions)
+        const userId = this.resolveIdentityToUserId(participantIdentity);
+        if (userId) this.persistVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, userId, clamped);
     }
 
     /**
@@ -552,7 +563,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * Returns 1 if not set.
      */
     public getScreenShareVolume(participantIdentity: string): number {
-        return this.screenShareVolumes.get(participantIdentity) ?? 1;
+        const vol = this.screenShareVolumes.get(participantIdentity);
+        if (vol !== undefined) return vol;
+        const userId = this.resolveIdentityToUserId(participantIdentity);
+        if (userId) return this.loadPersistedVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, userId) ?? 1;
+        return 1;
     }
 
     // ─── Public: Audio pipeline accessors ──────────────────────
@@ -881,7 +896,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const mediaStream = new MediaStream([track.mediaStreamTrack]);
                 const source = this.audioContext.createMediaStreamSource(mediaStream);
                 const gain = this.audioContext.createGain();
-                gain.gain.value = this.screenShareVolumes.get(participant.identity) ?? 1;
+                // Restore persisted volume if available
+                const ssUserId = this.resolveIdentityToUserId(participant.identity);
+                const ssSavedVol = ssUserId
+                    ? this.loadPersistedVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, ssUserId)
+                    : null;
+                const ssInitialVol = ssSavedVol ?? this.screenShareVolumes.get(participant.identity) ?? 1;
+                gain.gain.value = ssInitialVol;
+                if (ssSavedVol !== null) this.screenShareVolumes.set(participant.identity, ssSavedVol);
                 source.connect(gain);
                 gain.connect(this.outputMasterGain);
                 this.screenShareStreams.set(participant.identity, mediaStream);
@@ -905,9 +927,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const mediaStream = new MediaStream([track.mediaStreamTrack]);
             const source = this.audioContext.createMediaStreamSource(mediaStream);
 
-            // Per-participant gain node
+            // Per-participant gain node — restore persisted volume if available
             const participantGain = this.audioContext.createGain();
-            participantGain.gain.value = this.participantVolumes.get(participant.identity) ?? 1;
+            const resolvedUserId = this.resolveIdentityToUserId(participant.identity);
+            const savedVol = resolvedUserId
+                ? this.loadPersistedVolume(NexusVoiceConnection.PARTICIPANT_VOLUMES_KEY, resolvedUserId)
+                : null;
+            const initialVol = savedVol ?? this.participantVolumes.get(participant.identity) ?? 1;
+            participantGain.gain.value = initialVol;
+            if (savedVol !== null) this.participantVolumes.set(participant.identity, savedVol);
             source.connect(participantGain);
             participantGain.connect(this.outputMasterGain);
 
@@ -982,6 +1010,30 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         return null;
+    }
+
+    // ─── Private: Volume persistence ─────────────────────────
+
+    private persistVolume(storageKey: string, userId: string, volume: number): void {
+        try {
+            const raw = localStorage.getItem(storageKey);
+            const map = raw ? JSON.parse(raw) : {};
+            map[userId] = volume;
+            localStorage.setItem(storageKey, JSON.stringify(map));
+        } catch {
+            // Ignore storage errors
+        }
+    }
+
+    private loadPersistedVolume(storageKey: string, userId: string): number | null {
+        try {
+            const raw = localStorage.getItem(storageKey);
+            if (!raw) return null;
+            const map = JSON.parse(raw);
+            return typeof map[userId] === "number" ? map[userId] : null;
+        } catch {
+            return null;
+        }
     }
 
     private onActiveSpeakersChanged = (speakers: Participant[]): void => {

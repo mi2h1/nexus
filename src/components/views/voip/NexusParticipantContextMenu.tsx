@@ -5,12 +5,29 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useState, useCallback, type JSX } from "react";
+import React, { useState, useCallback, useEffect, useRef, type JSX } from "react";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 
 import ContextMenu, { ChevronFace } from "../../structures/ContextMenu";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
 import type { ScreenShareInfo } from "../../../models/Call";
+
+/**
+ * Close the menu when clicking outside. We use our own handler instead of
+ * ContextMenu's `hasBackground` overlay because Firefox dispatches mouse
+ * events from range-input drags to the overlay, closing the menu.
+ */
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void): void {
+    useEffect(() => {
+        const handler = (e: MouseEvent): void => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                onClose();
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [ref, onClose]);
+}
 
 interface NexusParticipantContextMenuProps {
     member: RoomMember;
@@ -31,6 +48,9 @@ export function NexusParticipantContextMenu({
     const conn = NexusVoiceStore.instance.getActiveConnection();
     const initialVolume = conn?.getParticipantVolume(member.userId) ?? 1;
     const [volume, setVolume] = useState(initialVolume);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useClickOutside(menuRef, onFinished);
 
     const onVolumeChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,8 +68,9 @@ export function NexusParticipantContextMenu({
             top={top}
             onFinished={onFinished}
             managed={false}
+            hasBackground={false}
         >
-            <div className="nx_ParticipantContextMenu">
+            <div className="nx_ParticipantContextMenu" ref={menuRef}>
                 <div className="nx_ParticipantContextMenu_label">
                     {member.name} の音量
                 </div>
@@ -62,7 +83,6 @@ export function NexusParticipantContextMenu({
                         step="0.01"
                         value={volume}
                         onChange={onVolumeChange}
-                        onPointerDown={(e) => (e.target as HTMLElement).setPointerCapture(e.pointerId)}
                     />
                     <span className="nx_ParticipantContextMenu_percent">
                         {Math.round(volume * 100)}%
@@ -94,6 +114,9 @@ export function NexusScreenShareContextMenu({
     const conn = NexusVoiceStore.instance.getActiveConnection();
     const initialVolume = conn?.getScreenShareVolume(share.participantIdentity) ?? 1;
     const [volume, setVolume] = useState(initialVolume);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useClickOutside(menuRef, onFinished);
 
     const onVolumeChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,8 +134,9 @@ export function NexusScreenShareContextMenu({
             top={top}
             onFinished={onFinished}
             managed={false}
+            hasBackground={false}
         >
-            <div className="nx_ParticipantContextMenu">
+            <div className="nx_ParticipantContextMenu" ref={menuRef}>
                 <div className="nx_ParticipantContextMenu_label">
                     {share.participantName} の配信音量
                 </div>
@@ -125,7 +149,6 @@ export function NexusScreenShareContextMenu({
                         step="0.01"
                         value={volume}
                         onChange={onVolumeChange}
-                        onPointerDown={(e) => (e.target as HTMLElement).setPointerCapture(e.pointerId)}
                     />
                     <span className="nx_ParticipantContextMenu_percent">
                         {Math.round(volume * 100)}%
