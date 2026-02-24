@@ -26,10 +26,9 @@ import {
     type Participant,
     type RemoteTrackPublication,
     type RemoteParticipant,
-    type LocalAudioTrack,
-    type LocalVideoTrack,
+    LocalAudioTrack,
+    LocalVideoTrack,
     createLocalAudioTrack,
-    createLocalScreenTracks,
     Track,
     ScreenSharePresets,
     VideoPreset,
@@ -441,36 +440,29 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const preset = this.getScreenSharePreset();
 
         try {
-            // Try with audio first. Chrome only supports audio capture
-            // from browser tabs — sharing a window/screen throws
-            // NotReadableError for the audio source. In that case,
-            // fall back to video-only (picker reopens without audio).
-            let tracks;
-            try {
-                tracks = await createLocalScreenTracks({
-                    audio: true,
-                    contentHint: "motion",
-                });
-            } catch (audioErr) {
-                if (audioErr instanceof DOMException && audioErr.name === "NotReadableError") {
-                    logger.info("Screen share audio unavailable, falling back to video-only");
-                    tracks = await createLocalScreenTracks({
-                        audio: false,
-                        contentHint: "motion",
-                    });
-                } else {
-                    throw audioErr;
-                }
-            }
-            for (const track of tracks) {
-                if (track.kind === "video") {
-                    this.localScreenTrack = track as LocalVideoTrack;
-                } else if (track.kind === "audio") {
-                    this.localScreenAudioTrack = track as LocalAudioTrack;
-                }
-            }
+            // Call getDisplayMedia directly instead of livekit's
+            // createLocalScreenTracks. This lets us gracefully handle
+            // audio capture failure (NotReadableError) without losing
+            // the video track or reopening the screen picker.
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    width: { ideal: preset.width },
+                    height: { ideal: preset.height },
+                    frameRate: { ideal: preset.fps },
+                },
+                audio: true,
+            });
 
-            if (this.localScreenTrack) {
+            const videoMst = stream.getVideoTracks()[0];
+            const audioMst = stream.getAudioTracks()[0];
+
+            if (videoMst) {
+                // userProvidedTrack=true — we manage the track lifecycle
+                this.localScreenTrack = new LocalVideoTrack(videoMst, undefined, true);
+                // Set content hint for motion (screen share / games)
+                if (videoMst.contentHint !== "motion") {
+                    videoMst.contentHint = "motion";
+                }
                 await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
                     source: Track.Source.ScreenShare,
                     videoCodec: "vp9",
@@ -485,10 +477,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 this.localScreenTrack.mediaStreamTrack.addEventListener("ended", this.onLocalScreenTrackEnded);
             }
 
-            if (this.localScreenAudioTrack) {
+            if (audioMst) {
+                this.localScreenAudioTrack = new LocalAudioTrack(audioMst, undefined, true);
                 await this.livekitRoom.localParticipant.publishTrack(this.localScreenAudioTrack, {
                     source: Track.Source.ScreenShareAudio,
                 });
+                logger.info("Screen share audio captured");
+            } else {
+                logger.info("Screen share started without audio (not available for this source)");
             }
 
             this._isScreenSharing = true;
