@@ -1,5 +1,40 @@
 /* Black theme — pure #000 base, darker than dark */
-/* Overrides dark theme variables with deeper blacks */
+
+/* =============================== */
+/* Compound design token overrides */
+/* Specificity 0,3,0 > npm's 0,2,0 — guaranteed to win */
+/* =============================== */
+.cpd-theme-dark.cpd-theme-dark.cpd-theme-black {
+    /* Base background */
+    --cpd-color-theme-bg: #000000;
+
+    /* Gray scale — shifted darker */
+    --cpd-color-gray-100: #050505;
+    --cpd-color-gray-200: #0a0a0a;
+    --cpd-color-gray-300: #0f0f0f;
+    --cpd-color-gray-400: #161616;
+    --cpd-color-gray-500: #1c1c1c;
+    --cpd-color-gray-600: #242424;
+    --cpd-color-gray-700: #333333;
+    --cpd-color-gray-800: #4a4a4a;
+    /* 900+ are text/icon colors — keep original for readability */
+
+    /* Alpha gray — slightly more transparent for deeper blacks */
+    --cpd-color-alpha-gray-100: hsla(0, 0%, 86%, 0.02);
+    --cpd-color-alpha-gray-200: hsla(0, 0%, 82%, 0.03);
+    --cpd-color-alpha-gray-300: hsla(0, 0%, 90%, 0.05);
+    --cpd-color-alpha-gray-400: hsla(0, 0%, 93%, 0.08);
+    --cpd-color-alpha-gray-500: hsla(0, 0%, 97%, 0.12);
+    --cpd-color-alpha-gray-600: hsla(0, 0%, 95%, 0.16);
+
+    /* Semantic overrides that reference gray */
+    --cpd-color-bg-canvas-default-level-1: var(--cpd-color-gray-300);
+    --cpd-color-bg-subtle-secondary-level-0: var(--cpd-color-theme-bg);
+}
+
+/* =============================== */
+/* PostCSS variable overrides      */
+/* =============================== */
 
 /* Core backgrounds */
 $background: #000000;
@@ -68,6 +103,10 @@ $authpage-modal-content-with-blur-bg-color: rgba(0, 0, 0, 0.75);
 
 /* Toggle switch */
 $togglesw-off-color: #1a1a1a;
+
+/* =============================== */
+/* CSS rule overrides               */
+/* =============================== */
 
 /* Markdown table rows */
 .mx_EventTile_content .markdown-body {

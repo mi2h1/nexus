@@ -362,7 +362,7 @@ export async function setTheme(theme?: string): Promise<void> {
      * This will automatically refresh the colour scales based on the OS or user
      * preferences
      */
-    document.body.classList.remove("cpd-theme-light", "cpd-theme-dark", "cpd-theme-light-hc", "cpd-theme-dark-hc");
+    document.body.classList.remove("cpd-theme-light", "cpd-theme-dark", "cpd-theme-light-hc", "cpd-theme-dark-hc", "cpd-theme-black");
 
     let compoundThemeClassName = `cpd-theme-` + (stylesheetName.includes("light") ? "light" : "dark");
     // Always respect user OS preference!
@@ -371,6 +371,11 @@ export async function setTheme(theme?: string): Promise<void> {
     }
 
     document.body.classList.add(compoundThemeClassName);
+
+    // Black theme: add extra class for Compound token overrides
+    if (stylesheetName === "black") {
+        document.body.classList.add("cpd-theme-black");
+    }
 
     return new Promise((resolve, reject) => {
         const switchTheme = function (): void {
