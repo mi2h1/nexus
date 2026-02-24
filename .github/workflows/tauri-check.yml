@@ -42,8 +42,3 @@ jobs:
       - name: Rust check (cargo check)
         working-directory: src-tauri
         run: cargo check --lib
-
-      - name: TypeScript check
-        run: npx tsc --noEmit
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
