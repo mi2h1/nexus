@@ -1,0 +1,101 @@
+/* Black theme — pure #000 base, darker than dark */
+/* Overrides dark theme variables with deeper blacks */
+
+/* Core backgrounds */
+$background: #000000;
+$system: #0a0a0a;
+$panels: #0d0d0d;
+$panel-actions: rgba(255, 255, 255, 0.05);
+$overlay-background: rgba(0, 0, 0, 0.85);
+$system-transparent: #0a0a0a00;
+
+/* RoomList */
+$roomlist-bg-color: rgba(5, 5, 5, 0.95);
+$roomsublist-skeleton-ui-bg: linear-gradient(180deg, #000000 0%, #00000000 100%);
+
+/* Panels */
+$header-panel-bg-color: #0d0d0d;
+$header-panel-bg-hover: #1a1a1a;
+$dark-panel-bg-color: #0d0d0d;
+$spacePanel-bg-color: rgba(5, 5, 8, 0.95);
+$panel-gradient: rgba(0, 0, 0, 0), rgba(0, 0, 0, 1);
+
+/* Highlight / selection */
+$room-highlight-color: #1a1a1a;
+$focus-bg-color: #1a1a1a;
+$selected-color: #1a1a1a;
+$event-selected-color: #111111;
+$event-highlight-bg-color: #141410;
+
+/* Inputs */
+$input-darker-bg-color: #0a0a0a;
+$input-border-color: rgba(231, 231, 231, 0.12);
+
+/* Code blocks */
+$codeblock-background-color: #0d0d0d;
+$inlinecode-background-color: #0a0a0a;
+
+/* Menu */
+$menu-border-color: #000000;
+$menu-bg-color: #0d0d0d;
+$menu-box-shadow-color: #000000;
+$menu-selected-color: #1a1a1a;
+
+/* Message action bar */
+$message-action-bar-bg-color: #0d0d0d;
+
+/* Widget */
+$widget-menu-bar-bg-color: #0d0d0d;
+$widget-body-bg-color: rgba(255, 255, 255, 0.05);
+
+/* Tooltip */
+$tooltip-timeline-bg-color: rgba(5, 5, 8, 0.95);
+
+/* Room header */
+$roomheader-addroom-bg-color: rgba(92, 100, 112, 0.2);
+
+/* Breadcrumb */
+$breadcrumb-placeholder-bg-color: #111111;
+
+/* Scrollbar */
+$scrollbar-thumb-color: rgba(255, 255, 255, 0.15);
+
+/* Composer */
+$composer-shadow-color: rgba(0, 0, 0, 0.5);
+
+/* Auth page */
+$authpage-modal-content-with-blur-bg-color: rgba(0, 0, 0, 0.75);
+
+/* Toggle switch */
+$togglesw-off-color: #1a1a1a;
+
+/* Markdown table rows */
+.mx_EventTile_content .markdown-body {
+    table {
+        tr {
+            background-color: #000000;
+        }
+
+        tr:nth-child(2n) {
+            background-color: #050505;
+        }
+    }
+}
+
+/* Splash Page Gradient — subtler for black */
+.mx_SplashPage::before {
+    background-image:
+        radial-gradient(53.85% 66.75% at 87.55% 0%, hsla(0deg, 0%, 8%, 0.15) 0%, hsla(250deg, 100%, 88%, 0) 100%),
+        radial-gradient(41.93% 41.93% at 0% 0%, hsla(0deg, 0%, 25%, 0.2) 0%, hsla(250deg, 100%, 88%, 0) 100%),
+        radial-gradient(100% 100% at 0% 0%, hsla(250deg, 100%, 88%, 0.15) 0%, hsla(0deg, 100%, 86%, 0) 100%),
+        radial-gradient(106.35% 96.26% at 100% 0%, hsla(25deg, 100%, 88%, 0.2) 0%, hsla(167deg, 76%, 82%, 0) 100%) !important;
+}
+
+/* Blur for left panel */
+:root {
+    --lp-background-blur: 45px;
+}
+
+body {
+    color-scheme: dark;
+}

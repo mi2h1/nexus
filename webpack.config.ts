@@ -62,6 +62,7 @@ const cssThemes = {
     "theme-dark": "./res/themes/dark/css/dark.pcss",
     "theme-light-custom": "./res/themes/light-custom/css/light-custom.pcss",
     "theme-dark-custom": "./res/themes/dark-custom/css/dark-custom.pcss",
+    "theme-black": "./res/themes/black/css/black.pcss",
 };
 
 // See docs/customisations.md

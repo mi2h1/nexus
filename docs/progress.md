@@ -59,9 +59,46 @@ nexus/                          # element-web フォーク
 │       ├── _NexusScreenShareView.pcss
 │       ├── _NexusScreenSharePip.pcss
 │       └── _NexusParticipantContextMenu.pcss
+├── src-tauri/                  # Tauri 2 Rust バックエンド
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   ├── capabilities/default.json
+│   └── src/{main,lib}.rs
 ├── config.json                 # アプリ設定（Nexus カスタム）
-└── .github/workflows/pages.yml # GitHub Pages デプロイ
+└── .github/workflows/
+    ├── pages.yml               # GitHub Pages デプロイ
+    └── tauri-release.yml       # Tauri ネイティブビルド + Release
 ```
+
+## Phase 3: Tauri 2 ネイティブ化 🚧 進行中
+
+### 実装済み
+| 機能 | 実装 |
+|------|------|
+| Tauri 2 基本セットアップ | `src-tauri/` — Rust バックエンド + `tauri.conf.json` |
+| TauriPlatform | `WebPlatform` 継承 + 自動更新（`tauri-plugin-updater`） |
+| CORS バイパス | Tauri 時は `tauri-plugin-http` で直接 JWT 取得（プロキシ不要） |
+| >100% ボリューム | `createMediaElementSource()` → per-participant `GainNode` → master `GainNode`(0-2.0) |
+| CI/CD | `tauri-release.yml` — `v*` タグで Windows ビルド + GitHub Release |
+| webpack ポート固定 | devServer port 1420（Tauri devUrl 互換） |
+| プラットフォーム検出 | `window.__TAURI_INTERNALS__` → `TauriPlatform` 自動選択 |
+| ログイン画面修正 | ロゴ白色化 + 「Nexusにようこそ」テキスト |
+
+### 未実装（Phase 3.x）
+| 機能 | 難易度 | 優先度 | 備考 |
+|------|--------|--------|------|
+| システムトレイ常駐 | 低 | 高 | `TrayIconBuilder` API |
+| VC 品質インジケーター | 低 | 高 | 既存 `getStats()` を UI に表示 |
+| AGC（自動ゲイン制御） | 低 | 高 | Web Audio パイプラインに追加 |
+| VAD 改善 | 低 | 中 | RNNoise の VAD 出力を活用 |
+| Opus 動的ビットレート | 中 | 中 | 接続品質に応じて 32〜128kbps |
+| DTLN ノイズキャンセリング | 高 | 中 | Rust→WASM、RNNoise より高品質 |
+| WASAPI 画面共有音声 | 高 | 中 | Rust 側でシステム音声キャプチャ |
+| Windows 自動音量低下バイパス | 中 | 低 | Windows API で auto-ducking 無効化 |
+| エコーキャンセレーション強化 | 高 | 低 | `webrtc-audio-processing` クレート |
+| ブラックテーマ | 低 | 低 | #000 ベースのダークテーマ追加 |
+
+---
 
 ## Phase 2.5: 通話機能の内包 ✅ 完了
 
