@@ -15,6 +15,7 @@ import { useNexusActiveSpeakers } from "../../../../hooks/useNexusActiveSpeakers
 import { useNexusParticipantStates } from "../../../../hooks/useNexusParticipantStates";
 import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import MemberAvatar from "../../avatars/MemberAvatar";
+import InlineSpinner from "../../elements/InlineSpinner";
 import { NexusParticipantContextMenu } from "../../voip/NexusParticipantContextMenu";
 
 interface VoiceChannelParticipantsProps {
@@ -33,7 +34,7 @@ interface VoiceChannelParticipantsProps {
  */
 export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsProps): JSX.Element | null {
     const client = useMatrixClientContext();
-    const { members } = useVCParticipants(roomId);
+    const { members, transitioningIds } = useVCParticipants(roomId);
     const activeSpeakers = useNexusActiveSpeakers();
     const participantStates = useNexusParticipantStates();
     const myUserId = client.getUserId();
@@ -47,6 +48,7 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
                     key={member.userId}
                     member={member}
                     isSpeaking={activeSpeakers.has(member.userId)}
+                    isTransitioning={transitioningIds.has(member.userId)}
                     participantState={participantStates.get(member.userId)}
                     myUserId={myUserId}
                 />
@@ -58,11 +60,13 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
 function VoiceChannelParticipantItem({
     member,
     isSpeaking,
+    isTransitioning,
     participantState,
     myUserId,
 }: {
     member: RoomMember;
     isSpeaking: boolean;
+    isTransitioning: boolean;
     participantState?: { isMuted: boolean; isScreenSharing: boolean };
     myUserId: string | null;
 }): JSX.Element {
@@ -71,34 +75,43 @@ function VoiceChannelParticipantItem({
     const onContextMenu = useCallback(
         (e: React.MouseEvent): void => {
             if (myUserId && member.userId === myUserId) return;
+            if (isTransitioning) return;
             e.preventDefault();
             setMenuPos({ left: e.clientX, top: e.clientY });
         },
-        [myUserId, member.userId],
+        [myUserId, member.userId, isTransitioning],
     );
 
     const onMenuFinished = useCallback((): void => {
         setMenuPos(null);
     }, []);
 
+    const itemClass = classNames("mx_VoiceChannelParticipants_item", {
+        "mx_VoiceChannelParticipants_item--transitioning": isTransitioning,
+    });
+
     const avatarClass = classNames("mx_VoiceChannelParticipants_avatar", {
-        "mx_VoiceChannelParticipants_avatar--speaking": isSpeaking,
+        "mx_VoiceChannelParticipants_avatar--speaking": isSpeaking && !isTransitioning,
     });
 
     return (
-        <div className="mx_VoiceChannelParticipants_item" onContextMenu={onContextMenu}>
+        <div className={itemClass} onContextMenu={onContextMenu}>
             <div className={avatarClass}>
-                <MemberAvatar member={member} size="20px" hideTitle />
+                {isTransitioning ? (
+                    <InlineSpinner size={20} />
+                ) : (
+                    <MemberAvatar member={member} size="20px" hideTitle />
+                )}
             </div>
             <span className="mx_VoiceChannelParticipants_name">{member.name}</span>
-            {participantState?.isMuted && (
+            {!isTransitioning && participantState?.isMuted && (
                 <MicOffSolidIcon
                     className="mx_VoiceChannelParticipants_muteIcon"
                     width={14}
                     height={14}
                 />
             )}
-            {participantState?.isScreenSharing && (
+            {!isTransitioning && participantState?.isScreenSharing && (
                 <span className="mx_VoiceChannelParticipants_sharingBadge">配信中</span>
             )}
             {menuPos && (
