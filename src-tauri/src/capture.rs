@@ -142,7 +142,7 @@ mod platform {
             let height = frame.height();
 
             // Get frame buffer
-            let buffer = frame.buffer()?;
+            let mut buffer = frame.buffer()?;
             let raw = buffer.as_raw_buffer();
 
             // Convert BGRA → RGB for turbojpeg
