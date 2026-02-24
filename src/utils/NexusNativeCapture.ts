@@ -9,7 +9,7 @@ Please see LICENSE files in the repository root for full details.
  * Native capture pipeline: converts Rust-side DXGI/WASAPI capture data
  * (received as Tauri events) into MediaStreamTracks for LiveKit publishing.
  *
- * Video: JPEG frames → createImageBitmap → OffscreenCanvas → captureStream()
+ * Video: JPEG frames → createImageBitmap → HTMLCanvasElement → captureStream()
  * Audio: f32 PCM → AudioWorklet (ScriptProcessorNode fallback) → MediaStream
  */
 
@@ -37,20 +37,26 @@ interface AudioPayload {
 
 /**
  * Receives JPEG frames from Rust via Tauri events, decodes them onto
- * an OffscreenCanvas, and exposes a captureStream() MediaStream.
+ * a hidden HTMLCanvasElement, and exposes a captureStream() MediaStream.
+ *
+ * We use HTMLCanvasElement instead of OffscreenCanvas because
+ * OffscreenCanvas.captureStream() is not available in WebView2.
  */
 export class NativeVideoCaptureStream {
-    private canvas: OffscreenCanvas;
-    private ctx: OffscreenCanvasRenderingContext2D;
+    private canvas: HTMLCanvasElement;
+    private ctx: CanvasRenderingContext2D;
     private stream: MediaStream;
     private unlisten: (() => void) | null = null;
     private stopped = false;
 
     constructor(initialWidth: number, initialHeight: number, fps: number) {
-        this.canvas = new OffscreenCanvas(initialWidth || 1920, initialHeight || 1080);
+        this.canvas = document.createElement("canvas");
+        this.canvas.width = initialWidth || 1920;
+        this.canvas.height = initialHeight || 1080;
+        this.canvas.style.display = "none";
+        document.body.appendChild(this.canvas);
         this.ctx = this.canvas.getContext("2d")!;
-        // captureStream with target fps
-        this.stream = (this.canvas as any).captureStream(fps) as MediaStream;
+        this.stream = this.canvas.captureStream(fps);
     }
 
     async start(): Promise<void> {
@@ -103,6 +109,7 @@ export class NativeVideoCaptureStream {
         for (const track of this.stream.getTracks()) {
             track.stop();
         }
+        this.canvas.remove();
     }
 }
 
