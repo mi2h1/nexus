@@ -125,43 +125,61 @@ export class NativeVideoCaptureStream {
 export class NativeAudioCaptureStream {
     private audioContext: AudioContext;
     private scriptProcessor: ScriptProcessorNode;
+    private silentSource: OscillatorNode;
+    private silentGain: GainNode;
     private destination: MediaStreamAudioDestinationNode;
     private ringBuffer: Float32Array;
     private writePos = 0;
     private readPos = 0;
     private bufferSize: number;
+    private channelCount: number;
     private unlisten: (() => void) | null = null;
     private stopped = false;
+    private dataReceived = false;
 
     constructor(sampleRate = 48000, channels = 2) {
+        this.channelCount = channels;
         this.audioContext = new AudioContext({ sampleRate });
         // Ring buffer: 1 second of audio
         this.bufferSize = sampleRate * channels;
         this.ringBuffer = new Float32Array(this.bufferSize);
 
-        // ScriptProcessorNode: 4096 samples buffer, input channels, output channels
-        this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 0, channels);
+        // ScriptProcessorNode needs an active input to fire onaudioprocess in WebView2.
+        // Use a silent oscillator to drive it.
+        this.scriptProcessor = this.audioContext.createScriptProcessor(4096, channels, channels);
         this.destination = this.audioContext.createMediaStreamDestination();
+
+        // Silent driver: oscillator → gain(0) → scriptProcessor → destination
+        this.silentSource = this.audioContext.createOscillator();
+        this.silentGain = this.audioContext.createGain();
+        this.silentGain.gain.value = 0;
+        this.silentSource.connect(this.silentGain);
+        this.silentGain.connect(this.scriptProcessor);
+        this.scriptProcessor.connect(this.destination);
+        this.silentSource.start();
 
         this.scriptProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
             this.fillOutputBuffer(e);
         };
-
-        this.scriptProcessor.connect(this.destination);
     }
 
     async start(): Promise<void> {
         const { listen } = await import("@tauri-apps/api/event");
         const unlisten = await listen<AudioPayload>("capture-audio", (event) => {
             if (this.stopped) return;
+            if (!this.dataReceived) {
+                this.dataReceived = true;
+                logger.info("First audio chunk received from WASAPI");
+            }
             this.writeAudioData(event.payload);
         });
         this.unlisten = unlisten;
 
-        // Resume AudioContext (may be suspended without user gesture)
+        // Resume AudioContext (may be suspended by autoplay policy)
         if (this.audioContext.state === "suspended") {
             await this.audioContext.resume();
         }
+        logger.info(`Audio capture AudioContext state: ${this.audioContext.state}`);
     }
 
     private writeAudioData(payload: AudioPayload): void {
@@ -180,7 +198,6 @@ export class NativeAudioCaptureStream {
         for (let frame = 0; frame < framesNeeded; frame++) {
             for (let ch = 0; ch < channels; ch++) {
                 const channelData = outputBuffer.getChannelData(ch);
-                // Read interleaved: sample index = frame * totalChannels + channel
                 channelData[frame] = this.ringBuffer[this.readPos];
                 this.readPos = (this.readPos + 1) % this.bufferSize;
             }
@@ -198,6 +215,9 @@ export class NativeAudioCaptureStream {
             this.unlisten();
             this.unlisten = null;
         }
+        this.silentSource.stop();
+        this.silentSource.disconnect();
+        this.silentGain.disconnect();
         this.scriptProcessor.disconnect();
         this.destination.disconnect();
         this.audioContext.close().catch(() => {});
