@@ -69,15 +69,16 @@ export const NexusScreenSharePip: React.FC<NexusScreenSharePipProps> = ({
                 muted
             />
             <div className="mx_NexusScreenSharePip_label">{label}</div>
-            <div className="mx_NexusScreenSharePip_stopOverlay">
-                <button
-                    className="mx_NexusScreenSharePip_stopButton"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={onStopClick}
-                >
-                    視聴を停止
-                </button>
-            </div>
+            <button
+                className="mx_NexusScreenSharePip_closeButton"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={onStopClick}
+                aria-label="視聴を停止"
+            >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                    <path d="M1.7 0.3a1 1 0 0 0-1.4 1.4L4.6 6 0.3 10.3a1 1 0 1 0 1.4 1.4L6 7.4l4.3 4.3a1 1 0 0 0 1.4-1.4L7.4 6l4.3-4.3a1 1 0 0 0-1.4-1.4L6 4.6 1.7 0.3z" />
+                </svg>
+            </button>
         </div>
     );
 };

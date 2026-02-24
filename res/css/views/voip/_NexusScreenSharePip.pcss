@@ -35,33 +35,28 @@
     pointer-events: none;
 }
 
-.mx_NexusScreenSharePip_stopOverlay {
+.mx_NexusScreenSharePip_closeButton {
     position: absolute;
-    inset: 0;
+    bottom: var(--cpd-space-2x);
+    right: var(--cpd-space-2x);
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: rgba(0, 0, 0, 0.5);
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    cursor: pointer;
     opacity: 0;
     transition: opacity 0.15s ease;
-    pointer-events: none;
 
     .mx_NexusScreenSharePip:hover & {
         opacity: 1;
-        pointer-events: auto;
     }
-}
-
-.mx_NexusScreenSharePip_stopButton {
-    padding: var(--cpd-space-2x) var(--cpd-space-4x);
-    border: none;
-    border-radius: var(--cpd-space-2x);
-    background-color: var(--cpd-color-bg-critical-primary);
-    color: var(--cpd-color-text-on-solid-primary);
-    font: var(--cpd-font-body-md-semibold);
-    cursor: pointer;
 
     &:hover {
-        filter: brightness(1.1);
+        background-color: var(--cpd-color-bg-critical-primary);
     }
 }
