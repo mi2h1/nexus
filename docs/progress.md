@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-24
+> 最終更新: 2026-02-25
 
 ## リポジトリ情報
 
@@ -73,7 +73,11 @@ nexus/                          # element-web フォーク
 | 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` + 720p30/simulcast エンコーディング |
 | 画面共有オプトイン視聴 | Discord 準拠 — 他者の画面共有はプレビュー+「画面を視聴する」クリックで表示 |
 | Ping/遅延表示 | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
-| 個別音量調整 | `setParticipantVolume()` — `HTMLAudioElement.volume` |
+| 個別音量調整 | `setParticipantVolume()` — Web Audio API GainNode（localStorage 永続化） |
+| 画面共有個別音量調整 | `setScreenShareVolume()` — Web Audio API GainNode（localStorage 永続化） |
+| 画面共有音声 Web Audio ルーティング | ScreenShareAudio を Web Audio パイプライン経由で再生（マスター音量連動） |
+| 画面共有音声オプトイン | 視聴ボタン押下まで gain=0、視聴開始で音声開通 |
+| VC 接続/切断トランジション UI | 接続中/切断中に参加者リストで自分をスピナー+グレーアウト表示 |
 | 入力音量調整 | Web Audio API `GainNode` — 0-200% スライダー |
 | 出力マスター音量 | `setMasterOutputVolume()` — 全リモート参加者の受信音量一括調整 |
 | 入力感度（ボイスゲート） | `AnalyserNode` RMS 計測 → 閾値以下で `GainNode.gain=0`（300ms リリース遅延） |
@@ -89,6 +93,40 @@ nexus/                          # element-web フォーク
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-25
+- **画面共有音声 Web Audio ルーティング**: 画面共有の受信音声を Web Audio API パイプライン経由に変更
+  - `MediaStreamAudioSourceNode` → per-share `GainNode` → `outputMasterGain` → destination
+  - マスター出力音量が画面共有音声にも適用されるように
+  - `MediaStream` 参照を Map に保持して GC による音声消失を防止
+  - `AudioContext` を `livekitRoom.connect()` より前に生成（レースコンディション対策）
+- **画面共有個別音量調整**: 画面共有タイル右クリックで音量スライダー表示
+  - `NexusScreenShareContextMenu` を `NexusParticipantContextMenu.tsx` に追加
+  - `setScreenShareVolume()` / `getScreenShareVolume()` API 追加
+- **音量永続化**: 参加者音量・画面共有音量を `localStorage` に保存
+  - userId ベースで保存（LiveKit identity はセッション間で変わる可能性があるため）
+  - `onTrackSubscribed` 時に保存済み音量を自動復元
+- **Firefox スライダー修正**: `hasBackground={false}` + `useClickOutside` フック
+  - Firefox が range input ドラッグ中に mouse イベントをオーバーレイに発行する問題を回避
+  - `setPointerCapture` は pointer events のみキャプチャし mouse events は漏れるため不採用
+- **画面共有音声オプトイン**: 視聴ボタン押下前は音声をミュート
+  - `watchingScreenShares` セットで視聴状態を管理
+  - `onTrackSubscribed` で ScreenShareAudio の gain を未視聴時は 0 に設定
+  - `setScreenShareWatching()` API で視聴開始/終了時に gain を制御
+- **画面共有終了時のパネル残留修正**: 3重の対策
+  - `onTrackUnsubscribed` で `_screenShares` から直接フィルタリング（publication の stale 参照問題を回避）
+  - ScreenShare ビデオトラックの `ended` イベント監視
+  - `onParticipantDisconnected` で `updateScreenShares()` も呼び出し
+  - `updateScreenShares()` で `readyState === "ended"` なトラックを除外
+- **テキスト統一**: 「共有中」→「配信中」に統一
+- **VC 接続/切断トランジション UI**: Discord 風の接続状態表示
+  - 参加ボタン押下 → 即座にリストに自分を表示（スピナー + opacity 0.5 グレーアウト）
+  - 接続完了 → スピナーがアバターに切替、グレーアウト解除
+  - 終話ボタン押下 → グレーアウト + スピナーに変化
+  - 切断完了 → リストから消える
+  - `useVCParticipants` で `ConnectionState` を購読し `transitioningIds` セットを返す
+  - `leaveVoiceChannel` を `disconnect()` 完了まで await する方式に変更
+  - 遷移中の再参加をブロック（`joinVoiceChannel` で Connecting/Disconnecting 中は return）
 
 #### 2026-02-24
 - **画面共有オプトイン視聴機能**: Discord 準拠の画面共有視聴 UX を実装

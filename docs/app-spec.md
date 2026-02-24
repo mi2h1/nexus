@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-24
+> 最終更新: 2026-02-25
 
 ## 概要
 
@@ -25,7 +25,10 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | E2E 暗号化 | matrix-js-sdk (Olm/Megolm) | 組み込み済み |
 | テキスト/VC チャンネル分離 | Nexus (NexusChannelListView) | 実装済み |
 | VC 参加者グリッド | Nexus (NexusVoiceParticipantGrid) | 実装済み |
-| 個別音量調整 | Nexus (NexusParticipantContextMenu) | 実装済み |
+| 個別音量調整 | Nexus (NexusParticipantContextMenu, localStorage 永続化) | 実装済み |
+| 画面共有個別音量調整 | Nexus (NexusScreenShareContextMenu, localStorage 永続化) | 実装済み |
+| 画面共有音声 Web Audio ルーティング | Nexus (MediaStreamAudioSourceNode → GainNode → masterGain) | 実装済み |
+| VC 接続/切断トランジション | Nexus (スピナー+グレーアウト、再参加ブロック) | 実装済み |
 | 入力/出力音量調整 | Nexus (Web Audio API GainNode) | 実装済み |
 | 入力感度（ボイスゲート） | Nexus (AnalyserNode + GainNode) | 実装済み |
 | 発話検出 | Nexus (ローカル: inputLevel / リモート: LiveKit isSpeaking) | 実装済み |
@@ -91,15 +94,21 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 ```
 NexusVoiceStore (シングルトン)
   └─ NexusVoiceConnection
-       ├─ Web Audio API パイプライン
-       │    ├─ AudioContext
+       ├─ Web Audio API パイプライン（入力）
+       │    ├─ AudioContext（livekitRoom.connect() より前に生成）
        │    ├─ MediaStreamSource (マイク入力)
+       │    ├─ [RnnoiseWorkletNode (ノイズキャンセリング、任意)]
        │    ├─ AnalyserNode (入力レベル監視、50ms ポーリング)
        │    ├─ GainNode (入力音量調整 + ボイスゲート)
        │    └─ MediaStreamDestination → 処理済みトラック
+       ├─ Web Audio API パイプライン（出力）
+       │    ├─ per-participant: MediaStreamAudioSourceNode → GainNode → masterGain
+       │    ├─ per-screenshare: MediaStreamAudioSourceNode → GainNode → masterGain
+       │    ├─ outputMasterGain → audioContext.destination
+       │    ├─ MediaStream 参照を Map で保持（GC 防止）
+       │    └─ 音量は localStorage に永続化（userId ベース）
        ├─ LiveKit Room (livekit-client)
        │    ├─ 処理済みオーディオトラック (GainNode 経由)
-       │    ├─ リモートオーディオ再生 (HTMLAudioElement + マスター音量)
        │    └─ 画面共有トラック (720p30 + 360p15 simulcast, contentHint: detail)
        ├─ MatrixRTC Session (matrix-js-sdk)
        │    └─ メンバーシップ管理 (参加者リスト)
@@ -125,7 +134,7 @@ AudioContext 構築 + publishTrack ← マイクトラック必要なので後
 
 ### SE（効果音）タイミング
 - **入室**: ボタン押下時に standby SE → 接続確立（参加者リスト表示）時に join SE
-- **退室**: ボタン押下時に leave SE → UI 即クリア → バックグラウンドで切断処理
+- **退室**: ボタン押下時に leave SE → スピナー+グレーアウト表示 → 切断完了後にリストから削除
 - **他ユーザー入退室**: MatrixRTC MembershipsChanged イベント時に join/leave SE
 - **ミュート/アンミュート**: トグル時に mute/unmute SE
 
@@ -135,7 +144,7 @@ AudioContext 構築 + publishTrack ← マイクトラック必要なので後
 - **マイク音量** (0-200%): Web Audio API GainNode で入力音量調整
 - **自動ゲイン**: ブラウザの AGC トグル
 - **出力デバイス**: スピーカー選択ドロップダウン
-- **スピーカー音量** (0-200%): 全リモート参加者の HTMLAudioElement.volume 一括調整
+- **スピーカー音量** (0-200%): Web Audio API `outputMasterGain` で全リモート音声一括調整（画面共有音声含む）
 
 入力感度セクション:
 - **ボイスゲート**: AnalyserNode で RMS 計測、閾値以下で GainNode.gain=0（300ms リリース遅延）
@@ -157,9 +166,12 @@ AudioContext 構築 + publishTrack ← マイクトラック必要なので後
 | 自分が画面共有 | `isLocal` で自動 watched → プレビューなし、直接表示 |
 | 他者が画面共有開始 | ボトムバー/グリッドにプレビューオーバーレイ表示 |
 | 「画面を視聴する」クリック | `watchingIds` に追加 → スポットライトに表示 |
-| 画面共有が終了 | `useEffect` で `watchingIds` から自動削除 |
+| 画面共有が終了 | `useEffect` で `watchingIds` から自動削除 + `setScreenShareWatching(false)` |
 
 - **state**: `watchingIds: Set<string>` — 視聴中の画面共有者の `participantIdentity`
+- **音声オプトイン**: `onTrackSubscribed` で ScreenShareAudio の gain を未視聴時は 0 に設定。視聴開始で `setScreenShareWatching(id, true)` → gain 復元
+- **個別音量**: 画面共有タイル右クリックで `NexusScreenShareContextMenu` 表示（`setScreenShareVolume()`）
+- **音量永続化**: `localStorage` に userId ベースで保存、再接続時に自動復元
 - **SpotlightLayout / GridLayout** 両方で同じ UX
 
 ### 画面共有エンコーディング（Discord 準拠）
@@ -173,6 +185,21 @@ AudioContext 構築 + publishTrack ← マイクトラック必要なので後
 | simulcast | h720fps30 + h360fps15 | 低帯域ユーザー向けフォールバック |
 | contentHint | `"detail"` | テキスト/UI の鮮明さ優先 |
 | degradationPreference | `"maintain-resolution"` | 帯域不足時は FPS を落として解像度維持 |
+
+### VC 接続/切断トランジション UI
+
+| 状態 | 参加者リスト表示 | 操作ブロック |
+|------|------------------|-------------|
+| Connecting | 自分をスピナー + opacity 0.5 で表示 | VC クリック無効 |
+| Connected | 通常アバター表示、グレーアウト解除 | — |
+| Disconnecting | 自分をスピナー + opacity 0.5 で表示 | VC クリック無効 |
+| Disconnected | リストから削除 | — |
+
+- **`useVCParticipants`**: `ConnectionState` を購読し `transitioningIds: Set<string>` を返す
+- **`VoiceChannelParticipantItem`**: `isTransitioning` 時にアバターを `InlineSpinner` に差替え
+- **`leaveVoiceChannel`**: `disconnect()` 完了まで await（Disconnecting 中は connection を保持）
+- **`joinVoiceChannel`**: Connecting/Disconnecting 中は早期 return で再参加をブロック
+- **Connected 直後の名前消え防止**: `conn.participants` に自分がまだいない場合も明示的に追加
 
 ## 無効化した機能
 

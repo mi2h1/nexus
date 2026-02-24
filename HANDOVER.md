@@ -184,12 +184,17 @@ jobs:
 - VC ルームビュー: 参加者グリッド + コントロールバー + 画面共有
 - 画面共有: 720p30 エンコーディング + 360p15 simulcast + contentHint: detail（Discord 準拠）
 - 画面共有オプトイン視聴: Discord 準拠（プレビューオーバーレイ + クリックで視聴開始）
+- 画面共有音声: Web Audio API ルーティング（MediaStreamAudioSourceNode → GainNode → masterGain）
+- 画面共有音声オプトイン: 視聴ボタン押下まで gain=0、視聴開始で音声開通
+- 画面共有個別音量: 右クリックメニューで調整（NexusScreenShareContextMenu）
 - VC 接続高速化: JWT取得+マイクアクセス+WASMプリロードを並列実行（最大500ms短縮）
-- 個別音量調整、入力/出力音量調整（2カラム設定UI）、入力感度（ボイスゲート）
+- 個別音量調整（参加者+画面共有）: Web Audio GainNode、localStorage 永続化
+- 入力/出力音量調整（2カラム設定UI）、入力感度（ボイスゲート）
 - 設定画面マイクゲージ: VC未接続時も独立した getUserMedia+AnalyserNode で動作
 - 発話検出（ローカル: 自前 inputLevel / リモート: LiveKit isSpeaking）、Ping 表示
 - 入退室 SE（standby → join → leave）、ミュート/アンミュート SE
 - マイクミュートは `mediaStreamTrack.enabled` 直接操作（処理済みトラック publish のため）
+- VC 接続/切断トランジション UI: スピナー+グレーアウト、再参加ブロック
 - VC 接続高速化の調査・設計ドキュメント: docs/vc-optimization.md
 
 ### Phase 3: 将来のネイティブ化（Tauri 2）
