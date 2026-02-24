@@ -874,22 +874,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Private: Remote Audio ───────────────────────────────
 
-    /**
-     * Create a hidden <audio> element wired to a LiveKit track's MediaStreamTrack.
-     *
-     * We intentionally bypass track.attach() because it calls element.play()
-     * internally, which can produce direct speaker output that bypasses our
-     * Web Audio GainNode pipeline. Instead we manually set srcObject and play.
-     * The caller must call createMediaElementSource() on the returned element
-     * so that all audio is routed exclusively through Web Audio.
-     */
-    private createWebAudioElement(track: NonNullable<RemoteTrackPublication["track"]>): HTMLAudioElement {
-        const audioEl = document.createElement("audio");
-        audioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
-        audioEl.play().catch(() => {});
-        return audioEl;
-    }
-
     /** Stop and remove an <audio> element from a map. */
     private cleanupAudioElement(map: Map<string, HTMLAudioElement>, key: string): void {
         const el = map.get(key);
@@ -928,8 +912,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.updateScreenShares();
             if (!this.audioContext || !this.outputMasterGain) return;
             try {
-                const audioEl = this.createWebAudioElement(track);
+                // Order matters: createMediaElementSource MUST be called
+                // before srcObject/play() so that audio never leaks to
+                // speakers directly — it all goes through GainNodes.
+                const audioEl = document.createElement("audio");
                 const source = this.audioContext.createMediaElementSource(audioEl);
+                audioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
+                audioEl.play().catch(() => {});
+
                 const gain = this.audioContext.createGain();
                 gain.gain.value = this.screenShareVolumes.get(participant.identity) ?? 1;
                 source.connect(gain);
@@ -947,8 +937,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.audioContext || !this.outputMasterGain) return;
 
         try {
-            const audioEl = this.createWebAudioElement(track);
+            // Order matters: createMediaElementSource MUST be called
+            // before srcObject/play() so that audio never leaks to
+            // speakers directly — it all goes through GainNodes.
+            const audioEl = document.createElement("audio");
             const source = this.audioContext.createMediaElementSource(audioEl);
+            audioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
+            audioEl.play().catch(() => {});
 
             // Per-participant gain node
             const participantGain = this.audioContext.createGain();
