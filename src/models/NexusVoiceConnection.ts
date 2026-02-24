@@ -441,10 +441,27 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const preset = this.getScreenSharePreset();
 
         try {
-            const tracks = await createLocalScreenTracks({
-                audio: true,
-                contentHint: "motion",
-            });
+            // Try with audio first. Chrome only supports audio capture
+            // from browser tabs — sharing a window/screen throws
+            // NotReadableError for the audio source. In that case,
+            // fall back to video-only (picker reopens without audio).
+            let tracks;
+            try {
+                tracks = await createLocalScreenTracks({
+                    audio: true,
+                    contentHint: "motion",
+                });
+            } catch (audioErr) {
+                if (audioErr instanceof DOMException && audioErr.name === "NotReadableError") {
+                    logger.info("Screen share audio unavailable, falling back to video-only");
+                    tracks = await createLocalScreenTracks({
+                        audio: false,
+                        contentHint: "motion",
+                    });
+                } else {
+                    throw audioErr;
+                }
+            }
             for (const track of tracks) {
                 if (track.kind === "video") {
                     this.localScreenTrack = track as LocalVideoTrack;
