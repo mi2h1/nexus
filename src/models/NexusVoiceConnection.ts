@@ -907,9 +907,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.updateScreenShares();
             // Listen for track ended to promptly remove stale screen shares
             // (e.g. remote user stops sharing but TrackUnsubscribed is delayed)
+            const identity = participant.identity;
             const onEnded = (): void => {
                 track.mediaStreamTrack.removeEventListener("ended", onEnded);
-                this.updateScreenShares();
+                this._screenShares = this._screenShares.filter(
+                    (s) => s.participantIdentity !== identity,
+                );
+                this.emit(CallEvent.ScreenShares, this._screenShares);
             };
             track.mediaStreamTrack.addEventListener("ended", onEnded);
             return;
@@ -988,15 +992,23 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     ): void => {
         if (!track) return;
 
-        // Handle screen share video track
+        // Handle screen share video track — directly remove from list
+        // (publication may still hold a stale track reference at this point,
+        // so updateScreenShares() alone would fail to exclude it)
         if (publication.source === Track.Source.ScreenShare) {
-            this.updateScreenShares();
+            this._screenShares = this._screenShares.filter(
+                (s) => s.participantIdentity !== participant.identity,
+            );
+            this.emit(CallEvent.ScreenShares, this._screenShares);
             return;
         }
 
         // Handle screen share audio — clean up Web Audio nodes
         if (publication.source === Track.Source.ScreenShareAudio) {
-            this.updateScreenShares();
+            this._screenShares = this._screenShares.filter(
+                (s) => s.participantIdentity !== participant.identity,
+            );
+            this.emit(CallEvent.ScreenShares, this._screenShares);
             const ssSource = this.screenShareSources.get(participant.identity);
             if (ssSource) { ssSource.disconnect(); this.screenShareSources.delete(participant.identity); }
             const ssGain = this.screenShareGains.get(participant.identity);
