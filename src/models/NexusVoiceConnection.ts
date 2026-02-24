@@ -227,6 +227,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.connectionState = ConnectionState.Connecting;
 
         try {
+            // ── Phase 0: Create AudioContext in user gesture context ──
+            // MUST be created BEFORE any await — Chrome's autoplay policy
+            // requires AudioContext creation within a user gesture. After
+            // an await the gesture context is lost and Chrome creates the
+            // context in "suspended" state, causing output audio silence.
+            this.audioContext = new AudioContext();
+
+            this.outputMasterGain = this.audioContext.createGain();
+            // Start muted — unmutePipelines() restores the real volume
+            // after connectionState=Connected so audio doesn't flow
+            // before the UI grayout is removed.
+            this.outputMasterGain.gain.value = 0;
+            this.outputMasterGain.connect(this.audioContext.destination);
+
             // ── Phase 1: Parallel pre-fetch ──────────────────────────
             // JWT, mic access, and RNNoise WASM download run concurrently
             // to minimize total wall-clock time.
@@ -241,19 +255,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 ncEnabled ? NexusVoiceConnection.preloadRnnoiseWasm() : Promise.resolve(),
             ]);
             this.localAudioTrack = audioTrack;
-
-            // ── Phase 2: Build audio pipeline BEFORE connecting ──────
-            // AudioContext and outputMasterGain must exist before LiveKit
-            // connection so that onTrackSubscribed can immediately route
-            // tracks from already-connected participants.
-            this.audioContext = new AudioContext();
-
-            this.outputMasterGain = this.audioContext.createGain();
-            // Start muted — unmutePipelines() restores the real volume
-            // after connectionState=Connected so audio doesn't flow
-            // before the UI grayout is removed.
-            this.outputMasterGain.gain.value = 0;
-            this.outputMasterGain.connect(this.audioContext.destination);
 
             // ── Phase 3: Connect to LiveKit (requires JWT) ───────────
             this.livekitRoom = new LivekitRoom();
@@ -411,6 +412,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * grayout is removed.
      */
     public unmutePipelines(): void {
+        // Safety net: resume AudioContext if Chrome suspended it despite
+        // being created in user gesture context (e.g. tab was backgrounded).
+        if (this.audioContext?.state === "suspended") {
+            this.audioContext.resume().catch(() => {});
+        }
         if (this.outputMasterGain) {
             const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
             this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
