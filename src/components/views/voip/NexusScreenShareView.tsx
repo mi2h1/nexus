@@ -83,13 +83,14 @@ const NexusScreenShareView: React.FC<NexusScreenShareViewProps> = ({ screenShare
 
 interface ScreenShareTileProps {
     share: ScreenShareInfo;
+    onStopWatching?: () => void;
 }
 
 /**
  * Individual screen share tile — attaches LiveKit track to <video>.
  * Audio is routed through Web Audio API (NexusVoiceConnection), not <audio>.
  */
-export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share }) => {
+export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopWatching }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
 
@@ -121,6 +122,16 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share }) => {
                 muted
             />
             <div className="mx_NexusScreenShareTile_label">{label}</div>
+            {onStopWatching && (
+                <div className="mx_NexusScreenShareTile_stopOverlay">
+                    <button
+                        className="mx_NexusScreenShareTile_stopButton"
+                        onClick={(e) => { e.stopPropagation(); onStopWatching(); }}
+                    >
+                        視聴を停止
+                    </button>
+                </div>
+            )}
             {contextMenu && (
                 <NexusScreenShareContextMenu
                     share={share}

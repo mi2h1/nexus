@@ -683,13 +683,18 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         }
 
         // Nexus: Auto-open chat timeline in right panel for VC rooms
+        // First visit → open Timeline. Subsequent visits → respect saved state.
         if (room && isVideoRoom(room) && newState.mainSplitContentType === MainSplitContentType.Timeline) {
-            if (
-                !this.context.rightPanelStore.isOpen ||
-                this.context.rightPanelStore.currentCard.phase !== RightPanelPhases.Timeline
-            ) {
-                this.context.rightPanelStore.setCard({ phase: RightPanelPhases.Timeline }, true, room.roomId);
+            const savedCard = this.context.rightPanelStore.currentCardForRoom(room.roomId);
+            if (savedCard.phase === null) {
+                // First visit for this room — open Timeline
+                this.context.rightPanelStore.setCard(
+                    { phase: RightPanelPhases.Timeline }, true, room.roomId,
+                );
                 newState.showRightPanel = true;
+            } else {
+                // Subsequent visit — respect saved open/close state
+                newState.showRightPanel = this.context.rightPanelStore.isOpenForRoom(room.roomId);
             }
         }
 

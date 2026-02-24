@@ -13,6 +13,7 @@ import { useVCParticipants } from "../../../hooks/useVCParticipants";
 import { useNexusScreenShares } from "../../../hooks/useNexusScreenShares";
 import { useNexusActiveSpeakers } from "../../../hooks/useNexusActiveSpeakers";
 import { useNexusParticipantStates } from "../../../hooks/useNexusParticipantStates";
+import { useNexusWatchingScreenShares } from "../../../hooks/useNexusWatchingScreenShares";
 import { ScreenShareTile } from "./NexusScreenShareView";
 import { ParticipantTile } from "./NexusVoiceParticipantGrid";
 import { NexusVCControlBar, type VCLayoutMode } from "./NexusVCControlBar";
@@ -39,8 +40,8 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
 
     const [layoutMode, setLayoutMode] = useState<VCLayoutMode>("spotlight");
 
-    // Opt-in screen share watching (Discord-style)
-    const [watchingIds, setWatchingIds] = useState<Set<string>>(new Set());
+    // Watching state lives in NexusVoiceConnection (persists across room navigation)
+    const watchingIds = useNexusWatchingScreenShares();
 
     // Filter screen shares into watched (local + opted-in) and unwatched
     const watchedScreenShares = useMemo(
@@ -53,27 +54,12 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
     );
 
     const startWatching = useCallback((id: string) => {
-        setWatchingIds((prev) => new Set(prev).add(id));
-        // Unmute screen share audio now that user opted in
         NexusVoiceStore.instance.getActiveConnection()?.setScreenShareWatching(id, true);
     }, []);
 
-    // Auto-cleanup watchingIds when screen shares end
-    useEffect(() => {
-        const currentIds = new Set(screenShares.map((s) => s.participantIdentity));
-        setWatchingIds((prev) => {
-            const next = new Set<string>();
-            for (const id of prev) {
-                if (currentIds.has(id)) {
-                    next.add(id);
-                } else {
-                    // Mute audio for ended screen shares
-                    NexusVoiceStore.instance.getActiveConnection()?.setScreenShareWatching(id, false);
-                }
-            }
-            return next.size === prev.size ? prev : next;
-        });
-    }, [screenShares]);
+    const stopWatching = useCallback((id: string) => {
+        NexusVoiceStore.instance.getActiveConnection()?.setScreenShareWatching(id, false);
+    }, []);
 
     // Debounced spotlight target based on active speaker (only watched screen shares)
     const spotlightTarget = useSpotlightTarget(client.getUserId(), members, watchedScreenShares, activeSpeakers);
@@ -110,6 +96,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                         screenShares={watchedScreenShares}
                         unwatchedScreenShares={unwatchedScreenShares}
                         onStartWatching={startWatching}
+                        onStopWatching={stopWatching}
                         members={members}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
@@ -120,6 +107,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                         screenShares={watchedScreenShares}
                         unwatchedScreenShares={unwatchedScreenShares}
                         onStartWatching={startWatching}
+                        onStopWatching={stopWatching}
                         members={members}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
@@ -201,6 +189,7 @@ interface SpotlightLayoutProps {
     screenShares: ScreenShareInfo[];
     unwatchedScreenShares: ScreenShareInfo[];
     onStartWatching: (id: string) => void;
+    onStopWatching: (id: string) => void;
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
@@ -212,6 +201,7 @@ function SpotlightLayout({
     screenShares,
     unwatchedScreenShares,
     onStartWatching,
+    onStopWatching,
     members,
     activeSpeakers,
     participantStates,
@@ -259,7 +249,10 @@ function SpotlightLayout({
         <div className="nx_VCRoomView_spotlight">
             <div className="nx_VCRoomView_spotlightMain">
                 {effectiveTarget?.type === "screenshare" ? (
-                    <ScreenShareTile share={effectiveTarget.share} />
+                    <ScreenShareTile
+                        share={effectiveTarget.share}
+                        onStopWatching={effectiveTarget.share.isLocal ? undefined : () => onStopWatching(effectiveTarget.share.participantIdentity)}
+                    />
                 ) : effectiveTarget?.type === "member" ? (
                     <div className="nx_VCRoomView_spotlightAvatar">
                         <MemberAvatar member={effectiveTarget.member} size="128px" hideTitle />
@@ -277,7 +270,10 @@ function SpotlightLayout({
                             className="nx_VCRoomView_spotlightBottomBar_item nx_VCRoomView_spotlightBottomBar_screenShare"
                             onClick={() => setManualScreenShareId(share.participantIdentity)}
                         >
-                            <ScreenShareTile share={share} />
+                            <ScreenShareTile
+                                share={share}
+                                onStopWatching={share.isLocal ? undefined : () => onStopWatching(share.participantIdentity)}
+                            />
                         </div>
                     ))}
                     {unwatchedScreenShares.map((share) => (
@@ -324,6 +320,7 @@ interface GridLayoutProps {
     screenShares: ScreenShareInfo[];
     unwatchedScreenShares: ScreenShareInfo[];
     onStartWatching: (id: string) => void;
+    onStopWatching: (id: string) => void;
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
@@ -333,6 +330,7 @@ function GridLayout({
     screenShares,
     unwatchedScreenShares,
     onStartWatching,
+    onStopWatching,
     members,
     activeSpeakers,
     participantStates,
@@ -341,7 +339,10 @@ function GridLayout({
         <div className="nx_VCRoomView_grid">
             {screenShares.map((share) => (
                 <div key={`ss-${share.participantIdentity}`} className="nx_VCRoomView_gridScreenShare">
-                    <ScreenShareTile share={share} />
+                    <ScreenShareTile
+                        share={share}
+                        onStopWatching={share.isLocal ? undefined : () => onStopWatching(share.participantIdentity)}
+                    />
                 </div>
             ))}
             {unwatchedScreenShares.map((share) => (

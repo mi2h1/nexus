@@ -609,6 +609,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Public: Screen share watching ──────────────────────
 
+    public get watchingScreenShareIds(): ReadonlySet<string> {
+        return this.watchingScreenShares;
+    }
+
     /**
      * Mark a screen share as actively watched/unwatched.
      * Audio is muted (gain=0) until the user opts in to watch.
@@ -625,6 +629,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 ? (this.screenShareVolumes.get(participantIdentity) ?? 1)
                 : 0;
         }
+        this.emit(CallEvent.WatchingChanged, new Set(this.watchingScreenShares));
     }
 
     // ─── Public: Audio pipeline accessors ──────────────────────

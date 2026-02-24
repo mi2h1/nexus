@@ -22,6 +22,10 @@ import { type ViewRoomPayload } from "../../dispatcher/payloads/ViewRoomPayload"
 import { UPDATE_EVENT } from "../../stores/AsyncStore";
 import { SdkContextClass } from "../../contexts/SDKContext";
 import { WidgetPip } from "../views/pips/WidgetPip";
+import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../stores/NexusVoiceStore";
+import { CallEvent as NexusCallEvent, type ScreenShareInfo } from "../../models/Call";
+import type { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
+import { NexusScreenSharePip } from "../views/voip/NexusScreenSharePip";
 
 const SHOW_CALL_IN_STATES = [
     CallState.Connected,
@@ -50,6 +54,10 @@ interface IState {
     persistentWidgetId: string | null;
     persistentRoomId: string | null;
     showWidgetInPip: boolean;
+
+    // Nexus: screen share PiP
+    nexusVcRoomId: string | null;
+    nexusPipScreenShare: ScreenShareInfo | null;
 }
 
 // Splits a list of calls into one 'primary' one and a list
@@ -101,6 +109,7 @@ class PipContainerInner extends React.Component<IProps, IState> {
 
         const [primaryCall, secondaryCalls] = getPrimarySecondaryCallsForPip(roomId);
 
+        const nexusConn = NexusVoiceStore.instance.getActiveConnection();
         this.state = {
             viewedRoomId: roomId || undefined,
             primaryCall: primaryCall || null,
@@ -108,8 +117,13 @@ class PipContainerInner extends React.Component<IProps, IState> {
             persistentWidgetId: ActiveWidgetStore.instance.getPersistentWidgetId(),
             persistentRoomId: ActiveWidgetStore.instance.getPersistentRoomId(),
             showWidgetInPip: false,
+            nexusVcRoomId: nexusConn?.roomId ?? null,
+            nexusPipScreenShare: null,
         };
     }
+
+    // Nexus: currently tracked connection for screen share / watching events
+    private nexusTrackedConnection: NexusVoiceConnection | null = null;
 
     public componentDidMount(): void {
         LegacyCallHandler.instance.addListener(LegacyCallHandlerEvent.CallChangeRoom, this.updateCalls);
@@ -123,6 +137,10 @@ class PipContainerInner extends React.Component<IProps, IState> {
         ActiveWidgetStore.instance.on(ActiveWidgetStoreEvent.Persistence, this.onWidgetPersistence);
         ActiveWidgetStore.instance.on(ActiveWidgetStoreEvent.Dock, this.onWidgetDockChanges);
         ActiveWidgetStore.instance.on(ActiveWidgetStoreEvent.Undock, this.onWidgetDockChanges);
+
+        // Nexus: track voice connection changes for PiP
+        NexusVoiceStore.instance.on(NexusVoiceStoreEvent.ActiveConnection, this.onNexusActiveConnection);
+        this.attachNexusConnectionListeners(NexusVoiceStore.instance.getActiveConnection());
     }
 
     public componentWillUnmount(): void {
@@ -138,9 +156,62 @@ class PipContainerInner extends React.Component<IProps, IState> {
         ActiveWidgetStore.instance.off(ActiveWidgetStoreEvent.Persistence, this.onWidgetPersistence);
         ActiveWidgetStore.instance.off(ActiveWidgetStoreEvent.Dock, this.onWidgetDockChanges);
         ActiveWidgetStore.instance.off(ActiveWidgetStoreEvent.Undock, this.onWidgetDockChanges);
+
+        // Nexus: cleanup
+        NexusVoiceStore.instance.off(NexusVoiceStoreEvent.ActiveConnection, this.onNexusActiveConnection);
+        this.detachNexusConnectionListeners();
     }
 
     private onMove = (): void => this.props.movePersistedElement.current?.();
+
+    // ─── Nexus screen share PiP ─────────────────────────────
+
+    private onNexusActiveConnection = (conn: NexusVoiceConnection | null): void => {
+        this.detachNexusConnectionListeners();
+        this.attachNexusConnectionListeners(conn);
+        this.setState({ nexusVcRoomId: conn?.roomId ?? null });
+        this.updateNexusPipScreenShare();
+    };
+
+    private attachNexusConnectionListeners(conn: NexusVoiceConnection | null): void {
+        if (!conn) return;
+        this.nexusTrackedConnection = conn;
+        conn.on(NexusCallEvent.ScreenShares, this.onNexusScreenSharesOrWatching);
+        conn.on(NexusCallEvent.WatchingChanged, this.onNexusScreenSharesOrWatching);
+    }
+
+    private detachNexusConnectionListeners(): void {
+        if (!this.nexusTrackedConnection) return;
+        this.nexusTrackedConnection.off(NexusCallEvent.ScreenShares, this.onNexusScreenSharesOrWatching);
+        this.nexusTrackedConnection.off(NexusCallEvent.WatchingChanged, this.onNexusScreenSharesOrWatching);
+        this.nexusTrackedConnection = null;
+    }
+
+    private onNexusScreenSharesOrWatching = (): void => {
+        this.updateNexusPipScreenShare();
+    };
+
+    private updateNexusPipScreenShare(): void {
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        if (!conn) {
+            this.setState({ nexusPipScreenShare: null });
+            return;
+        }
+        const vcRoomId = conn.roomId;
+        // If viewing the VC room, the inline view handles display — no PiP
+        if (this.state.viewedRoomId === vcRoomId) {
+            this.setState({ nexusPipScreenShare: null });
+            return;
+        }
+        // Find first watched remote screen share
+        const watchingIds = conn.watchingScreenShareIds;
+        const pipShare = conn.screenShares.find(
+            (s) => !s.isLocal && watchingIds.has(s.participantIdentity),
+        ) ?? null;
+        this.setState({ nexusPipScreenShare: pipShare });
+    }
+
+    // ─── Room view store ────────────────────────────────────
 
     private onRoomViewStoreUpdate = (): void => {
         const newRoomId = SdkContextClass.instance.roomViewStore.getRoomId();
@@ -165,6 +236,7 @@ class PipContainerInner extends React.Component<IProps, IState> {
             secondaryCall: secondaryCalls[0],
         });
         this.updateShowWidgetInPip();
+        this.updateNexusPipScreenShare();
     };
 
     private onWidgetPersistence = (): void => {
@@ -198,10 +270,11 @@ class PipContainerInner extends React.Component<IProps, IState> {
 
     private onDoubleClick = (): void => {
         const callRoomId = this.state.primaryCall?.roomId;
-        if (callRoomId ?? this.state.persistentRoomId) {
+        const targetRoomId = callRoomId ?? this.state.persistentRoomId ?? this.state.nexusVcRoomId;
+        if (targetRoomId) {
             dis.dispatch<ViewRoomPayload>({
                 action: Action.ViewRoom,
-                room_id: callRoomId ?? this.state.persistentRoomId ?? undefined,
+                room_id: targetRoomId,
                 metricsTrigger: "WebFloatingCallWindow",
             });
         }
@@ -258,6 +331,26 @@ class PipContainerInner extends React.Component<IProps, IState> {
                     viewingRoom={this.state.viewedRoomId === this.state.persistentRoomId}
                     onStartMoving={onStartMoving}
                     movePersistedElement={this.props.movePersistedElement}
+                />
+            ));
+        }
+
+        // Nexus: screen share PiP
+        if (this.state.nexusPipScreenShare && this.state.nexusVcRoomId) {
+            const share = this.state.nexusPipScreenShare;
+            const vcRoomId = this.state.nexusVcRoomId;
+            pipContent.push(({ onStartMoving }) => (
+                <NexusScreenSharePip
+                    key="nexus-screenshare-pip"
+                    share={share}
+                    vcRoomId={vcRoomId}
+                    onStartMoving={onStartMoving}
+                    onStopWatching={() => {
+                        NexusVoiceStore.instance.getActiveConnection()?.setScreenShareWatching(
+                            share.participantIdentity,
+                            false,
+                        );
+                    }}
                 />
             ));
         }

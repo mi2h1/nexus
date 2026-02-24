@@ -5,44 +5,25 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-.mx_NexusScreenSharePanel {
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--cpd-color-bg-subtle-primary);
-    background-color: var(--cpd-color-bg-canvas-default);
+.mx_NexusScreenSharePip {
     position: relative;
-    overflow: hidden;
-}
-
-.mx_NexusScreenSharePanel_content {
-    display: flex;
-    flex-direction: row;
-    flex: 1;
-    overflow-x: auto;
-    overflow-y: hidden;
-    gap: var(--cpd-space-2x);
-    padding: var(--cpd-space-2x);
-    min-height: 0;
-}
-
-.mx_NexusScreenShareTile {
-    position: relative;
-    flex: 1;
-    min-width: 0;
-    background-color: var(--cpd-color-bg-subtle-secondary);
+    width: 320px;
+    height: 180px;
     border-radius: var(--cpd-space-2x);
     overflow: hidden;
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
-.mx_NexusScreenShareTile_video {
+.mx_NexusScreenSharePip_video {
     width: 100%;
     height: 100%;
     object-fit: contain;
     display: block;
 }
 
-.mx_NexusScreenShareTile_label {
+.mx_NexusScreenSharePip_label {
     position: absolute;
     bottom: var(--cpd-space-2x);
     left: var(--cpd-space-2x);
@@ -54,7 +35,7 @@
     pointer-events: none;
 }
 
-.mx_NexusScreenShareTile_stopOverlay {
+.mx_NexusScreenSharePip_stopOverlay {
     position: absolute;
     inset: 0;
     display: flex;
@@ -65,13 +46,13 @@
     transition: opacity 0.15s ease;
     pointer-events: none;
 
-    .mx_NexusScreenShareTile:hover & {
+    .mx_NexusScreenSharePip:hover & {
         opacity: 1;
         pointer-events: auto;
     }
 }
 
-.mx_NexusScreenShareTile_stopButton {
+.mx_NexusScreenSharePip_stopButton {
     padding: var(--cpd-space-2x) var(--cpd-space-4x);
     border: none;
     border-radius: var(--cpd-space-2x);
@@ -82,17 +63,5 @@
 
     &:hover {
         filter: brightness(1.1);
-    }
-}
-
-.mx_NexusScreenSharePanel_resizeHandle {
-    height: 4px;
-    cursor: ns-resize;
-    background-color: transparent;
-    flex-shrink: 0;
-    transition: background-color 0.15s ease;
-
-    &:hover {
-        background-color: var(--cpd-color-bg-subtle-primary);
     }
 }

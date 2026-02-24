@@ -94,6 +94,7 @@ export enum CallEvent {
     ParticipantStates = "participant_states",
     MicMuted = "mic_muted",
     InputLevel = "input_level",
+    WatchingChanged = "watching_changed",
 }
 
 export interface ScreenShareInfo {
@@ -124,6 +125,7 @@ export interface CallEventHandlerMap {
     [CallEvent.ParticipantStates]: (states: Map<string, ParticipantState>) => void;
     [CallEvent.MicMuted]: (muted: boolean) => void;
     [CallEvent.InputLevel]: (level: number) => void;
+    [CallEvent.WatchingChanged]: (watchingIds: ReadonlySet<string>) => void;
 }
 
 /**
