@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, type JSX } from "react";
+import React, { useCallback, useRef, useState, type JSX } from "react";
 import classNames from "classnames";
 import {
     MicOnSolidIcon,
@@ -24,6 +24,7 @@ import { Action } from "../../../dispatcher/actions";
 import { type OpenToTabPayload } from "../../../dispatcher/payloads/OpenToTabPayload";
 import { UserTab } from "../../views/dialogs/UserTab";
 import AccessibleButton from "../elements/AccessibleButton";
+import { NexusScreenSharePanel } from "./NexusScreenSharePanel";
 
 export type VCLayoutMode = "spotlight" | "grid";
 
@@ -40,15 +41,17 @@ export function NexusVCControlBar({
     onLayoutModeChange,
     participantCount,
 }: NexusVCControlBarProps): JSX.Element {
-    const { connection, isMicMuted, isScreenSharing } = useNexusVoice();
+    const { isMicMuted, isScreenSharing } = useNexusVoice();
+    const [showSharePanel, setShowSharePanel] = useState(false);
+    const shareButtonRef = useRef<HTMLButtonElement>(null);
 
     const onToggleMic = useCallback(() => {
         NexusVoiceStore.instance.toggleMic();
     }, []);
 
-    const onToggleScreenShare = useCallback(() => {
-        connection?.toggleScreenShare();
-    }, [connection]);
+    const onToggleSharePanel = useCallback(() => {
+        setShowSharePanel((prev) => !prev);
+    }, []);
 
     const onEndCall = useCallback(() => {
         NexusVoiceStore.instance.leaveVoiceChannel();
@@ -84,8 +87,10 @@ export function NexusVCControlBar({
                     className={classNames("nx_VCControlBar_button", {
                         "nx_VCControlBar_button--screenSharing": isScreenSharing,
                     })}
-                    onClick={onToggleScreenShare}
-                    title={isScreenSharing ? "画面共有を停止" : "画面を共有"}
+                    element="button"
+                    onClick={onToggleSharePanel}
+                    ref={shareButtonRef}
+                    title={isScreenSharing ? "配信設定" : "画面を共有"}
                 >
                     <ShareScreenSolidIcon width={22} height={22} />
                 </AccessibleButton>
@@ -134,6 +139,18 @@ export function NexusVCControlBar({
 
                 <span className="nx_VCControlBar_participantCount">{participantCount}</span>
             </div>
+
+            {showSharePanel && shareButtonRef.current && (() => {
+                const rect = shareButtonRef.current!.getBoundingClientRect();
+                return (
+                    <NexusScreenSharePanel
+                        isScreenSharing={isScreenSharing}
+                        anchorLeft={rect.left + rect.width / 2}
+                        anchorBottom={window.innerHeight - rect.top + 8}
+                        onFinished={() => setShowSharePanel(false)}
+                    />
+                );
+            })()}
         </div>
     );
 }

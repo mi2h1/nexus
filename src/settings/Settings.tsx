@@ -378,6 +378,7 @@ export interface Settings {
     "nexus_input_volume": IBaseSetting<number>;
     "nexus_output_volume": IBaseSetting<number>;
     "nexus_noise_cancellation": IBaseSetting<boolean>;
+    "nexus_screen_share_quality": IBaseSetting<string>;
 }
 
 export type SettingKey = keyof Settings;
@@ -1519,5 +1520,9 @@ export const SETTINGS: Settings = {
     "nexus_noise_cancellation": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: false,
+    },
+    "nexus_screen_share_quality": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: "standard",
     },
 };

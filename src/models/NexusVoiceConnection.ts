@@ -44,6 +44,25 @@ const logger = rootLogger.getChild("NexusVoiceConnection");
 
 const STATS_POLL_INTERVAL_MS = 2000;
 
+// ─── Screen share quality presets ────────────────────────
+export type ScreenShareQuality = "low" | "standard" | "high" | "ultra";
+
+export interface ScreenSharePresetConfig {
+    label: string;
+    description: string;
+    width: number;
+    height: number;
+    fps: number;
+    maxBitrate: number;
+}
+
+export const SCREEN_SHARE_PRESETS: Record<ScreenShareQuality, ScreenSharePresetConfig> = {
+    low: { label: "低画質", description: "720p / 15fps", width: 1280, height: 720, fps: 15, maxBitrate: 1_000_000 },
+    standard: { label: "標準", description: "720p / 30fps", width: 1280, height: 720, fps: 30, maxBitrate: 2_000_000 },
+    high: { label: "高画質", description: "1080p / 30fps", width: 1920, height: 1080, fps: 30, maxBitrate: 4_000_000 },
+    ultra: { label: "配信向け", description: "1080p / 60fps", width: 1920, height: 1080, fps: 60, maxBitrate: 6_000_000 },
+};
+
 // VC sound effects
 export const VC_JOIN_SOUND = "media/sfx_join.mp3";
 export const VC_LEAVE_SOUND = "media/sfx_leave.mp3";
@@ -411,8 +430,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
     }
 
+    private getScreenSharePreset(): ScreenSharePresetConfig {
+        const key = (SettingsStore.getValue("nexus_screen_share_quality") ?? "standard") as ScreenShareQuality;
+        return SCREEN_SHARE_PRESETS[key] ?? SCREEN_SHARE_PRESETS.standard;
+    }
+
     public async startScreenShare(): Promise<void> {
         if (!this.livekitRoom || !this.connected) return;
+
+        const preset = this.getScreenSharePreset();
 
         try {
             const tracks = await createLocalScreenTracks({
@@ -431,7 +457,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
                     source: Track.Source.ScreenShare,
                     videoCodec: "vp9",
-                    screenShareEncoding: new VideoPreset(1280, 720, 6_000_000, 30).encoding,
+                    screenShareEncoding: new VideoPreset(
+                        preset.width, preset.height, preset.maxBitrate, preset.fps,
+                    ).encoding,
                     screenShareSimulcastLayers: [ScreenSharePresets.h720fps15],
                     degradationPreference: "maintain-framerate",
                 });
@@ -456,6 +484,32 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.localScreenAudioTrack?.stop();
             this.localScreenAudioTrack = null;
         }
+    }
+
+    /**
+     * Re-publish the existing screen share track with updated encoding
+     * parameters. Does NOT re-trigger the browser screen picker.
+     */
+    public async republishScreenShare(): Promise<void> {
+        if (!this.livekitRoom || !this.localScreenTrack || !this._isScreenSharing) return;
+
+        const preset = this.getScreenSharePreset();
+
+        // Unpublish current video track (keep the MediaStreamTrack alive)
+        await this.livekitRoom.localParticipant.unpublishTrack(this.localScreenTrack, false);
+
+        // Re-publish with new encoding parameters
+        await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
+            source: Track.Source.ScreenShare,
+            videoCodec: "vp9",
+            screenShareEncoding: new VideoPreset(
+                preset.width, preset.height, preset.maxBitrate, preset.fps,
+            ).encoding,
+            screenShareSimulcastLayers: [ScreenSharePresets.h720fps15],
+            degradationPreference: "maintain-framerate",
+        });
+
+        logger.info(`Screen share quality changed to ${preset.label} (${preset.description})`);
     }
 
     public async stopScreenShare(): Promise<void> {

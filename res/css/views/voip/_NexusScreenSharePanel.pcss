@@ -1,0 +1,98 @@
+/*
+Copyright 2025 Nexus Contributors
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+.nx_ScreenSharePanel {
+    width: 260px;
+    padding: 16px;
+    background: var(--cpd-color-bg-canvas-default);
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    transform: translateX(-50%);
+}
+
+.nx_ScreenSharePanel_title {
+    font: var(--cpd-font-body-md-semibold);
+    color: var(--cpd-color-text-primary);
+    margin-bottom: 12px;
+}
+
+.nx_ScreenSharePanel_presets {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 16px;
+}
+
+.nx_ScreenSharePanel_preset {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover {
+        background: var(--cpd-color-bg-subtle-secondary);
+    }
+
+    input[type="radio"] {
+        accent-color: var(--cpd-color-icon-accent-primary);
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        flex-shrink: 0;
+    }
+}
+
+.nx_ScreenSharePanel_presetLabel {
+    font: var(--cpd-font-body-sm-semibold);
+    color: var(--cpd-color-text-primary);
+    min-width: 60px;
+}
+
+.nx_ScreenSharePanel_presetDesc {
+    font: var(--cpd-font-body-sm-regular);
+    color: var(--cpd-color-text-secondary);
+    margin-left: auto;
+}
+
+.nx_ScreenSharePanel_actions {
+    display: flex;
+    gap: 8px;
+}
+
+.nx_ScreenSharePanel_button {
+    flex: 1;
+    padding: 8px 0;
+    border-radius: 6px;
+    font: var(--cpd-font-body-sm-semibold);
+    text-align: center;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+        opacity: 0.9;
+    }
+
+    &[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+}
+
+.nx_ScreenSharePanel_button--primary {
+    background: var(--cpd-color-bg-success-primary);
+    color: var(--cpd-color-text-on-solid-primary);
+}
+
+.nx_ScreenSharePanel_button--danger {
+    background: var(--cpd-color-bg-critical-primary);
+    color: var(--cpd-color-text-on-solid-primary);
+}
