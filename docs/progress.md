@@ -84,19 +84,57 @@ nexus/                          # element-web フォーク
 | プラットフォーム検出 | `window.__TAURI_INTERNALS__` → `TauriPlatform` 自動選択 |
 | ログイン画面修正 | ロゴ白色化 + 「Nexusにようこそ」テキスト |
 
-### 未実装（Phase 3.x）
-| 機能 | 難易度 | 優先度 | 備考 |
-|------|--------|--------|------|
-| システムトレイ常駐 | 低 | 高 | `TrayIconBuilder` API |
-| VC 品質インジケーター | 低 | 高 | 既存 `getStats()` を UI に表示 |
-| AGC（自動ゲイン制御） | 低 | 高 | Web Audio パイプラインに追加 |
-| VAD 改善 | 低 | 中 | RNNoise の VAD 出力を活用 |
-| Opus 動的ビットレート | 中 | 中 | 接続品質に応じて 32〜128kbps |
-| DTLN ノイズキャンセリング | 高 | 中 | Rust→WASM、RNNoise より高品質 |
-| WASAPI 画面共有音声 | 高 | 中 | Rust 側でシステム音声キャプチャ |
-| Windows 自動音量低下バイパス | 中 | 低 | Windows API で auto-ducking 無効化 |
-| エコーキャンセレーション強化 | 高 | 低 | `webrtc-audio-processing` クレート |
-| ブラックテーマ | 低 | 低 | #000 ベースのダークテーマ追加 |
+### ロードマップ
+
+参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
+Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 最優先: VC 接続高速化
+
+| 施策 | 難易度 | 効果 | 状態 | 詳細 |
+|------|--------|------|------|------|
+| 自前 LiveKit SFU (日本VPS) | 中 | **~1秒短縮** | 未着手 | [vc-optimization.md](vc-optimization.md) |
+| JWT キャッシュ（有効期限内再利用） | 低 | ~200ms (再接続時) | 未着手 | |
+| LiveKit reconnect() | 低 | 再接続時大幅短縮 | 未着手 | Discord の Resume に相当 |
+| マイク権限の事前取得 | 低 | 初回 ~300ms | 未着手 | VC パネル表示時に先行 getUserMedia |
+
+#### 高優先: ネイティブアプリ体験 (Tauri)
+
+| 施策 | 難易度 | 効果 | 状態 | 詳細 |
+|------|--------|------|------|------|
+| ネイティブ画面キャプチャ Step 1 | 高 | 共有バー消去、カスタムピッカー | 未着手 | [native-capture-plan.md](native-capture-plan.md) |
+| ネイティブ画面キャプチャ Step 2 | 高 | 画面共有に音声追加 | 未着手 | WASAPI 通常ループバック |
+| ネイティブ画面キャプチャ Step 3 | 高 | VC 声のループ防止 | 未着手 | WASAPI プロセス除外 |
+| システムトレイ常駐 | 低 | 閉じてもバックグラウンド動作 | 未着手 | `TrayIconBuilder` API |
+| Windows 自動音量低下バイパス | 中 | 通話中に他アプリの音量が下がらない | 未着手 | Windows API auto-ducking 無効化 |
+
+#### 中優先: 音声品質
+
+| 施策 | 難易度 | 効果 | 状態 | Discord 比較 |
+|------|--------|------|------|-------------|
+| AGC（自動ゲイン制御） | 低 | マイク音量の自動調整 | 未着手 | Discord 標準搭載 |
+| VAD 改善 | 低 | RNNoise の VAD 出力を活用 | 未着手 | Discord は Krisp |
+| スピーカーミュート（デフ） | 低 | 出力を一括ミュート | 未着手 | Discord 標準搭載 |
+| Opus 動的ビットレート | 中 | 接続品質に応じて 32〜128kbps | 未着手 | Discord 実装済み |
+| DTLN ノイズキャンセリング | 高 | RNNoise より高品質な NC | 未着手 | Discord は Krisp (有料級) |
+| エコーキャンセレーション強化 | 高 | スピーカー利用時のエコー除去 | 未着手 | |
+
+#### 低優先: UI/UX 改善
+
+| 施策 | 難易度 | 効果 | Discord 比較 |
+|------|--------|------|-------------|
+| VC 品質インジケーター | 低 | ping, ビットレート, コーデック表示 | Discord: 接続情報パネル |
+| ユーザーステータス | 中 | オンライン/退席中/取り込み中/オフライン | Discord 標準搭載 |
+| キーバインド設定 | 中 | ミュートキー等のカスタマイズ | Discord 標準搭載 |
+| 配信モード | 中 | 個人情報を隠す | Discord Streamer Mode |
+
+#### 将来: 基盤
+
+| 施策 | 難易度 | 効果 | 備考 |
+|------|--------|------|------|
+| Matrix ホームサーバー自前 (Conduit) | 中 | チャットも自前インフラ | matrix.org 依存ゼロ |
+| Rust UDP 高速パス (Tauri) | 高 | ICE/DTLS 完全スキップ | Discord 方式。根本改善 |
+| WebTransport/MoQ | 高 | ブラウザ版も ICE 不要 | 仕様策定中 |
 
 ---
 

@@ -145,7 +145,147 @@ After (並列化):
 
 | フェーズ | 施策 | 効果 |
 |---------|------|------|
-| **今 (Phase 2.5)** | 並列化 + WASM プリロード | ~500ms 短縮 |
-| **中期 (Phase 3)** | JWT キャッシュ + reconnect() | 再接続時改善 |
+| ✅ **Phase 2.5** | 並列化 + WASM プリロード | ~500ms 短縮（実装済み） |
+| **★ 次にやること** | 自前 LiveKit SFU (日本VPS) | **~1000-1200ms 短縮** |
+| **中期** | JWT キャッシュ + reconnect() | 再接続時改善 |
 | **Tauri 2** | Rust UDP 高速パス + WebRTC フォールバック | 根本改善 |
 | **長期** | WebTransport/MoQ 移行 | ブラウザ版も改善 |
+
+---
+
+## 自前 LiveKit SFU 計画
+
+> 作成: 2026-02-28
+
+### 目的
+
+VC 参加ボタン押下 → 音声通信確立までの時間を短縮する。
+現在 2-3 秒 → **1 秒前後** を目標。
+
+### なぜ速くなるか
+
+全員日本在住。SFU が日本にあれば、全フェーズの RTT が改善される。
+
+| フェーズ | 今（海外 SFU 経由） | 自前 SFU（日本 VPS） | 短縮 |
+|---------|-------------------|-------------------|------|
+| JWT 取得 | ~200-400ms (CORS プロキシ → Element JWT → matrix.org 検証) | ~10-30ms (VPS → matrix.org 検証) | **~200-400ms** |
+| WebSocket 接続 | ~150ms | ~10ms | **~140ms** |
+| ICE (3往復) | ~450ms (RTT ~150ms × 3) | ~30ms (RTT ~10ms × 3) | **~420ms** |
+| DTLS (2往復) | ~300ms (RTT ~150ms × 2) | ~20ms (RTT ~10ms × 2) | **~280ms** |
+| **合計** | | | **~1000-1200ms** |
+
+変わらない部分:
+- マイクアクセス (`getUserMedia`): ~200-500ms（ローカル処理）
+- WASM プリロード: ~100ms（ローカル処理）
+- MatrixRTC シグナリング: matrix.org 経由（変更なし）
+
+### VPS スペック
+
+- CPU: AMD EPYC-Milan 3コア
+- メモリ: 3.8GB（空き ~2GB）
+- ディスク: 28GB（残り 11GB）
+- IP: 210.131.219.93（日本）
+- OS: Ubuntu 25.04
+- Docker 稼働中（cfrp-market 5コンテナ）
+
+10人以下の VC なら十分。
+
+### 構成
+
+```
+現在:
+  ブラウザ/Tauri → Cloudflare Workers → Element JWT サービス → JWT 取得
+  ブラウザ/Tauri → Element LiveKit SFU (海外) → WebRTC 音声/映像
+
+自前 SFU 後:
+  ブラウザ/Tauri → VPS (LiveKit SFU + JWT サービス) → WebRTC 音声/映像
+  ※ Matrix ホームサーバーは matrix.org のまま（チャットは変更なし）
+```
+
+### セットアップ手順
+
+#### 1. VPS に LiveKit SFU を Docker で起動
+
+```bash
+docker run -d --name livekit \
+  -p 7880:7880 -p 7881:7881 -p 7882:7882/udp \
+  -v /etc/livekit.yaml:/etc/livekit.yaml \
+  livekit/livekit-server \
+  --config /etc/livekit.yaml
+```
+
+`livekit.yaml` で設定:
+- API キー / シークレット（JWT 署名用）
+- ログローテーション（肥大化防止）
+- TURN 内蔵設定（NAT 越え）
+- 録画: 無効
+
+#### 2. JWT 発行サービス
+
+LiveKit の公式 JWT サービス（`livekit-server` 自体が `/sfu/get` エンドポイントを持つ場合）、
+もしくは軽量な JWT 発行サーバーを同居させる。
+
+OpenID トークン検証フロー:
+```
+Nexus クライアント → VPS /sfu/get (OpenID トークン付き)
+  → VPS から matrix.org に検証リクエスト
+  → 検証 OK → LiveKit JWT を発行して返却
+```
+
+#### 3. SSL 証明書
+
+LiveKit は WebSocket (WSS) + WebRTC で接続するため、HTTPS が必須。
+Let's Encrypt + nginx リバースプロキシ、または Caddy で対応。
+
+#### 4. Nexus 側のコード変更
+
+**変更箇所は最小限:**
+
+`src/models/NexusVoiceConnection.ts`:
+```typescript
+// 方法 A: transports の livekit_service_url を上書き
+// matrix.org の設定ではなく自前 SFU を使う
+const serviceUrl = SELF_HOSTED_LIVEKIT_URL || livekitTransport.livekit_service_url;
+```
+
+- CORS プロキシ (`LIVEKIT_CORS_PROXY_URL`) は空にする or 削除
+  - 自前 SFU なら CORS ヘッダーを自分で設定できるので不要
+- Tauri 版は既に `corsFreePost` で直接アクセスしてるので、URL を変えるだけ
+
+#### 5. ログローテーション設定
+
+```yaml
+# livekit.yaml
+logging:
+  level: warn  # info だとログが膨らむ
+```
+
+Docker のログドライバーでローテーション:
+```bash
+--log-driver json-file --log-opt max-size=10m --log-opt max-file=3
+```
+
+### Discord との比較（真似できる部分）
+
+参考: https://docs.discord.com/developers/topics/voice-connections
+
+| Discord の設計思想 | 真似できるか | 方法 |
+|-------------------|------------|------|
+| SFU を地理的に近く配置 | **✅ これをやる** | 日本 VPS に SFU 配置 |
+| Gateway 常時接続で即時 VC 参加 | ❌ | WebRTC の制約（毎回 ICE/DTLS 必要） |
+| セッション再開 (Resume) | △ | LiveKit reconnect() で部分的に可能 |
+| 最小限のハンドシェイク (~1000B) | ❌ | WebRTC SDP は ~10,000B |
+| 独自 UDP Hole Punching | ❌ ブラウザ / △ Tauri | Tauri なら将来的に Rust UDP パス |
+| 品質制限なし | **✅** | 自前 SFU でビットレート自由 |
+| Opus 音声の動的ビットレート | **✅ 実装可能** | LiveKit の adaptive streaming |
+
+### 確認チェックリスト
+
+- [ ] VPS で LiveKit SFU が起動し、ヘルスチェックに応答する
+- [ ] JWT 発行が動作する（OpenID トークン検証含む）
+- [ ] ブラウザ版で VC に接続でき、音声が通る
+- [ ] Tauri 版でも同様
+- [ ] CORS プロキシなしでブラウザ版が動作する
+- [ ] 画面共有（映像+音声）が従来通り動作する
+- [ ] 接続時間が体感で短縮されている
+- [ ] ログが肥大化しないことを確認（数日運用後）

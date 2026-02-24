@@ -1,0 +1,39 @@
+# LiveKit SFU configuration for Nexus
+# Domain: lche.xvps.jp
+
+port: 7880
+rtc:
+  # UDP port for WebRTC media
+  port_range_start: 7882
+  port_range_end: 7882
+  # Use TCP fallback if UDP is blocked
+  tcp_port: 7881
+  # Announce the public IP so ICE candidates are correct
+  node_ip: 210.131.219.93
+  use_external_ip: false
+
+# TLS — use Let's Encrypt cert
+turn:
+  enabled: true
+  domain: lche.xvps.jp
+  tls_port: 5349
+  udp_port: 3478
+  external_tls: true
+  cert_file: /etc/ssl/lche/fullchain.pem
+  key_file: /etc/ssl/lche/privkey.pem
+
+# API keys — used by lk-jwt-service to sign tokens
+keys:
+  nexus-api: 0930254ce08f85941dd721f2eea601d1941d2353810367fdd94f758c78b5fd11
+
+# Logging — keep minimal to avoid disk bloat
+logging:
+  level: warn
+  json: false
+
+# Room settings
+room:
+  # Rooms are created by lk-jwt-service, not by clients directly
+  auto_create: false
+  empty_timeout: 300    # 5 min: close room when empty
+  max_participants: 12

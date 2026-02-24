@@ -83,12 +83,18 @@ export function playVcSound(src: string): void {
 }
 
 /**
- * Cloudflare Workers CORS proxy URL for LiveKit JWT endpoint.
- * The upstream LiveKit JWT service (e.g. livekit-jwt.call.matrix.org) does not
- * set CORS headers, so we proxy through this worker.
+ * Self-hosted LiveKit JWT service URL.
+ * Accepts POST /sfu/get with Matrix OpenID token, returns {jwt, url}.
+ * CORS headers are set by the nginx reverse proxy.
  *
- * Set to empty string to disable proxy (e.g. when using a self-hosted LiveKit
- * service that already has CORS configured).
+ * When set, bypasses both the CORS proxy and matrix.org's transport URL.
+ * Set to empty string to fall back to the matrix.org transport + CORS proxy.
+ */
+const NEXUS_JWT_SERVICE_URL = "https://lche.xvps.jp:7891";
+
+/**
+ * Cloudflare Workers CORS proxy URL for LiveKit JWT endpoint.
+ * Used as fallback when NEXUS_JWT_SERVICE_URL is not set.
  */
 const LIVEKIT_CORS_PROXY_URL = "https://nexus-livekit-proxy.mi2h1.workers.dev";
 
@@ -1028,6 +1034,35 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Private: JWT ────────────────────────────────────────
 
     private async getJwt(): Promise<LivekitTokenResponse> {
+        const openIdToken = await this.client.getOpenIdToken();
+        const body = {
+            room: this.room.roomId,
+            openid_token: openIdToken,
+            device_id: this.client.getDeviceId(),
+        };
+
+        // ── Self-hosted JWT service (preferred) ──
+        if (NEXUS_JWT_SERVICE_URL) {
+            const jwtUrl = `${NEXUS_JWT_SERVICE_URL}/sfu/get`;
+
+            // Tauri: direct access (no CORS restrictions)
+            if (isTauri()) {
+                return corsFreePost<LivekitTokenResponse>(jwtUrl, body);
+            }
+
+            // Browser: direct fetch (CORS handled by nginx)
+            const response = await fetch(jwtUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to get LiveKit token: ${response.status} ${response.statusText}`);
+            }
+            return (await response.json()) as LivekitTokenResponse;
+        }
+
+        // ── Fallback: Element's JWT service via transport URL ──
         const livekitTransport = this.transports.find(
             (t) => t.type === "livekit" && t.livekit_service_url,
         );
@@ -1036,36 +1071,22 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         const serviceUrl = livekitTransport.livekit_service_url as string;
-        const openIdToken = await this.client.getOpenIdToken();
 
-        // Tauri: direct access (no CORS restrictions via Rust HTTP plugin)
+        // Tauri: direct access
         if (isTauri()) {
-            return corsFreePost<LivekitTokenResponse>(`${serviceUrl}/sfu/get`, {
-                room: this.room.roomId,
-                openid_token: openIdToken,
-                device_id: this.client.getDeviceId(),
-            });
+            return corsFreePost<LivekitTokenResponse>(`${serviceUrl}/sfu/get`, body);
         }
 
-        // Browser: route through CORS proxy if configured
+        // Browser: route through CORS proxy
         let fetchUrl: string;
         let fetchBody: Record<string, unknown>;
 
         if (LIVEKIT_CORS_PROXY_URL) {
             fetchUrl = `${LIVEKIT_CORS_PROXY_URL}/sfu/get`;
-            fetchBody = {
-                room: this.room.roomId,
-                openid_token: openIdToken,
-                device_id: this.client.getDeviceId(),
-                livekit_service_url: serviceUrl,
-            };
+            fetchBody = { ...body, livekit_service_url: serviceUrl };
         } else {
             fetchUrl = `${serviceUrl}/sfu/get`;
-            fetchBody = {
-                room: this.room.roomId,
-                openid_token: openIdToken,
-                device_id: this.client.getDeviceId(),
-            };
+            fetchBody = body;
         }
 
         const response = await fetch(fetchUrl, {
