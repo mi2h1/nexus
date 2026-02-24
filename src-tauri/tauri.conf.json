@@ -43,7 +43,7 @@
     },
     "plugins": {
         "updater": {
-            "pubkey": "",
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFQkVCNTVCRTAxMjFCMzIKUldReUd4TGdXN1crSGlnTjVkb1Z5SDNrcU9zZE9hOWRVbWVDTThjZ0J5dFFzTmVCWVN6aGZVZDIK",
             "endpoints": [
                 "https://github.com/mi2h1/nexus/releases/latest/download/latest.json"
             ],
