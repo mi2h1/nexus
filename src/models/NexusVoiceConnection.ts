@@ -292,6 +292,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom = new LivekitRoom();
             this.livekitRoom.on(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.on(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
+            this.livekitRoom.on(LivekitRoomEvent.TrackMuted, this.onTrackMuted);
+            this.livekitRoom.on(LivekitRoomEvent.TrackUnmuted, this.onTrackUnmuted);
             this.livekitRoom.on(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             this.livekitRoom.on(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
@@ -1356,6 +1358,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.livekitRoom) {
             this.livekitRoom.off(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.off(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
+            this.livekitRoom.off(LivekitRoomEvent.TrackMuted, this.onTrackMuted);
+            this.livekitRoom.off(LivekitRoomEvent.TrackUnmuted, this.onTrackUnmuted);
             this.livekitRoom.off(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             this.livekitRoom.off(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.off(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
@@ -1365,6 +1369,38 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     // ─── Private: Remote Audio ───────────────────────────────
+
+    /**
+     * When a remote audio track is muted, mute the corresponding <audio> element
+     * to eliminate WebRTC decoder noise floor ("サー" noise).
+     */
+    private onTrackMuted = (
+        publication: RemoteTrackPublication,
+        participant: RemoteParticipant,
+    ): void => {
+        if (publication.source === Track.Source.Microphone) {
+            const audio = this.outputAudioElements.get(participant.identity);
+            if (audio) audio.muted = true;
+        } else if (publication.source === Track.Source.ScreenShareAudio) {
+            const audio = this.screenShareAudioElements.get(participant.identity);
+            if (audio) audio.muted = true;
+        }
+        this.updateParticipantStates();
+    };
+
+    private onTrackUnmuted = (
+        publication: RemoteTrackPublication,
+        participant: RemoteParticipant,
+    ): void => {
+        if (publication.source === Track.Source.Microphone) {
+            const audio = this.outputAudioElements.get(participant.identity);
+            if (audio) audio.muted = false;
+        } else if (publication.source === Track.Source.ScreenShareAudio) {
+            const audio = this.screenShareAudioElements.get(participant.identity);
+            if (audio) audio.muted = false;
+        }
+        this.updateParticipantStates();
+    };
 
     private onTrackSubscribed = (
         track: RemoteTrackPublication["track"],
@@ -1457,6 +1493,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 // Browser: audio.volume capped at 1.0
                 audio.volume = Math.min(1, initialVol * this._masterOutputVolume);
                 audio.play().catch(() => {});
+            }
+
+            // If the track is already muted, mute the audio element to avoid noise floor
+            if (publication.isMuted) {
+                audio.muted = true;
             }
 
             this.outputAudioElements.set(participant.identity, audio);
