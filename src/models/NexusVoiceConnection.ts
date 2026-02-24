@@ -117,6 +117,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _participants = new Map<RoomMember, Set<string>>();
     private _latencyMs: number | null = null;
     private _isMicMuted = false;
+    /** Suppress SE in onMembershipsChanged during self join/leave */
+    private _suppressMembershipSounds = false;
 
     private livekitRoom: LivekitRoom | null = null;
     private localAudioTrack: LocalAudioTrack | null = null;
@@ -243,6 +245,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.connected) throw new Error("Already connected");
 
         this.connectionState = ConnectionState.Connecting;
+        this._suppressMembershipSounds = true;
 
         try {
             // ── Phase 0: Create AudioContext in user gesture context ──
@@ -359,6 +362,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.room.on(RoomEvent.MyMembership, this.onMyMembership);
             window.addEventListener("beforeunload", this.onBeforeUnload);
             this.connectionState = ConnectionState.Connected;
+            // Allow membership SE after a short delay (self membership event may still arrive)
+            setTimeout(() => { this._suppressMembershipSounds = false; }, 2000);
 
             // 6. Start latency polling & speaker detection
             this.startStatsPolling();
@@ -380,6 +385,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.connected) throw new Error("Not connected");
 
         this.connectionState = ConnectionState.Disconnecting;
+        this._suppressMembershipSounds = true;
 
         // Leave MatrixRTC
         try {
@@ -1557,8 +1563,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.updateParticipants();
         const newCount = this._participants.size;
 
-        // Play SE when users join/leave (only while connected)
-        if (this.connected && prevCount !== newCount) {
+        // Play SE when OTHER users join/leave (suppress during self join/leave)
+        if (this.connected && !this._suppressMembershipSounds && prevCount !== newCount) {
             if (newCount > prevCount) {
                 playVcSound(VC_JOIN_SOUND);
             } else if (newCount > 0) {
