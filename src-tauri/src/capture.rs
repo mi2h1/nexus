@@ -31,6 +31,7 @@ mod platform {
     use super::CaptureTarget;
     use base64::Engine;
     use serde::Serialize;
+    use std::collections::VecDeque;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
@@ -62,7 +63,9 @@ mod platform {
 
     // We need a wrapper because CaptureControl consumes self on stop.
     // Store it in an Option inside a Mutex for one-shot stop.
-    struct ControlWrapper<T: Send + 'static, E: Send + Sync + 'static> {
+    // Fix E0277: T must be bounded by GraphicsCaptureApiHandler.
+    struct ControlWrapper<T: GraphicsCaptureApiHandler + Send + 'static, E: Send + Sync + 'static>
+    {
         inner: Mutex<Option<CaptureControl<T, E>>>,
     }
 
@@ -138,7 +141,7 @@ mod platform {
             let width = frame.width();
             let height = frame.height();
 
-            // Get frame buffer without padding for clean pixel data
+            // Get frame buffer
             let buffer = frame.buffer()?;
             let raw = buffer.as_raw_buffer();
 
@@ -155,8 +158,9 @@ mod platform {
             }
 
             // JPEG encode (quality 90 — good balance of quality vs size)
+            // Fix E0308: turbojpeg::compress expects Image<&[u8]>, use rgb.as_slice()
             let image = turbojpeg::Image {
-                pixels: &rgb,
+                pixels: rgb.as_slice(),
                 width: width as usize,
                 pitch: width as usize * 3,
                 height: height as usize,
@@ -390,78 +394,98 @@ mod platform {
     fn run_wasapi_loopback(app: AppHandle, stop_flag: Arc<AtomicBool>) -> Result<(), String> {
         use wasapi::*;
 
-        // Initialize COM for this thread
-        initialize_mta().map_err(|e| format!("COM init: {}", e))?;
+        // Initialize COM for this thread (returns HRESULT, ignore it — panics on failure)
+        initialize_mta();
 
-        // Get default render (output) device for loopback
-        let device =
-            get_default_device(&Direction::Render).map_err(|e| format!("get device: {}", e))?;
+        // Get default render (output) device for loopback via DeviceEnumerator
+        let enumerator =
+            DeviceEnumerator::new().map_err(|e| format!("DeviceEnumerator: {}", e))?;
+        let device = enumerator
+            .get_default_device(&Direction::Render)
+            .map_err(|e| format!("get device: {}", e))?;
 
-        let mut capture_client = device
+        let mut audio_client = device
             .get_iaudioclient()
             .map_err(|e| format!("get client: {}", e))?;
 
-        let format = capture_client
+        let format = audio_client
             .get_mixformat()
             .map_err(|e| format!("get format: {}", e))?;
 
         let sample_rate = format.get_samplespersec();
         let channels = format.get_nchannels();
-        let block_align = format.get_blockalign() as usize;
+        let bytes_per_sample = (format.get_bitspersample() / 8) as usize;
 
-        // Initialize in loopback mode (shared)
-        capture_client
-            .initialize_client(
-                &format,
-                0, // buffer period (0 = default)
-                &Direction::Capture,
-                &ShareMode::Shared,
-                true, // loopback
-            )
+        // Initialize in event-driven shared mode for loopback
+        // Use Render device + Capture direction = system audio loopback
+        let mode = StreamMode::EventsShared {
+            autoconvert: true,
+            buffer_duration_hns: 0, // default buffer
+        };
+        audio_client
+            .initialize_client(&format, &Direction::Capture, &mode)
             .map_err(|e| format!("init client: {}", e))?;
 
-        let capture = capture_client
+        let capture_client = audio_client
             .get_audiocaptureclient()
             .map_err(|e| format!("get capture client: {}", e))?;
 
-        let event = capture_client
+        let event = audio_client
             .set_get_eventhandle()
             .map_err(|e| format!("set event: {}", e))?;
 
-        capture_client
+        audio_client
             .start_stream()
             .map_err(|e| format!("start stream: {}", e))?;
 
         // Audio capture loop — runs until stop_flag is set
+        let mut sample_queue: VecDeque<u8> = VecDeque::new();
+
         while !stop_flag.load(Ordering::SeqCst) {
             // Wait for audio data (timeout 100ms to check stop_flag)
             if event.wait_for_event(100).is_err() {
                 continue;
             }
 
-            match capture.read_from_device_to_deinterlaced(block_align, channels as usize) {
-                Ok((_num_frames, data, _flags)) => {
-                    if data.is_empty() || data[0].is_empty() {
+            // Read raw bytes into deque
+            match capture_client.read_from_device_to_deque(&mut sample_queue) {
+                Ok(_buffer_info) => {
+                    if sample_queue.is_empty() {
                         continue;
                     }
 
-                    // Re-interleave: deinterlaced Vec<Vec<Vec<u8>>> → f32 interleaved
-                    let frames = data[0].len();
-                    let ch_count = channels as usize;
-                    let mut interleaved = Vec::with_capacity(frames * ch_count);
-                    for i in 0..frames {
-                        for ch in 0..ch_count {
-                            let sample = if i < data[ch].len() && data[ch][i].len() >= 4 {
-                                f32::from_le_bytes([
-                                    data[ch][i][0],
-                                    data[ch][i][1],
-                                    data[ch][i][2],
-                                    data[ch][i][3],
-                                ])
+                    // Convert raw bytes to f32 interleaved samples
+                    let total_bytes = sample_queue.len();
+                    let sample_count = total_bytes / bytes_per_sample;
+                    let frame_count = sample_count / channels as usize;
+
+                    if frame_count == 0 {
+                        continue;
+                    }
+
+                    let mut interleaved = Vec::with_capacity(sample_count);
+                    for _ in 0..sample_count {
+                        if sample_queue.len() >= bytes_per_sample {
+                            if bytes_per_sample == 4 {
+                                // 32-bit float
+                                let b0 = sample_queue.pop_front().unwrap();
+                                let b1 = sample_queue.pop_front().unwrap();
+                                let b2 = sample_queue.pop_front().unwrap();
+                                let b3 = sample_queue.pop_front().unwrap();
+                                interleaved.push(f32::from_le_bytes([b0, b1, b2, b3]));
+                            } else if bytes_per_sample == 2 {
+                                // 16-bit int → f32
+                                let b0 = sample_queue.pop_front().unwrap();
+                                let b1 = sample_queue.pop_front().unwrap();
+                                let i16_val = i16::from_le_bytes([b0, b1]);
+                                interleaved.push(i16_val as f32 / 32768.0);
                             } else {
-                                0.0
-                            };
-                            interleaved.push(sample);
+                                // Skip unknown format
+                                for _ in 0..bytes_per_sample {
+                                    sample_queue.pop_front();
+                                }
+                                interleaved.push(0.0);
+                            }
                         }
                     }
 
@@ -469,7 +493,7 @@ mod platform {
                         data: interleaved,
                         sample_rate,
                         channels,
-                        frames: frames as u32,
+                        frames: frame_count as u32,
                     };
                     let _ = app.emit("capture-audio", &payload);
                 }
@@ -480,7 +504,7 @@ mod platform {
             }
         }
 
-        capture_client
+        audio_client
             .stop_stream()
             .map_err(|e| format!("stop stream: {}", e))?;
 
