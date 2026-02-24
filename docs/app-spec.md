@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-26
+> 最終更新: 2026-02-27
 
 ## 概要
 
@@ -22,6 +22,9 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | ボイスチャット (VC) | Nexus (livekit-client + MatrixRTC) | 実装済み |
 | 画面共有 | Nexus (livekit-client, 720p30 simulcast) | 実装済み |
 | 画面共有オプトイン視聴 | Nexus (Discord 準拠 — プレビュー+クリックで視聴開始) | 実装済み |
+| 画面共有 PiP | Nexus (VC ルーム外で視聴中の画面共有を PiP 表示、クリックで戻る) | 実装済み |
+| 視聴停止ボタン | Nexus (タイルホバーでオーバーレイ、PiP はバツアイコン) | 実装済み |
+| VC 右パネル状態保持 | Nexus (初回は Timeline 開く、2回目以降は保存状態を尊重) | 実装済み |
 | E2E 暗号化 | matrix-js-sdk (Olm/Megolm) | 組み込み済み |
 | テキスト/VC チャンネル分離 | Nexus (NexusChannelListView) | 実装済み |
 | VC 参加者グリッド | Nexus (NexusVoiceParticipantGrid) | 実装済み |
@@ -193,11 +196,15 @@ VC 中にマイクミュートして切断した場合も、ミュート状態�
 |-------|------|
 | 自分が画面共有 | `isLocal` で自動 watched → プレビューなし、直接表示 |
 | 他者が画面共有開始 | ボトムバー/グリッドにプレビューオーバーレイ表示 |
-| 「画面を視聴する」クリック | `watchingIds` に追加 → スポットライトに表示 |
-| 画面共有が終了 | `useEffect` で `watchingIds` から自動削除 + `setScreenShareWatching(false)` |
+| 「画面を視聴する」クリック | `setScreenShareWatching(id, true)` → スポットライトに表示 |
+| 視聴中にホバー | 「視聴を停止」オーバーレイ表示 → クリックで視聴解除 |
+| VC ルーム外で視聴中 | PiP ウィンドウ表示（右下バツアイコンで停止、クリックで VC に戻る） |
+| 画面共有が終了 | `onTrackUnsubscribed` が `watchingScreenShares` から自動削除 |
 
-- **state**: `watchingIds: Set<string>` — 視聴中の画面共有者の `participantIdentity`
+- **state**: `NexusVoiceConnection.watchingScreenShares: Set<string>` — 視聴中の画面共有者の `participantIdentity`（コンポーネントローカルではなく connection に保持し、ルーム移動しても維持）
+- **フック**: `useNexusWatchingScreenShares()` — `CallEvent.WatchingChanged` を購読して watching state をリアクティブに返す
 - **音声オプトイン**: `onTrackSubscribed` で ScreenShareAudio の gain を未視聴時は 0 に設定。視聴開始で `setScreenShareWatching(id, true)` → gain 復元
+- **PiP**: `PipContainer` が `NexusVoiceStore` の接続変更 + `ScreenShares`/`WatchingChanged` イベントを購読し、VC ルーム外で視聴中の画面共有を `NexusScreenSharePip` で表示
 - **個別音量**: 画面共有タイル右クリックで `NexusScreenShareContextMenu` 表示（`setScreenShareVolume()`）
 - **音量永続化**: `localStorage` に userId ベースで保存、再接続時に自動復元
 - **SpotlightLayout / GridLayout** 両方で同じ UX

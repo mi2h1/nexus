@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-25
+> 最終更新: 2026-02-27
 
 ## リポジトリ情報
 
@@ -30,7 +30,8 @@ nexus/                          # element-web フォーク
 │   │   ├── useNexusVoice.ts         # VC 状態フック
 │   │   ├── useNexusActiveSpeakers.ts# 発話検出フック
 │   │   ├── useNexusScreenShares.ts  # 画面共有フック
-│   │   └── useNexusParticipantStates.ts # 参加者状態フック
+│   │   ├── useNexusParticipantStates.ts # 参加者状態フック
+│   │   └── useNexusWatchingScreenShares.ts # 画面共有視聴状態フック
 │   └── components/views/
 │       ├── rooms/RoomListPanel/
 │       │   ├── NexusChannelListView.tsx  # テキスト/VC チャンネル分離
@@ -43,6 +44,7 @@ nexus/                          # element-web フォーク
 │           ├── NexusVoiceParticipantGrid.tsx # 参加者グリッド
 │           ├── NexusVCControlBar.tsx     # VC コントロールバー
 │           ├── NexusScreenShareView.tsx  # 画面共有ビュー
+│           ├── NexusScreenSharePip.tsx  # 画面共有 PiP
 │           └── NexusParticipantContextMenu.tsx # 参加者コンテキストメニュー
 ├── res/css/views/              # Nexus カスタム CSS
 │   ├── rooms/RoomListPanel/
@@ -55,6 +57,7 @@ nexus/                          # element-web フォーク
 │       ├── _NexusVoiceParticipantGrid.pcss
 │       ├── _NexusVCControlBar.pcss
 │       ├── _NexusScreenShareView.pcss
+│       ├── _NexusScreenSharePip.pcss
 │       └── _NexusParticipantContextMenu.pcss
 ├── config.json                 # アプリ設定（Nexus カスタム）
 └── .github/workflows/pages.yml # GitHub Pages デプロイ
@@ -72,6 +75,10 @@ nexus/                          # element-web フォーク
 | マイクミュート | `setMicMuted()` — `mediaStreamTrack.enabled` 直接操作（非publish トラック経由） |
 | 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` + 720p30/simulcast エンコーディング |
 | 画面共有オプトイン視聴 | Discord 準拠 — 他者の画面共有はプレビュー+「画面を視聴する」クリックで表示 |
+| 画面共有 PiP | VC ルーム外で視聴中の画面共有を PiP ウィンドウ表示（クリックで VC に戻る） |
+| 視聴停止ボタン | ScreenShareTile ホバーで「視聴を停止」オーバーレイ、PiP はホバーで右下バツアイコン |
+| 視聴状態の永続化 | watching state を NexusVoiceConnection に移行（ルーム移動しても視聴状態維持） |
+| VC 右パネル状態保持 | 初回訪問は Timeline を開く、2回目以降はユーザーの開閉状態を保持 |
 | Ping/遅延表示 | `RTCPeerConnection.getStats()` → `currentRoundTripTime` |
 | 個別音量調整 | `setParticipantVolume()` — Web Audio API GainNode（localStorage 永続化） |
 | 画面共有個別音量調整 | `setScreenShareVolume()` — Web Audio API GainNode（localStorage 永続化） |
@@ -96,6 +103,24 @@ nexus/                          # element-web フォーク
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-27
+- **画面共有 PiP**: VC ルーム外で視聴中のリモート画面共有を PiP ウィンドウで表示
+  - `NexusScreenSharePip` コンポーネント新規作成
+  - `PipContainer` に `NexusVoiceStore` イベント購読 + PiP レンダリング統合
+  - PiP クリックで VC ルームに戻る、ホバーで右下にバツアイコンボタン表示
+  - `setState` 非同期問題対策: `updateNexusPipScreenShare()` に `viewedRoomId` を引数で渡す
+- **視聴停止ボタン**: 画面共有タイルにホバーで「視聴を停止」オーバーレイ表示
+  - `ScreenShareTile` に `onStopWatching` prop 追加
+  - CSS `:hover` ベースの半透明オーバーレイ（React state 不要）
+- **視聴状態の永続化**: watching state をコンポーネントローカルから NexusVoiceConnection に移行
+  - `CallEvent.WatchingChanged` イベント追加（`Call.ts`）
+  - `NexusVoiceConnection` に `watchingScreenShareIds` getter + `setScreenShareWatching()` で emit
+  - `useNexusWatchingScreenShares` フック新規作成（connection の watching state を購読）
+  - `NexusVCRoomView` の `useState<Set<string>>` → フックに置換、auto-cleanup effect 削除
+- **VC 右パネル状態保持**: VC ルームの右パネル自動オープン条件修正
+  - `RightPanelStore.currentCardForRoom()` で初回訪問（`phase === null`）を判定
+  - 初回: Timeline を開く / 2回目以降: `isOpenForRoom()` で保存状態を尊重
 
 #### 2026-02-26
 - **画面共有 SE**: 画面共有の開始/終了時に screen-on/screen-off SE を再生

@@ -184,6 +184,9 @@ jobs:
 - VC ルームビュー: 参加者グリッド + コントロールバー + 画面共有
 - 画面共有: 720p30 エンコーディング + 360p15 simulcast + contentHint: detail（Discord 準拠）
 - 画面共有オプトイン視聴: Discord 準拠（プレビューオーバーレイ + クリックで視聴開始）
+- 画面共有 PiP: VC ルーム外で視聴中のリモート画面共有を PiP ウィンドウ表示（クリックで VC に戻る、ホバーで右下バツアイコン）
+- 画面共有視聴停止ボタン: ScreenShareTile ホバーで「視聴を停止」オーバーレイ表示
+- 画面共有視聴状態永続化: watching state を NexusVoiceConnection に保持（ルーム移動しても維持）
 - 画面共有音声: Web Audio API ルーティング（MediaStreamAudioSourceNode → GainNode → masterGain）
 - 画面共有音声オプトイン: 視聴ボタン押下まで gain=0、視聴開始で音声開通
 - 画面共有個別音量: 右クリックメニューで調整（NexusScreenShareContextMenu）
@@ -195,6 +198,7 @@ jobs:
 - 入退室 SE（standby → join → leave）、ミュート/アンミュート SE、画面共有 SE（screen-on/screen-off）
 - マイクミュートは `mediaStreamTrack.enabled` 直接操作（処理済みトラック publish のため）
 - VC 接続/切断トランジション UI: スピナー+グレーアウト、再参加ブロック（VCチャンネル要素のスピナーは削除済み、参加者リストのアバタースピナーに統一）
+- VC 右パネル状態保持: 初回訪問は Timeline を開く、2回目以降はユーザーの開閉状態を保持
 - ミュート状態保持: VC中ミュート→切断後も `_preMicMuted` 同期で維持
 - 音声タイミング同期: 接続中は入出力 gain=0、Connected 後に `unmutePipelines()` で復元
 - 入室 SE: `joinVoiceChannel()` で明示再生（`onMembershipsChanged` のカウント差分は self-inclusion で不動作）
