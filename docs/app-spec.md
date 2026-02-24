@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-25
+> 最終更新: 2026-02-26
 
 ## 概要
 
@@ -32,6 +32,9 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | 入力/出力音量調整 | Nexus (Web Audio API GainNode) | 実装済み |
 | 入力感度（ボイスゲート） | Nexus (AnalyserNode + GainNode) | 実装済み |
 | 発話検出 | Nexus (ローカル: inputLevel / リモート: LiveKit isSpeaking) | 実装済み |
+| 画面共有 SE | Nexus (screen-on/screen-off、自分・他者共通) | 実装済み |
+| ミュート状態保持 | Nexus (VC中ミュート→切断後も維持) | 実装済み |
+| 音声タイミング同期 | Nexus (Connected と同時に unmutePipelines()) | 実装済み |
 | Ping/遅延表示 | Nexus (RTCPeerConnection.getStats) | 実装済み |
 
 ## UI 構成
@@ -132,11 +135,36 @@ AudioContext 構築 + publishTrack ← マイクトラック必要なので後
 
 詳細な調査・設計メモは [docs/vc-optimization.md](./vc-optimization.md) を参照。
 
+### 音声タイミング同期
+
+接続中は入出力パイプラインをミュートし、UI のグレーアウト解除と同時に音声通信を開始する:
+
+```
+connect() Phase 2: outputMasterGain.gain = 0  ← 出力ミュート
+connect() Phase 3: livekitRoom.connect()       ← LiveKit 接続（音声は流れるが聞こえない）
+connect() Phase 4: inputGainNode.gain = 0      ← 入力ミュート
+connect() Phase 5: connectionState = Connected ← UI グレーアウト解除
+joinVoiceChannel(): pre-mute 適用
+joinVoiceChannel(): unmutePipelines()          ← 入出力 gain を設定値に復元
+joinVoiceChannel(): join SE 再生
+```
+
+- `unmutePipelines()`: `outputMasterGain` を設定値に、`inputGainNode` をミュートでなければ設定値に復元
+- ミュート中の場合は `inputGainNode` を 0 のまま維持
+
+### ミュート状態保持
+
+VC 中にマイクミュートして切断した場合も、ミュート状態を維持する:
+- `leaveVoiceChannel()` で disconnect 前に `_preMicMuted = connection.isMicMuted` で同期
+- 次回接続時に `_preMicMuted` が true なら `setMicMuted(true)` を適用
+
 ### SE（効果音）タイミング
-- **入室**: ボタン押下時に standby SE → 接続確立（参加者リスト表示）時に join SE
+- **入室**: ボタン押下時に standby SE → 接続確立時に join SE（`joinVoiceChannel` で明示再生）
 - **退室**: ボタン押下時に leave SE → スピナー+グレーアウト表示 → 切断完了後にリストから削除
 - **他ユーザー入退室**: MatrixRTC MembershipsChanged イベント時に join/leave SE
 - **ミュート/アンミュート**: トグル時に mute/unmute SE
+- **画面共有開始**: screen-on SE（`updateScreenShares()` で新規 identity 検出時）
+- **画面共有終了**: screen-off SE（`updateScreenShares()` / `onTrackUnsubscribed` で identity 消失時）
 
 ### 音声設定（設定 → 音声・ビデオ）
 2カラムレイアウト（左:入力 / 右:出力）:

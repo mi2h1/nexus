@@ -192,9 +192,12 @@ jobs:
 - 入力/出力音量調整（2カラム設定UI）、入力感度（ボイスゲート）
 - 設定画面マイクゲージ: VC未接続時も独立した getUserMedia+AnalyserNode で動作
 - 発話検出（ローカル: 自前 inputLevel / リモート: LiveKit isSpeaking）、Ping 表示
-- 入退室 SE（standby → join → leave）、ミュート/アンミュート SE
+- 入退室 SE（standby → join → leave）、ミュート/アンミュート SE、画面共有 SE（screen-on/screen-off）
 - マイクミュートは `mediaStreamTrack.enabled` 直接操作（処理済みトラック publish のため）
-- VC 接続/切断トランジション UI: スピナー+グレーアウト、再参加ブロック
+- VC 接続/切断トランジション UI: スピナー+グレーアウト、再参加ブロック（VCチャンネル要素のスピナーは削除済み、参加者リストのアバタースピナーに統一）
+- ミュート状態保持: VC中ミュート→切断後も `_preMicMuted` 同期で維持
+- 音声タイミング同期: 接続中は入出力 gain=0、Connected 後に `unmutePipelines()` で復元
+- 入室 SE: `joinVoiceChannel()` で明示再生（`onMembershipsChanged` のカウント差分は self-inclusion で不動作）
 - VC 接続高速化の調査・設計ドキュメント: docs/vc-optimization.md
 
 ### Phase 3: 将来のネイティブ化（Tauri 2）

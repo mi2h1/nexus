@@ -82,7 +82,10 @@ nexus/                          # element-web フォーク
 | 出力マスター音量 | `setMasterOutputVolume()` — 全リモート参加者の受信音量一括調整 |
 | 入力感度（ボイスゲート） | `AnalyserNode` RMS 計測 → 閾値以下で `GainNode.gain=0`（300ms リリース遅延） |
 | 発話検出 | ポーリング方式（250ms）— ローカルは自前 `inputLevel>5` / リモートは LiveKit `isSpeaking` |
+| 画面共有 SE | 画面共有開始/終了時に screen-on/screen-off SE（自分・他者共通） |
 | 入退室 SE | 押下時 standby SE → 接続確立時 join SE → 退室時 leave SE |
+| ミュート状態保持 | VC 中ミュート→切断後もミュート状態を維持（`_preMicMuted` 同期） |
+| 音声タイミング同期 | 接続中は入出力 gain=0、Connected 後に `unmutePipelines()` で復元 |
 | VC 参加者グリッド | spotlight/grid 切替 + コントロールバー |
 | 音声設定 UI | 入力/出力音量スライダー + 入力感度トグル/閾値 + リアルタイムレベルメーター |
 | 設定画面マイクゲージ | VC 未接続時も独立した getUserMedia+AnalyserNode でレベルメーター動作 |
@@ -93,6 +96,22 @@ nexus/                          # element-web フォーク
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-26
+- **画面共有 SE**: 画面共有の開始/終了時に screen-on/screen-off SE を再生
+  - `updateScreenShares()` で前回リストとの差分比較（開始=added, 終了=removed）
+  - `onTrackUnsubscribed` の直接フィルタリングパスでも screen-off SE を再生
+  - 自分の開始/終了・他者の開始/終了どちらも同じパスで処理
+- **入室 SE 修正**: `joinVoiceChannel()` で `connect()` 成功後に明示的に join SE 再生
+  - `onMembershipsChanged` のカウント差分検出は self-inclusion fallback で不動作だった
+- **ミュート状態保持修正**: VC 中ミュート→切断後もミュート状態を維持
+  - `leaveVoiceChannel()` で disconnect 前に `_preMicMuted = connection.isMicMuted` で同期
+- **音声タイミング同期**: グレーアウト解除と音声通信開始を同期
+  - `connect()` 内で `outputMasterGain.gain.value = 0`、`inputGainNode.gain.value = 0` で作成
+  - `unmutePipelines()` メソッド追加: Connected 後 + pre-mute 適用後に設定値に復元
+  - ミュート中の場合は入力を 0 のまま維持
+- **VCチャンネル要素スピナー削除**: チャンネルリスト右側のスピナーを削除
+  - 参加者リストのアバター→スピナー差し替えに統一
 
 #### 2026-02-25
 - **画面共有音声 Web Audio ルーティング**: 画面共有の受信音声を Web Audio API パイプライン経由に変更
