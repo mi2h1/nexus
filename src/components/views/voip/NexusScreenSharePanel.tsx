@@ -7,6 +7,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import ReactDOM from "react-dom";
+import { logger as rootLogger } from "matrix-js-sdk/src/logger";
 
 import SettingsStore from "../../../settings/SettingsStore";
 import { SettingLevel } from "../../../settings/SettingLevel";
@@ -15,7 +16,8 @@ import {
     SCREEN_SHARE_PRESETS,
     type ScreenShareQuality,
 } from "../../../models/NexusVoiceConnection";
-import AccessibleButton from "../elements/AccessibleButton";
+
+const logger = rootLogger.getChild("NexusScreenSharePanel");
 
 const PRESET_KEYS: ScreenShareQuality[] = ["low", "standard", "high", "ultra"];
 
@@ -66,6 +68,10 @@ interface NexusScreenSharePanelProps {
  *
  * - Not sharing → select preset + "共有を開始"
  * - Sharing → change preset + "画質を変更" / "共有を停止"
+ *
+ * All actions close the panel first (synchronously) then fire-and-forget
+ * the async operation. This prevents useClickOutside from interfering
+ * when the browser's getDisplayMedia picker opens.
  */
 export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     isScreenSharing,
@@ -80,30 +86,28 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     useClickOutside(panelRef, onFinished);
     useEscapeKey(onFinished);
 
-    const onStartShare = useCallback(async () => {
+    const onStartShare = useCallback(() => {
+        // Save setting and close panel FIRST, then start screen share.
+        // startScreenShare() opens the browser picker (getDisplayMedia),
+        // which must happen after the panel is closed to avoid
+        // useClickOutside / lifecycle interference.
         SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selected);
-        const conn = NexusVoiceStore.instance.getActiveConnection();
-        if (conn) {
-            await conn.startScreenShare();
-        }
         onFinished();
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        conn?.startScreenShare().catch((e) => logger.warn("Failed to start screen share", e));
     }, [selected, onFinished]);
 
-    const onChangeQuality = useCallback(async () => {
+    const onChangeQuality = useCallback(() => {
         SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selected);
-        const conn = NexusVoiceStore.instance.getActiveConnection();
-        if (conn) {
-            await conn.republishScreenShare();
-        }
         onFinished();
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        conn?.republishScreenShare().catch((e) => logger.warn("Failed to change quality", e));
     }, [selected, onFinished]);
 
-    const onStopShare = useCallback(async () => {
-        const conn = NexusVoiceStore.instance.getActiveConnection();
-        if (conn) {
-            await conn.stopScreenShare();
-        }
+    const onStopShare = useCallback(() => {
         onFinished();
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        conn?.stopScreenShare().catch((e) => logger.warn("Failed to stop screen share", e));
     }, [onFinished]);
 
     return ReactDOM.createPortal(
@@ -145,27 +149,27 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
             <div className="nx_ScreenSharePanel_actions">
                 {isScreenSharing ? (
                     <>
-                        <AccessibleButton
+                        <button
                             className="nx_ScreenSharePanel_button nx_ScreenSharePanel_button--primary"
                             onClick={onChangeQuality}
                             disabled={selected === currentKey}
                         >
                             画質を変更
-                        </AccessibleButton>
-                        <AccessibleButton
+                        </button>
+                        <button
                             className="nx_ScreenSharePanel_button nx_ScreenSharePanel_button--danger"
                             onClick={onStopShare}
                         >
                             共有を停止
-                        </AccessibleButton>
+                        </button>
                     </>
                 ) : (
-                    <AccessibleButton
+                    <button
                         className="nx_ScreenSharePanel_button nx_ScreenSharePanel_button--primary"
                         onClick={onStartShare}
                     >
                         共有を開始
-                    </AccessibleButton>
+                    </button>
                 )}
             </div>
         </div>,
