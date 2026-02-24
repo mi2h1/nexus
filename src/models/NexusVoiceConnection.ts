@@ -1378,10 +1378,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * When a remote audio track is muted, mute the corresponding <audio> element
      * to eliminate WebRTC decoder noise floor ("サー" noise).
      */
+    /**
+     * TrackMuted fires for BOTH local and remote tracks.
+     * We only mute/unmute <audio> elements for remote participants.
+     */
     private onTrackMuted = (
         publication: RemoteTrackPublication,
-        participant: RemoteParticipant,
+        participant: Participant,
     ): void => {
+        if (!(participant instanceof RemoteParticipant)) return;
         if (publication.source === Track.Source.Microphone) {
             const audio = this.outputAudioElements.get(participant.identity);
             if (audio) audio.muted = true;
@@ -1389,13 +1394,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const audio = this.screenShareAudioElements.get(participant.identity);
             if (audio) audio.muted = true;
         }
-        this.updateParticipantStates();
+        this.updateParticipants();
     };
 
     private onTrackUnmuted = (
         publication: RemoteTrackPublication,
-        participant: RemoteParticipant,
+        participant: Participant,
     ): void => {
+        if (!(participant instanceof RemoteParticipant)) return;
         if (publication.source === Track.Source.Microphone) {
             const audio = this.outputAudioElements.get(participant.identity);
             if (audio) audio.muted = false;
@@ -1403,7 +1409,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const audio = this.screenShareAudioElements.get(participant.identity);
             if (audio) audio.muted = false;
         }
-        this.updateParticipantStates();
+        this.updateParticipants();
     };
 
     private onTrackSubscribed = (
