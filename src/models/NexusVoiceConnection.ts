@@ -453,17 +453,34 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         try {
             // Call getDisplayMedia directly instead of livekit's
-            // createLocalScreenTracks. This lets us gracefully handle
-            // audio capture failure (NotReadableError) without losing
-            // the video track or reopening the screen picker.
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    width: { ideal: preset.width },
-                    height: { ideal: preset.height },
-                    frameRate: { ideal: preset.fps },
-                },
-                audio: true,
-            });
+            // createLocalScreenTracks. If audio capture fails
+            // (NotReadableError — common on some systems), fall back
+            // to video-only. The picker reopens in that case but
+            // screen share will work.
+            let stream: MediaStream;
+            try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        width: { ideal: preset.width },
+                        height: { ideal: preset.height },
+                        frameRate: { ideal: preset.fps },
+                    },
+                    audio: true,
+                });
+            } catch (e) {
+                if (e instanceof DOMException && e.name === "NotReadableError") {
+                    logger.info("Screen share audio unavailable, retrying video-only");
+                    stream = await navigator.mediaDevices.getDisplayMedia({
+                        video: {
+                            width: { ideal: preset.width },
+                            height: { ideal: preset.height },
+                            frameRate: { ideal: preset.fps },
+                        },
+                    });
+                } else {
+                    throw e;
+                }
+            }
 
             const videoMst = stream.getVideoTracks()[0];
             const audioMst = stream.getAudioTracks()[0];
