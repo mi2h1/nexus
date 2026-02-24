@@ -1423,23 +1423,35 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private updateParticipants(): void {
         const participants = new Map<RoomMember, Set<string>>();
 
-        // 1. MatrixRTC memberships（権威データ）
-        for (const m of this.session.memberships) {
-            if (!m.sender) continue;
-            const member = this.room.getMember(m.sender);
-            if (member) {
-                if (participants.has(member)) {
-                    participants.get(member)!.add(m.deviceId);
-                } else {
-                    participants.set(member, new Set([m.deviceId]));
+        if (this.livekitRoom && this.connected) {
+            // ── Connected mode: LiveKit is the source of truth ──
+            // Cross-reference MatrixRTC memberships with actual LiveKit
+            // participants to filter out stale memberships (users who
+            // disconnected uncleanly and left ghost MatrixRTC entries).
+
+            // Build set of user IDs actually connected to LiveKit
+            const livekitUserIds = new Set<string>();
+            for (const rp of this.livekitRoom.remoteParticipants.values()) {
+                const userId = this.resolveIdentityToUserId(rp.identity);
+                if (userId) livekitUserIds.add(userId);
+            }
+
+            // 1. MatrixRTC members — only include if also in LiveKit
+            for (const m of this.session.memberships) {
+                if (!m.sender) continue;
+                if (!livekitUserIds.has(m.sender)) continue; // Not in LiveKit → stale
+                const member = this.room.getMember(m.sender);
+                if (member) {
+                    if (participants.has(member)) {
+                        participants.get(member)!.add(m.deviceId);
+                    } else {
+                        participants.set(member, new Set([m.deviceId]));
+                    }
                 }
             }
-        }
 
-        // 2. LiveKit 参加者（高速パス — MatrixRTC にまだ反映されていない人を補完）
-        if (this.livekitRoom) {
+            // 2. LiveKit participants not yet in MatrixRTC (fast path)
             const seen = new Set([...participants.keys()].map((m) => m.userId));
-
             for (const rp of this.livekitRoom.remoteParticipants.values()) {
                 const userId = this.resolveIdentityToUserId(rp.identity);
                 if (!userId || seen.has(userId)) continue;
@@ -1449,13 +1461,27 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 }
             }
 
-            // 3. ローカルユーザー（接続済みだが membership 未到着の場合）
-            if (this.connected) {
-                const myUserId = this.client.getUserId();
-                if (myUserId && !seen.has(myUserId)) {
-                    const myMember = this.room.getMember(myUserId);
-                    if (myMember) {
-                        participants.set(myMember, new Set([this.client.getDeviceId()!]));
+            // 3. Add self
+            const myUserId = this.client.getUserId();
+            if (myUserId && !seen.has(myUserId)) {
+                const myMember = this.room.getMember(myUserId);
+                if (myMember) {
+                    participants.set(myMember, new Set([this.client.getDeviceId()!]));
+                }
+            }
+        } else {
+            // ── Pre-connection mode: MatrixRTC memberships only ──
+            // Before joining LiveKit, we can only rely on MatrixRTC data.
+            // Stale entries may be visible here but will be cleaned up
+            // once connected.
+            for (const m of this.session.memberships) {
+                if (!m.sender) continue;
+                const member = this.room.getMember(m.sender);
+                if (member) {
+                    if (participants.has(member)) {
+                        participants.get(member)!.add(m.deviceId);
+                    } else {
+                        participants.set(member, new Set([m.deviceId]));
                     }
                 }
             }
