@@ -125,6 +125,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Audio pipeline (shared AudioContext) ────────────────
     private audioContext: AudioContext | null = null;
     private outputMasterGain: GainNode | null = null;
+    private outputDestNode: MediaStreamAudioDestinationNode | null = null;
+    private outputAudioElement: HTMLAudioElement | null = null;
     private outputParticipantGains = new Map<string, GainNode>();
     private outputSources = new Map<string, MediaStreamAudioSourceNode>();
     private outputStreams = new Map<string, MediaStream>(); // prevent GC
@@ -239,7 +241,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // after connectionState=Connected so audio doesn't flow
             // before the UI grayout is removed.
             this.outputMasterGain.gain.value = 0;
-            this.outputMasterGain.connect(this.audioContext.destination);
+
+            // Route output through <audio> element instead of
+            // AudioContext.destination — Chrome does not reliably play
+            // remote WebRTC audio routed via MediaStreamAudioSourceNode
+            // → AudioContext.destination. Routing through a
+            // MediaStreamDestinationNode → <audio> element works on
+            // all browsers.
+            this.outputDestNode = this.audioContext.createMediaStreamDestination();
+            this.outputMasterGain.connect(this.outputDestNode);
+            this.outputAudioElement = new Audio();
+            this.outputAudioElement.srcObject = this.outputDestNode.stream;
+            // play() must be called in user gesture context (before await)
+            this.outputAudioElement.play().catch(() => {});
 
             // ── Phase 1: Parallel pre-fetch ──────────────────────────
             // JWT, mic access, and RNNoise WASM download run concurrently
@@ -412,10 +426,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * grayout is removed.
      */
     public unmutePipelines(): void {
-        // Safety net: resume AudioContext if Chrome suspended it despite
-        // being created in user gesture context (e.g. tab was backgrounded).
+        // Safety net: resume AudioContext and audio element if suspended
         if (this.audioContext?.state === "suspended") {
             this.audioContext.resume().catch(() => {});
+        }
+        if (this.outputAudioElement?.paused) {
+            this.outputAudioElement.play().catch(() => {});
         }
         if (this.outputMasterGain) {
             const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
@@ -943,7 +959,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._inputLevel = 0;
         this._voiceGateOpen = true;
 
-        // Close output audio nodes
+        // Close output audio element and nodes
+        if (this.outputAudioElement) {
+            this.outputAudioElement.pause();
+            this.outputAudioElement.srcObject = null;
+            this.outputAudioElement = null;
+        }
+        this.outputDestNode = null;
         this.outputMasterGain = null;
         for (const source of this.outputSources.values()) source.disconnect();
         this.outputSources.clear();
@@ -1046,6 +1068,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 this.screenShareGains.set(participant.identity, gain);
                 if (this.audioContext.state === "suspended") {
                     this.audioContext.resume().catch(() => {});
+                }
+                if (this.outputAudioElement?.paused) {
+                    this.outputAudioElement.play().catch(() => {});
                 }
             } catch (e) {
                 logger.warn("onTrackSubscribed (ScreenShareAudio) error:", e);
