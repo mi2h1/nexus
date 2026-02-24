@@ -32,6 +32,7 @@ import {
     createLocalScreenTracks,
     Track,
     ScreenSharePresets,
+    VideoPreset,
 } from "livekit-client";
 
 import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppressor";
@@ -416,7 +417,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         try {
             const tracks = await createLocalScreenTracks({
                 audio: true,
-                contentHint: "detail",
+                contentHint: "motion",
             });
             for (const track of tracks) {
                 if (track.kind === "video") {
@@ -429,9 +430,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             if (this.localScreenTrack) {
                 await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
                     source: Track.Source.ScreenShare,
-                    screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
-                    screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
-                    degradationPreference: "maintain-resolution",
+                    videoCodec: "vp9",
+                    screenShareEncoding: new VideoPreset(1280, 720, 6_000_000, 30).encoding,
+                    screenShareSimulcastLayers: [ScreenSharePresets.h720fps15],
+                    degradationPreference: "maintain-framerate",
                 });
 
                 // Listen for browser "stop sharing" event
