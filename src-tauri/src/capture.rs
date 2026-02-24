@@ -535,18 +535,44 @@ mod platform {
 
         println!("[WASAPI] Attempting process-excluded loopback (Win10 2004+)");
 
+        // Step 1: Get the device's native format from the default render device.
+        // The process loopback virtual device does NOT support GetMixFormat,
+        // so we query the real device and use its format for initialization.
+        wasapi::initialize_mta();
+        let device_format = {
+            let enumerator = wasapi::DeviceEnumerator::new()
+                .map_err(|e| format!("DeviceEnumerator: {}", e))?;
+            let device = enumerator
+                .get_default_device(&wasapi::Direction::Render)
+                .map_err(|e| format!("get device: {}", e))?;
+            let mut client = device
+                .get_iaudioclient()
+                .map_err(|e| format!("get client: {}", e))?;
+            client
+                .get_mixformat()
+                .map_err(|e| format!("get format: {}", e))?
+        };
+
+        let sample_rate = device_format.get_samplespersec();
+        let channels = device_format.get_nchannels() as usize;
+        let bits = device_format.get_bitspersample();
+        let bytes_per_sample = (bits / 8) as usize;
+
+        println!(
+            "[WASAPI] Device native format: {}Hz, {}ch, {}bit",
+            sample_rate, channels, bits
+        );
+
         unsafe {
-            // Initialize COM for this thread
+            // Step 2: Activate process-excluded loopback client
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
 
-            // Build activation params: exclude our own process
             let params = ProcessLoopbackActivationParams {
                 activation_type: 1,        // AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
                 target_process_id: std::process::id(),
                 process_loopback_mode: 1,  // PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
             };
 
-            // Wrap in a raw PROPVARIANT with VT_BLOB
             let prop = PropVariantBlob {
                 vt: 0x0041, // VT_BLOB
                 reserved1: 0,
@@ -557,19 +583,15 @@ mod platform {
                 p_blob_data: &params as *const _ as *const u8,
             };
 
-            // Create event for synchronous wait
             let event = CreateEventW(None, TRUE, FALSE, None)
                 .map_err(|e| format!("CreateEventW: {}", e))?;
 
-            // Create completion handler
             let handler: IActivateAudioInterfaceCompletionHandler =
                 ActivateCompletionHandler {
                     event: event.0 as isize,
                 }
                 .into();
 
-            // Activate the process-excluded loopback audio client
-            // Cast raw PropVariantBlob to *const PROPVARIANT (same C ABI layout)
             let prop_ptr = &prop as *const PropVariantBlob as *const windows_core::PROPVARIANT;
             let operation = ActivateAudioInterfaceAsync(
                 windows::core::w!("VAD\\Process_Loopback"),
@@ -579,15 +601,13 @@ mod platform {
             )
             .map_err(|e| format!("ActivateAudioInterfaceAsync: {}", e))?;
 
-            // Wait for completion (5 seconds)
             let _ = WaitForSingleObject(event, 5000);
             let _ = CloseHandle(event);
 
-            // Get activation result
-            let op = operation;
             let mut hr = windows::core::HRESULT(0);
             let mut unk: Option<windows::core::IUnknown> = None;
-            op.GetActivateResult(&mut hr, &mut unk)
+            operation
+                .GetActivateResult(&mut hr, &mut unk)
                 .map_err(|e| format!("GetActivateResult: {}", e))?;
             hr.ok().map_err(|e| format!("Activation HRESULT: {}", e))?;
 
@@ -596,50 +616,35 @@ mod platform {
                 .cast()
                 .map_err(|e| format!("Cast IAudioClient: {}", e))?;
 
-            println!("[WASAPI] Process-excluded loopback client activated (PID={} excluded)", std::process::id());
-
-            // Process loopback virtual device does NOT support GetMixFormat.
-            // Instead, specify the format directly. With AUTOCONVERTPCM flag,
-            // Windows will convert from the device's native format automatically.
-            // Use 48kHz stereo float32 — the standard LiveKit/WebRTC format.
-            let sample_rate: u32 = 48000;
-            let channels: usize = 2;
-            let bits: u16 = 32;
-            let bytes_per_sample: usize = 4;
-            let mut format = windows::Win32::Media::Audio::WAVEFORMATEX {
-                wFormatTag: 3, // WAVE_FORMAT_IEEE_FLOAT
-                nChannels: channels as u16,
-                nSamplesPerSec: sample_rate,
-                nAvgBytesPerSec: sample_rate * channels as u32 * bytes_per_sample as u32,
-                nBlockAlign: (channels * bytes_per_sample) as u16,
-                wBitsPerSample: bits,
-                cbSize: 0,
-            };
-            let format_ptr = &mut format as *mut windows::Win32::Media::Audio::WAVEFORMATEX;
-
             println!(
-                "[WASAPI] Process-excluded format: {}Hz, {}ch, {}bit (specified directly)",
-                sample_rate, channels, bits
+                "[WASAPI] Process-excluded loopback client activated (PID={} excluded)",
+                std::process::id()
             );
+
+            // Step 3: Initialize with the device's native format.
+            // Cast wasapi's WaveFormat pointer to windows crate WAVEFORMATEX pointer
+            // (same C ABI layout — both are #[repr(C)] WAVEFORMATEX/WAVEFORMATEXTENSIBLE).
+            let format_ptr = device_format.as_waveformatex_ref()
+                as *const wasapi::WaveFormatEx
+                as *const WAVEFORMATEX;
+
             let _ = app.emit(
                 "wasapi-info",
-                format!("WASAPI (process-excluded): {}Hz {}ch {}bit", sample_rate, channels, bits),
+                format!(
+                    "WASAPI (process-excluded): {}Hz {}ch {}bit",
+                    sample_rate, channels, bits
+                ),
             );
 
-            // Initialize client: shared mode, event-driven, auto-convert PCM
-            // Note: no AUDCLNT_STREAMFLAGS_LOOPBACK needed — the virtual device
-            // is already a loopback interface.
-            // AUTOCONVERTPCM: Windows resamples from device native format to our format.
-            let init_flags: u32 = 0x00040000   // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
-                | 0x80000000                    // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
-                | 0x08000000;                   // AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
+            // Event-driven shared mode, no AUTOCONVERTPCM (native format matches).
+            let init_flags: u32 = 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
             client
                 .Initialize(
                     AUDCLNT_SHAREMODE_SHARED,
                     init_flags,
-                    2_000_000, // 200ms buffer (in 100ns units)
                     0,
-                    format_ptr as *const _,
+                    0,
+                    format_ptr,
                     None,
                 )
                 .map_err(|e| format!("Initialize: {}", e))?;
