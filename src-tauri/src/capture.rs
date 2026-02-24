@@ -42,6 +42,8 @@ mod platform {
         IActivateAudioInterfaceCompletionHandler_Impl,
         IActivateAudioInterfaceAsyncOperation,
     };
+    use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject, CloseHandle, WAIT_TIMEOUT};
+    use windows::Win32::Foundation::{HANDLE, TRUE, FALSE};
     use windows_capture::{
         capture::{CaptureControl, Context, GraphicsCaptureApiHandler},
         frame::Frame,
@@ -517,11 +519,8 @@ mod platform {
             _operation: Option<&IActivateAudioInterfaceAsyncOperation>,
         ) -> windows::core::Result<()> {
             unsafe {
-                windows::Win32::System::Threading::SetEvent(
-                    windows::Win32::Foundation::HANDLE(self.event as *mut std::ffi::c_void),
-                )
+                let _ = SetEvent(HANDLE(self.event as *mut std::ffi::c_void));
             }
-            .ok();
             Ok(())
         }
     }
@@ -531,10 +530,8 @@ mod platform {
         stop_flag: &Arc<AtomicBool>,
     ) -> Result<(), String> {
         use windows::core::Interface;
-        use windows::Win32::Foundation::*;
         use windows::Win32::Media::Audio::*;
         use windows::Win32::System::Com::*;
-        use windows::Win32::System::Threading::*;
 
         println!("[WASAPI] Attempting process-excluded loopback (Win10 2004+)");
 
@@ -572,8 +569,8 @@ mod platform {
                 .into();
 
             // Activate the process-excluded loopback audio client
-            let prop_ptr =
-                &prop as *const PropVariantBlob as *const windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
+            // Cast raw PropVariantBlob to *const PROPVARIANT (same C ABI layout)
+            let prop_ptr = &prop as *const PropVariantBlob as *const windows_core::PROPVARIANT;
             let mut operation: Option<IActivateAudioInterfaceAsyncOperation> = None;
             ActivateAudioInterfaceAsync(
                 windows::core::w!("VAD\\Process_Loopback"),
@@ -590,7 +587,7 @@ mod platform {
 
             // Get activation result
             let op = operation.ok_or("No activation operation returned")?;
-            let mut hr = HRESULT(0);
+            let mut hr = windows::core::HRESULT(0);
             let mut unk: Option<windows::core::IUnknown> = None;
             op.GetActivateResult(&mut hr, &mut unk)
                 .map_err(|e| format!("GetActivateResult: {}", e))?;
@@ -625,13 +622,14 @@ mod platform {
             // Initialize client: shared mode, event-driven, auto-convert PCM
             // Note: no AUDCLNT_STREAMFLAGS_LOOPBACK needed — the virtual device
             // is already a loopback interface.
-            let init_flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK.0
-                | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM.0
-                | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY.0;
+            // Raw flag values (these are u32 constants in the Windows SDK):
+            let init_flags: u32 = 0x00040000   // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+                | 0x80000000                    // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+                | 0x08000000;                   // AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
             client
                 .Initialize(
                     AUDCLNT_SHAREMODE_SHARED,
-                    AUDCLNT_STREAMFLAGS(init_flags),
+                    init_flags,
                     0,
                     0,
                     format_ptr,
