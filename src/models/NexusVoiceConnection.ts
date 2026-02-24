@@ -874,6 +874,42 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Private: Remote Audio ───────────────────────────────
 
+    /**
+     * Create a hidden <audio> element wired to a LiveKit track's MediaStreamTrack.
+     *
+     * We intentionally bypass track.attach() because it calls element.play()
+     * internally, which can produce direct speaker output that bypasses our
+     * Web Audio GainNode pipeline. Instead we manually set srcObject and play.
+     * The caller must call createMediaElementSource() on the returned element
+     * so that all audio is routed exclusively through Web Audio.
+     */
+    private createWebAudioElement(track: NonNullable<RemoteTrackPublication["track"]>): HTMLAudioElement {
+        const audioEl = document.createElement("audio");
+        audioEl.srcObject = new MediaStream([track.mediaStreamTrack]);
+        audioEl.play().catch(() => {});
+        return audioEl;
+    }
+
+    /** Stop and remove an <audio> element from a map. */
+    private cleanupAudioElement(map: Map<string, HTMLAudioElement>, key: string): void {
+        const el = map.get(key);
+        if (el) {
+            el.pause();
+            el.srcObject = null;
+            el.remove();
+            map.delete(key);
+        }
+    }
+
+    /** Disconnect and remove an AudioNode from a map. */
+    private cleanupAudioNode(map: Map<string, AudioNode>, key: string): void {
+        const node = map.get(key);
+        if (node) {
+            node.disconnect();
+            map.delete(key);
+        }
+    }
+
     private onTrackSubscribed = (
         track: RemoteTrackPublication["track"],
         publication: RemoteTrackPublication,
@@ -892,13 +928,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.updateScreenShares();
             if (!this.audioContext || !this.outputMasterGain) return;
             try {
-                // Create <audio>, capture into Web Audio FIRST, then attach track.
-                // This order ensures audio never plays directly from the element —
-                // it always goes through our GainNode pipeline.
-                const audioEl = document.createElement("audio");
+                const audioEl = this.createWebAudioElement(track);
                 const source = this.audioContext.createMediaElementSource(audioEl);
-                track.attach(audioEl);
-
                 const gain = this.audioContext.createGain();
                 gain.gain.value = this.screenShareVolumes.get(participant.identity) ?? 1;
                 source.connect(gain);
@@ -916,14 +947,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.audioContext || !this.outputMasterGain) return;
 
         try {
-            // Create <audio>, capture into Web Audio FIRST, then attach track.
-            // This order ensures audio never plays directly from the element —
-            // it always goes through our GainNode pipeline for volume control.
-            // Using <audio> + MediaElementAudioSourceNode instead of raw
-            // MediaStreamAudioSourceNode avoids GC-related audio dropout.
-            const audioEl = document.createElement("audio");
+            const audioEl = this.createWebAudioElement(track);
             const source = this.audioContext.createMediaElementSource(audioEl);
-            track.attach(audioEl);
 
             // Per-participant gain node
             const participantGain = this.audioContext.createGain();
@@ -955,44 +980,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Handle screen share audio — clean up Web Audio nodes + <audio>
         if (publication.source === Track.Source.ScreenShareAudio) {
             this.updateScreenShares();
-            const ssEl = this.screenShareAudioElements.get(participant.identity);
-            if (ssEl) {
-                track.detach(ssEl);
-                ssEl.remove();
-                this.screenShareAudioElements.delete(participant.identity);
-            }
-            const ssSource = this.screenShareSources.get(participant.identity);
-            if (ssSource) {
-                ssSource.disconnect();
-                this.screenShareSources.delete(participant.identity);
-            }
-            const ssGain = this.screenShareGains.get(participant.identity);
-            if (ssGain) {
-                ssGain.disconnect();
-                this.screenShareGains.delete(participant.identity);
-            }
+            this.cleanupAudioElement(this.screenShareAudioElements, participant.identity);
+            this.cleanupAudioNode(this.screenShareSources, participant.identity);
+            this.cleanupAudioNode(this.screenShareGains, participant.identity);
             return;
         }
 
         if (track.kind !== "audio") return;
 
         // Disconnect and clean up Web Audio nodes + <audio>
-        const audioEl = this.outputAudioElements.get(participant.identity);
-        if (audioEl) {
-            track.detach(audioEl);
-            audioEl.remove();
-            this.outputAudioElements.delete(participant.identity);
-        }
-        const source = this.outputSources.get(participant.identity);
-        if (source) {
-            source.disconnect();
-            this.outputSources.delete(participant.identity);
-        }
-        const gain = this.outputParticipantGains.get(participant.identity);
-        if (gain) {
-            gain.disconnect();
-            this.outputParticipantGains.delete(participant.identity);
-        }
+        this.cleanupAudioElement(this.outputAudioElements, participant.identity);
+        this.cleanupAudioNode(this.outputSources, participant.identity);
+        this.cleanupAudioNode(this.outputParticipantGains, participant.identity);
     };
 
     // ─── Private: Active Speakers ─────────────────────────────
