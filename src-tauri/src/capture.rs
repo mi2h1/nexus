@@ -42,8 +42,8 @@ mod platform {
         IActivateAudioInterfaceCompletionHandler_Impl,
         IActivateAudioInterfaceAsyncOperation,
     };
-    use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject, CloseHandle, WAIT_TIMEOUT};
-    use windows::Win32::Foundation::{HANDLE, TRUE, FALSE};
+    use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
+    use windows::Win32::Foundation::{HANDLE, TRUE, FALSE, CloseHandle};
     use windows_capture::{
         capture::{CaptureControl, Context, GraphicsCaptureApiHandler},
         frame::Frame,
@@ -571,13 +571,11 @@ mod platform {
             // Activate the process-excluded loopback audio client
             // Cast raw PropVariantBlob to *const PROPVARIANT (same C ABI layout)
             let prop_ptr = &prop as *const PropVariantBlob as *const windows_core::PROPVARIANT;
-            let mut operation: Option<IActivateAudioInterfaceAsyncOperation> = None;
-            ActivateAudioInterfaceAsync(
+            let operation = ActivateAudioInterfaceAsync(
                 windows::core::w!("VAD\\Process_Loopback"),
                 &IAudioClient::IID,
                 Some(prop_ptr),
                 &handler,
-                &mut operation,
             )
             .map_err(|e| format!("ActivateAudioInterfaceAsync: {}", e))?;
 
@@ -586,7 +584,7 @@ mod platform {
             let _ = CloseHandle(event);
 
             // Get activation result
-            let op = operation.ok_or("No activation operation returned")?;
+            let op = operation;
             let mut hr = windows::core::HRESULT(0);
             let mut unk: Option<windows::core::IUnknown> = None;
             op.GetActivateResult(&mut hr, &mut unk)
@@ -656,7 +654,7 @@ mod platform {
             let mut first_data = true;
             while !stop_flag.load(Ordering::SeqCst) {
                 let wait_result = WaitForSingleObject(event_handle, 100);
-                if wait_result == WAIT_TIMEOUT {
+                if wait_result.0 == 258 { // WAIT_TIMEOUT
                     continue;
                 }
 
