@@ -16,6 +16,8 @@ import {
     SCREEN_SHARE_PRESETS,
     type ScreenShareQuality,
 } from "../../../models/NexusVoiceConnection";
+import { isTauri } from "../../../utils/tauriHttp";
+import { NexusScreenSharePicker } from "./NexusScreenSharePicker";
 
 const logger = rootLogger.getChild("NexusScreenSharePanel");
 
@@ -69,9 +71,8 @@ interface NexusScreenSharePanelProps {
  * - Not sharing → select preset + "共有を開始"
  * - Sharing → change preset + "画質を変更" / "共有を停止"
  *
- * All actions close the panel first (synchronously) then fire-and-forget
- * the async operation. This prevents useClickOutside from interfering
- * when the browser's getDisplayMedia picker opens.
+ * In Tauri mode, clicking "共有を開始" opens the native capture picker
+ * (NexusScreenSharePicker) instead of the browser's getDisplayMedia.
  */
 export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     isScreenSharing,
@@ -82,20 +83,40 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     const panelRef = useRef<HTMLDivElement>(null);
     const currentKey = (SettingsStore.getValue("nexus_screen_share_quality") ?? "standard") as ScreenShareQuality;
     const [selected, setSelected] = useState<ScreenShareQuality>(currentKey);
+    const [showNativePicker, setShowNativePicker] = useState(false);
 
     useClickOutside(panelRef, onFinished);
     useEscapeKey(onFinished);
 
     const onStartShare = useCallback(() => {
-        // Save setting and close panel FIRST, then start screen share.
-        // startScreenShare() opens the browser picker (getDisplayMedia),
-        // which must happen after the panel is closed to avoid
-        // useClickOutside / lifecycle interference.
         SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selected);
-        onFinished();
-        const conn = NexusVoiceStore.instance.getActiveConnection();
-        conn?.startScreenShare().catch((e) => logger.warn("Failed to start screen share", e));
+
+        if (isTauri()) {
+            // Show native picker overlay (replaces this panel)
+            setShowNativePicker(true);
+        } else {
+            // Browser: close panel FIRST, then start screen share.
+            onFinished();
+            const conn = NexusVoiceStore.instance.getActiveConnection();
+            conn?.startScreenShare().catch((e) => logger.warn("Failed to start screen share", e));
+        }
     }, [selected, onFinished]);
+
+    const onNativePickerSelect = useCallback(
+        (targetId: string, fps: number, captureAudio: boolean) => {
+            setShowNativePicker(false);
+            onFinished();
+            const conn = NexusVoiceStore.instance.getActiveConnection();
+            conn?.startNativeScreenShare(targetId, fps, captureAudio).catch((e) =>
+                logger.warn("Failed to start native screen share", e),
+            );
+        },
+        [onFinished],
+    );
+
+    const onNativePickerCancel = useCallback(() => {
+        setShowNativePicker(false);
+    }, []);
 
     const onChangeQuality = useCallback(() => {
         SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selected);
@@ -109,6 +130,18 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
         const conn = NexusVoiceStore.instance.getActiveConnection();
         conn?.stopScreenShare().catch((e) => logger.warn("Failed to stop screen share", e));
     }, [onFinished]);
+
+    // If native picker is shown, render that instead
+    if (showNativePicker) {
+        const preset = SCREEN_SHARE_PRESETS[selected];
+        return (
+            <NexusScreenSharePicker
+                onSelect={onNativePickerSelect}
+                onCancel={onNativePickerCancel}
+                defaultFps={preset.fps}
+            />
+        );
+    }
 
     return ReactDOM.createPortal(
         <div

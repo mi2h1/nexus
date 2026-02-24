@@ -39,6 +39,7 @@ import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppresso
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
 import SettingsStore from "../settings/SettingsStore";
 import { isTauri, corsFreePost } from "../utils/tauriHttp";
+import type { NativeVideoCaptureStream, NativeAudioCaptureStream } from "../utils/NexusNativeCapture";
 
 const logger = rootLogger.getChild("NexusVoiceConnection");
 
@@ -124,6 +125,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private localAudioTrack: LocalAudioTrack | null = null;
     private localScreenTrack: LocalVideoTrack | null = null;
     private localScreenAudioTrack: LocalAudioTrack | null = null;
+    // ─── Native (Tauri) screen capture ───────────────────────────
+    private nativeVideoCapture: NativeVideoCaptureStream | null = null;
+    private nativeAudioCapture: NativeAudioCaptureStream | null = null;
+    private _isNativeCapture = false;
     private _isScreenSharing = false;
     private _screenShares: ScreenShareInfo[] = [];
     private _activeSpeakers = new Set<string>();
@@ -504,6 +509,99 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     public async startScreenShare(): Promise<void> {
         if (!this.livekitRoom || !this.connected) return;
+        // In Tauri mode, the NexusScreenSharePanel opens the native picker
+        // and calls startNativeScreenShare() directly with the user's selection.
+        // So startScreenShare() only handles the browser path.
+        await this.startBrowserScreenShare();
+    }
+
+    // ─── Native screen share (Tauri: DXGI + WASAPI) ─────────────
+
+    /**
+     * Start native screen capture with the given target.
+     * Called directly from NexusScreenSharePanel after the user
+     * selects a capture target in the native picker.
+     */
+    public async startNativeScreenShare(
+        targetId: string,
+        fps: number,
+        captureAudio: boolean,
+    ): Promise<void> {
+        if (!this.livekitRoom || !this.connected) return;
+
+        const preset = this.getScreenSharePreset();
+
+        try {
+            // Start native capture via Tauri
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("start_capture", {
+                targetId,
+                fps,
+                captureAudio,
+            });
+
+            // Create video pipeline
+            const { NativeVideoCaptureStream, NativeAudioCaptureStream } =
+                await import("../utils/NexusNativeCapture");
+
+            this.nativeVideoCapture = new NativeVideoCaptureStream(preset.width, preset.height, fps);
+            await this.nativeVideoCapture.start();
+
+            const videoTrack = this.nativeVideoCapture.getVideoTrack();
+            if (videoTrack) {
+                videoTrack.contentHint = "motion";
+                this.localScreenTrack = new LocalVideoTrack(videoTrack, undefined, true);
+                await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
+                    source: Track.Source.ScreenShare,
+                    videoCodec: "h264",
+                    screenShareEncoding: new VideoPreset(
+                        preset.width, preset.height, preset.maxBitrate, preset.fps,
+                    ).encoding,
+                    screenShareSimulcastLayers: [ScreenSharePresets.h720fps15],
+                    degradationPreference: "maintain-framerate",
+                });
+            }
+
+            // Create audio pipeline if requested
+            if (captureAudio) {
+                this.nativeAudioCapture = new NativeAudioCaptureStream(48000, 2);
+                await this.nativeAudioCapture.start();
+
+                const audioTrack = this.nativeAudioCapture.getAudioTrack();
+                if (audioTrack) {
+                    this.localScreenAudioTrack = new LocalAudioTrack(audioTrack, undefined, true);
+                    await this.livekitRoom.localParticipant.publishTrack(this.localScreenAudioTrack, {
+                        source: Track.Source.ScreenShareAudio,
+                    });
+                    logger.info("Native screen share audio captured (WASAPI)");
+                }
+            }
+
+            this._isScreenSharing = true;
+            this._isNativeCapture = true;
+            this.updateScreenShares();
+            logger.info("Native screen share started:", targetId);
+
+            // Listen for capture-stopped event (e.g. target window closed)
+            import("@tauri-apps/api/event").then(({ listen }) => {
+                listen("capture-stopped", () => {
+                    if (this._isNativeCapture && this._isScreenSharing) {
+                        this.stopScreenShare().catch((e) =>
+                            logger.warn("Failed to stop after capture-stopped", e),
+                        );
+                    }
+                });
+            });
+        } catch (e) {
+            logger.warn("Failed to start native screen share", e);
+            await this.cleanupNativeCapture();
+        }
+    }
+
+    // ─── Browser screen share (getDisplayMedia) ─────────────────
+
+    private async startBrowserScreenShare(): Promise<void> {
+        if (!this.livekitRoom || !this.connected) return;
 
         const preset = this.getScreenSharePreset();
 
@@ -550,7 +648,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 }
                 await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
                     source: Track.Source.ScreenShare,
-                    videoCodec: "vp9",
+                    videoCodec: "h264",
                     screenShareEncoding: new VideoPreset(
                         preset.width, preset.height, preset.maxBitrate, preset.fps,
                     ).encoding,
@@ -599,7 +697,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Re-publish with new encoding parameters
         await this.livekitRoom.localParticipant.publishTrack(this.localScreenTrack, {
             source: Track.Source.ScreenShare,
-            videoCodec: "vp9",
+            videoCodec: "h264",
             screenShareEncoding: new VideoPreset(
                 preset.width, preset.height, preset.maxBitrate, preset.fps,
             ).encoding,
@@ -626,8 +724,34 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.localScreenAudioTrack = null;
         }
 
+        // Clean up native capture resources (Tauri)
+        if (this._isNativeCapture) {
+            await this.cleanupNativeCapture();
+        }
+
         this._isScreenSharing = false;
         this.updateScreenShares();
+    }
+
+    private async cleanupNativeCapture(): Promise<void> {
+        this._isNativeCapture = false;
+
+        if (this.nativeVideoCapture) {
+            this.nativeVideoCapture.stop();
+            this.nativeVideoCapture = null;
+        }
+        if (this.nativeAudioCapture) {
+            this.nativeAudioCapture.stop();
+            this.nativeAudioCapture = null;
+        }
+
+        // Stop the Rust-side capture
+        try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("stop_capture");
+        } catch (e) {
+            logger.warn("Failed to stop native capture", e);
+        }
     }
 
     private onLocalScreenTrackEnded = (): void => {
@@ -1202,6 +1326,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.localScreenAudioTrack) {
             this.localScreenAudioTrack.stop();
             this.localScreenAudioTrack = null;
+        }
+        // Clean up native capture
+        if (this._isNativeCapture) {
+            this._isNativeCapture = false;
+            this.nativeVideoCapture?.stop();
+            this.nativeVideoCapture = null;
+            this.nativeAudioCapture?.stop();
+            this.nativeAudioCapture = null;
+            // Fire-and-forget stop_capture — we're disconnecting anyway
+            import("@tauri-apps/api/core").then(({ invoke }) => {
+                invoke("stop_capture").catch(() => {});
+            }).catch(() => {});
         }
         this._isScreenSharing = false;
         this._screenShares = [];

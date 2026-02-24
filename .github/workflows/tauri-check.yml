@@ -1,0 +1,49 @@
+name: Tauri Build Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - "src/**"
+      - "res/**"
+  workflow_dispatch:
+
+jobs:
+  check-tauri:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install NASM (for turbojpeg SIMD)
+        uses: ilammy/setup-nasm@v1
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust check (cargo check)
+        working-directory: src-tauri
+        run: cargo check --lib
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"

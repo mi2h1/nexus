@@ -1,0 +1,256 @@
+/*
+Copyright 2025 Nexus Contributors
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+/* ─── Overlay ──────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker_overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 6000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* ─── Modal ────────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker {
+    width: 640px;
+    max-width: 90vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--cpd-color-bg-canvas-default);
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+/* ─── Header ───────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker_header {
+    padding: 20px 24px 0;
+}
+
+.nx_ScreenSharePicker_title {
+    font: var(--cpd-font-heading-md-semibold);
+    color: var(--cpd-color-text-primary);
+    margin: 0;
+}
+
+/* ─── Tabs ─────────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker_tabs {
+    display: flex;
+    gap: 4px;
+    padding: 12px 24px 0;
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+}
+
+button.nx_ScreenSharePicker_tab {
+    appearance: none;
+    border: none;
+    background: none;
+    padding: 8px 16px;
+    font: var(--cpd-font-body-md-medium);
+    color: var(--cpd-color-text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s ease, border-color 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    &:hover {
+        color: var(--cpd-color-text-primary);
+    }
+}
+
+button.nx_ScreenSharePicker_tab--active {
+    color: var(--cpd-color-text-primary);
+    border-bottom-color: var(--cpd-color-icon-accent-primary);
+}
+
+.nx_ScreenSharePicker_tabCount {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-secondary);
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    padding: 0 6px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+}
+
+/* ─── Content ──────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker_content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+    min-height: 200px;
+}
+
+.nx_ScreenSharePicker_loading,
+.nx_ScreenSharePicker_error,
+.nx_ScreenSharePicker_empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 160px;
+    font: var(--cpd-font-body-md-regular);
+    color: var(--cpd-color-text-secondary);
+}
+
+.nx_ScreenSharePicker_error {
+    color: var(--cpd-color-text-critical-primary);
+}
+
+/* ─── Grid ─────────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker_grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+button.nx_ScreenSharePicker_item {
+    appearance: none;
+    border: 2px solid transparent;
+    background-color: var(--cpd-color-bg-subtle-primary);
+    border-radius: 8px;
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+
+    &:hover {
+        border-color: var(--cpd-color-border-interactive-hovered);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--cpd-color-icon-accent-primary);
+        outline-offset: 2px;
+    }
+}
+
+button.nx_ScreenSharePicker_item--selected {
+    border-color: var(--cpd-color-bg-success-primary);
+    box-shadow: 0 0 0 1px var(--cpd-color-bg-success-primary);
+}
+
+/* ─── Thumbnail ────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker_thumbnail {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+}
+
+.nx_ScreenSharePicker_thumbnailPlaceholder {
+    color: var(--cpd-color-icon-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ─── Item info ────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker_itemInfo {
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+}
+
+.nx_ScreenSharePicker_itemTitle {
+    font: var(--cpd-font-body-sm-medium);
+    color: var(--cpd-color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nx_ScreenSharePicker_itemProcess {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nx_ScreenSharePicker_itemSize {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-secondary);
+}
+
+/* ─── Footer ───────────────────────────────────────────────────────── */
+.nx_ScreenSharePicker_footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-top: 1px solid var(--cpd-color-border-interactive-secondary);
+}
+
+.nx_ScreenSharePicker_audioToggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: var(--cpd-font-body-sm-regular);
+    color: var(--cpd-color-text-secondary);
+    cursor: pointer;
+
+    input[type="checkbox"] {
+        accent-color: var(--cpd-color-icon-accent-primary);
+        width: 16px;
+        height: 16px;
+        margin: 0;
+    }
+}
+
+.nx_ScreenSharePicker_actions {
+    display: flex;
+    gap: 8px;
+}
+
+button.nx_ScreenSharePicker_button {
+    appearance: none;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font: var(--cpd-font-body-sm-semibold);
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+        opacity: 0.9;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+}
+
+button.nx_ScreenSharePicker_button--cancel {
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    color: var(--cpd-color-text-primary);
+}
+
+button.nx_ScreenSharePicker_button--primary {
+    background-color: var(--cpd-color-bg-success-primary);
+    color: var(--cpd-color-text-on-solid-primary);
+}
