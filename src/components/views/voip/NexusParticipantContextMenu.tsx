@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useState, useCallback, useEffect, useRef, type JSX } from "react";
+import React, { useCallback, useEffect, useRef, type JSX } from "react";
 import ReactDOM from "react-dom";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 
@@ -42,6 +42,12 @@ function useEscapeKey(onClose: () => void): void {
     }, [onClose]);
 }
 
+/** Stop pointer/mouse/focus events from bubbling to RovingTabIndex ancestors. */
+function stopBubble(e: React.SyntheticEvent): void {
+    e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
+}
+
 interface NexusParticipantContextMenuProps {
     member: RoomMember;
     left: number;
@@ -51,8 +57,10 @@ interface NexusParticipantContextMenuProps {
 
 /**
  * Context menu with a volume slider for a remote VC participant.
- * Rendered via portal to avoid ContextMenu's focus/event management
- * which interferes with range input dragging in Firefox.
+ *
+ * Uses an **uncontrolled** range input (defaultValue + ref) to avoid
+ * React re-renders during drag, which causes Firefox to lose focus to
+ * RovingTabIndex-managed elements in the room list sidebar.
  */
 export const NexusParticipantContextMenu = React.memo(function NexusParticipantContextMenu({
     member,
@@ -62,7 +70,8 @@ export const NexusParticipantContextMenu = React.memo(function NexusParticipantC
 }: NexusParticipantContextMenuProps): JSX.Element {
     const conn = NexusVoiceStore.instance.getActiveConnection();
     const initialVolume = conn?.getParticipantVolume(member.userId) ?? 1;
-    const [volume, setVolume] = useState(initialVolume);
+    const volumeRef = useRef(initialVolume);
+    const percentRef = useRef<HTMLSpanElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     useClickOutside(menuRef, onFinished);
@@ -71,7 +80,10 @@ export const NexusParticipantContextMenu = React.memo(function NexusParticipantC
     const onVolumeChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const val = parseFloat(e.target.value);
-            setVolume(val);
+            volumeRef.current = val;
+            if (percentRef.current) {
+                percentRef.current.textContent = `${Math.round(val * 100)}%`;
+            }
             conn?.setParticipantVolume(member.userId, val);
         },
         [conn, member.userId],
@@ -82,6 +94,9 @@ export const NexusParticipantContextMenu = React.memo(function NexusParticipantC
             className="nx_ParticipantContextMenu"
             ref={menuRef}
             style={{ left, top, position: "fixed", zIndex: 5000 }}
+            onPointerDown={stopBubble}
+            onMouseDown={stopBubble}
+            onFocusCapture={stopBubble}
         >
             <div className="nx_ParticipantContextMenu_label">
                 {member.name} の音量
@@ -93,11 +108,11 @@ export const NexusParticipantContextMenu = React.memo(function NexusParticipantC
                     min="0"
                     max="1"
                     step="0.01"
-                    value={volume}
+                    defaultValue={initialVolume}
                     onChange={onVolumeChange}
                 />
-                <span className="nx_ParticipantContextMenu_percent">
-                    {Math.round(volume * 100)}%
+                <span className="nx_ParticipantContextMenu_percent" ref={percentRef}>
+                    {Math.round(initialVolume * 100)}%
                 </span>
             </div>
         </div>,
@@ -125,7 +140,8 @@ export const NexusScreenShareContextMenu = React.memo(function NexusScreenShareC
 }: NexusScreenShareContextMenuProps): JSX.Element {
     const conn = NexusVoiceStore.instance.getActiveConnection();
     const initialVolume = conn?.getScreenShareVolume(share.participantIdentity) ?? 1;
-    const [volume, setVolume] = useState(initialVolume);
+    const volumeRef = useRef(initialVolume);
+    const percentRef = useRef<HTMLSpanElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     useClickOutside(menuRef, onFinished);
@@ -134,7 +150,10 @@ export const NexusScreenShareContextMenu = React.memo(function NexusScreenShareC
     const onVolumeChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const val = parseFloat(e.target.value);
-            setVolume(val);
+            volumeRef.current = val;
+            if (percentRef.current) {
+                percentRef.current.textContent = `${Math.round(val * 100)}%`;
+            }
             conn?.setScreenShareVolume(share.participantIdentity, val);
         },
         [conn, share.participantIdentity],
@@ -145,6 +164,9 @@ export const NexusScreenShareContextMenu = React.memo(function NexusScreenShareC
             className="nx_ParticipantContextMenu"
             ref={menuRef}
             style={{ left, top, position: "fixed", zIndex: 5000 }}
+            onPointerDown={stopBubble}
+            onMouseDown={stopBubble}
+            onFocusCapture={stopBubble}
         >
             <div className="nx_ParticipantContextMenu_label">
                 {share.participantName} の配信音量
@@ -156,11 +178,11 @@ export const NexusScreenShareContextMenu = React.memo(function NexusScreenShareC
                     min="0"
                     max="1"
                     step="0.01"
-                    value={volume}
+                    defaultValue={initialVolume}
                     onChange={onVolumeChange}
                 />
-                <span className="nx_ParticipantContextMenu_percent">
-                    {Math.round(volume * 100)}%
+                <span className="nx_ParticipantContextMenu_percent" ref={percentRef}>
+                    {Math.round(initialVolume * 100)}%
                 </span>
             </div>
         </div>,
