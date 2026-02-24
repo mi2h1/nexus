@@ -8,7 +8,7 @@ Please see LICENSE files in the repository root for full details.
 .nx_ScreenSharePanel {
     width: 260px;
     padding: 16px;
-    background: var(--cpd-color-bg-canvas-default);
+    background-color: var(--cpd-color-bg-canvas-default);
     border: 1px solid var(--cpd-color-border-interactive-secondary);
     border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
@@ -35,10 +35,10 @@ Please see LICENSE files in the repository root for full details.
     padding: 8px;
     border-radius: 6px;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background-color 0.15s ease;
 
     &:hover {
-        background: var(--cpd-color-bg-subtle-secondary);
+        background-color: var(--cpd-color-bg-subtle-secondary);
     }
 
     input[type="radio"] {
@@ -67,32 +67,37 @@ Please see LICENSE files in the repository root for full details.
     gap: 8px;
 }
 
-.nx_ScreenSharePanel_button {
+/* Use button.class to match native <button> elements with higher specificity
+   than any global button reset rules */
+button.nx_ScreenSharePanel_button {
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex: 1;
-    padding: 8px 0;
+    padding: var(--cpd-space-2x) var(--cpd-space-3x);
+    border: none;
     border-radius: 6px;
     font: var(--cpd-font-body-sm-semibold);
-    text-align: center;
     cursor: pointer;
-    border: none;
     transition: opacity 0.15s ease;
 
     &:hover {
         opacity: 0.9;
     }
 
-    &[disabled] {
+    &:disabled {
         opacity: 0.5;
         cursor: not-allowed;
     }
 }
 
-.nx_ScreenSharePanel_button--primary {
-    background: var(--cpd-color-bg-success-primary);
+button.nx_ScreenSharePanel_button--primary {
+    background-color: var(--cpd-color-bg-success-primary);
     color: var(--cpd-color-text-on-solid-primary);
 }
 
-.nx_ScreenSharePanel_button--danger {
-    background: var(--cpd-color-bg-critical-primary);
+button.nx_ScreenSharePanel_button--danger {
+    background-color: var(--cpd-color-bg-critical-primary);
     color: var(--cpd-color-text-on-solid-primary);
 }
