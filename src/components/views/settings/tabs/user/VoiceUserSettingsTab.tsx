@@ -15,7 +15,6 @@ import { Form, SettingsToggleInput } from "@vector-im/compound-web";
 
 import { _t } from "../../../../../languageHandler";
 import MediaDeviceHandler, { type IMediaDevices, MediaDeviceKindEnum } from "../../../../../MediaDeviceHandler";
-import Field from "../../../elements/Field";
 import AccessibleButton from "../../../elements/AccessibleButton";
 import { SettingLevel } from "../../../../../settings/SettingLevel";
 import SettingsFlag from "../../../elements/SettingsFlag";
@@ -394,20 +393,19 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
         });
     }
 
-    private renderDropdown(kind: MediaDeviceKindEnum, label: string): ReactNode {
+    private renderDropdown(kind: MediaDeviceKindEnum, _label: string): ReactNode {
         const devices = this.state.mediaDevices?.[kind].slice(0);
         if (!devices?.length) return null;
 
         const defaultDevice = MediaDeviceHandler.getDefaultDevice(devices);
         return (
-            <Field
-                element="select"
-                label={label}
+            <select
+                className="nx_VoiceSettings_select"
                 value={this.state[kind] || defaultDevice}
                 onChange={(e) => this.setDevice(e.target.value, kind)}
             >
                 {this.renderDeviceOptions(devices, kind)}
-            </Field>
+            </select>
         );
     }
 
