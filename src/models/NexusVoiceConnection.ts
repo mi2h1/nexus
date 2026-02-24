@@ -122,19 +122,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _participantStates = new Map<string, ParticipantState>();
     private speakerPollTimer: ReturnType<typeof setInterval> | null = null;
     private statsTimer: ReturnType<typeof setInterval> | null = null;
-    // ─── Audio pipeline (shared AudioContext) ────────────────
+    // ─── Audio pipeline ──────────────────────────────────────
+    // AudioContext is used ONLY for the input (mic) pipeline.
+    // Output uses per-participant <audio> elements — Chrome does
+    // not route remote WebRTC audio through MediaStreamAudioSourceNode.
     private audioContext: AudioContext | null = null;
-    private outputMasterGain: GainNode | null = null;
-    private outputDestNode: MediaStreamAudioDestinationNode | null = null;
-    private outputAudioElement: HTMLAudioElement | null = null;
-    private outputParticipantGains = new Map<string, GainNode>();
-    private outputSources = new Map<string, MediaStreamAudioSourceNode>();
-    private outputStreams = new Map<string, MediaStream>(); // prevent GC
+    private _masterOutputVolume = 0; // 0-2 (0-200%), starts muted
+    private outputAudioElements = new Map<string, HTMLAudioElement>();
     private participantVolumes = new Map<string, number>(); // 0-1.0
-    // ─── Screen share audio pipeline ─────────────────────────
-    private screenShareGains = new Map<string, GainNode>();
-    private screenShareSources = new Map<string, MediaStreamAudioSourceNode>();
-    private screenShareStreams = new Map<string, MediaStream>(); // prevent GC
+    // ─── Screen share audio ──────────────────────────────────
+    private screenShareAudioElements = new Map<string, HTMLAudioElement>();
     private screenShareVolumes = new Map<string, number>(); // 0-1.0
     private watchingScreenShares = new Set<string>(); // opt-in watching state
     private analyserNode: AnalyserNode | null = null;
@@ -231,29 +228,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         try {
             // ── Phase 0: Create AudioContext in user gesture context ──
             // MUST be created BEFORE any await — Chrome's autoplay policy
-            // requires AudioContext creation within a user gesture. After
-            // an await the gesture context is lost and Chrome creates the
-            // context in "suspended" state, causing output audio silence.
+            // requires AudioContext creation within a user gesture.
+            // NOTE: AudioContext is used ONLY for the input (mic) pipeline.
+            // Remote audio output uses per-participant <audio> elements
+            // because Chrome does not route remote WebRTC audio through
+            // MediaStreamAudioSourceNode at all.
             this.audioContext = new AudioContext();
-
-            this.outputMasterGain = this.audioContext.createGain();
-            // Start muted — unmutePipelines() restores the real volume
-            // after connectionState=Connected so audio doesn't flow
-            // before the UI grayout is removed.
-            this.outputMasterGain.gain.value = 0;
-
-            // Route output through <audio> element instead of
-            // AudioContext.destination — Chrome does not reliably play
-            // remote WebRTC audio routed via MediaStreamAudioSourceNode
-            // → AudioContext.destination. Routing through a
-            // MediaStreamDestinationNode → <audio> element works on
-            // all browsers.
-            this.outputDestNode = this.audioContext.createMediaStreamDestination();
-            this.outputMasterGain.connect(this.outputDestNode);
-            this.outputAudioElement = new Audio();
-            this.outputAudioElement.srcObject = this.outputDestNode.stream;
-            // play() must be called in user gesture context (before await)
-            this.outputAudioElement.play().catch(() => {});
+            this._masterOutputVolume = 0; // starts muted until unmutePipelines()
 
             // ── Phase 1: Parallel pre-fetch ──────────────────────────
             // JWT, mic access, and RNNoise WASM download run concurrently
@@ -426,17 +407,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * grayout is removed.
      */
     public unmutePipelines(): void {
-        // Safety net: resume AudioContext and audio element if suspended
+        // Safety net: resume AudioContext if suspended (needed for input pipeline)
         if (this.audioContext?.state === "suspended") {
             this.audioContext.resume().catch(() => {});
         }
-        if (this.outputAudioElement?.paused) {
-            this.outputAudioElement.play().catch(() => {});
-        }
-        if (this.outputMasterGain) {
-            const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
-            this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
-        }
+        // Restore master output volume and apply to all <audio> elements
+        const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
+        this._masterOutputVolume = Math.max(0, Math.min(2, masterVol / 100));
+        this.applyAllOutputVolumes();
         // Only restore input gain if not muted — if muted, keep at 0.
         if (this.inputGainNode && !this._isMicMuted) {
             const inputVolume = SettingsStore.getValue("nexus_input_volume") ?? 100;
@@ -633,9 +611,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!identity) return;
         const clamped = Math.max(0, Math.min(1, volume));
         this.participantVolumes.set(identity, clamped);
-        const gain = this.outputParticipantGains.get(identity);
-        if (gain) {
-            gain.gain.value = clamped;
+        const audio = this.outputAudioElements.get(identity);
+        if (audio) {
+            audio.volume = Math.min(1, clamped * this._masterOutputVolume);
         }
         this.persistVolume(NexusVoiceConnection.PARTICIPANT_VOLUMES_KEY, userId, clamped);
     }
@@ -662,9 +640,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public setScreenShareVolume(participantIdentity: string, volume: number): void {
         const clamped = Math.max(0, Math.min(1, volume));
         this.screenShareVolumes.set(participantIdentity, clamped);
-        const gain = this.screenShareGains.get(participantIdentity);
-        if (gain && this.watchingScreenShares.has(participantIdentity)) {
-            gain.gain.value = clamped;
+        const audio = this.screenShareAudioElements.get(participantIdentity);
+        if (audio && this.watchingScreenShares.has(participantIdentity)) {
+            audio.volume = Math.min(1, clamped * this._masterOutputVolume);
         }
         // Persist by resolved userId (stable across sessions)
         const userId = this.resolveIdentityToUserId(participantIdentity);
@@ -699,11 +677,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         } else {
             this.watchingScreenShares.delete(participantIdentity);
         }
-        const gain = this.screenShareGains.get(participantIdentity);
-        if (gain) {
-            gain.gain.value = watching
-                ? (this.screenShareVolumes.get(participantIdentity) ?? 1)
-                : 0;
+        const audio = this.screenShareAudioElements.get(participantIdentity);
+        if (audio) {
+            if (watching) {
+                const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
+                audio.volume = Math.min(1, vol * this._masterOutputVolume);
+            } else {
+                audio.volume = 0;
+            }
         }
         this.emit(CallEvent.WatchingChanged, new Set(this.watchingScreenShares));
     }
@@ -725,10 +706,28 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
     }
 
-    /** Set master output volume for all remote audio (0-200). Uses Web Audio GainNode. */
+    /** Set master output volume for all remote audio (0-200). */
     public setMasterOutputVolume(volume: number): void {
-        if (this.outputMasterGain) {
-            this.outputMasterGain.gain.value = Math.max(0, Math.min(2, volume / 100));
+        this._masterOutputVolume = Math.max(0, Math.min(2, volume / 100));
+        this.applyAllOutputVolumes();
+    }
+
+    /**
+     * Apply the current master volume to all participant and screen share
+     * <audio> elements. Called when master volume changes or pipelines unmute.
+     */
+    private applyAllOutputVolumes(): void {
+        for (const [identity, audio] of this.outputAudioElements) {
+            const vol = this.participantVolumes.get(identity) ?? 1;
+            audio.volume = Math.min(1, vol * this._masterOutputVolume);
+        }
+        for (const [identity, audio] of this.screenShareAudioElements) {
+            if (this.watchingScreenShares.has(identity)) {
+                const vol = this.screenShareVolumes.get(identity) ?? 1;
+                audio.volume = Math.min(1, vol * this._masterOutputVolume);
+            } else {
+                audio.volume = 0;
+            }
         }
     }
 
@@ -959,26 +958,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._inputLevel = 0;
         this._voiceGateOpen = true;
 
-        // Close output audio element and nodes
-        if (this.outputAudioElement) {
-            this.outputAudioElement.pause();
-            this.outputAudioElement.srcObject = null;
-            this.outputAudioElement = null;
+        // Clean up output <audio> elements
+        for (const audio of this.outputAudioElements.values()) {
+            audio.pause();
+            audio.srcObject = null;
         }
-        this.outputDestNode = null;
-        this.outputMasterGain = null;
-        for (const source of this.outputSources.values()) source.disconnect();
-        this.outputSources.clear();
-        this.outputStreams.clear();
-        for (const gain of this.outputParticipantGains.values()) gain.disconnect();
-        this.outputParticipantGains.clear();
+        this.outputAudioElements.clear();
+        this._masterOutputVolume = 0;
 
-        // Close screen share audio nodes
-        for (const source of this.screenShareSources.values()) source.disconnect();
-        this.screenShareSources.clear();
-        this.screenShareStreams.clear();
-        for (const gain of this.screenShareGains.values()) gain.disconnect();
-        this.screenShareGains.clear();
+        // Clean up screen share <audio> elements
+        for (const audio of this.screenShareAudioElements.values()) {
+            audio.pause();
+            audio.srcObject = null;
+        }
+        this.screenShareAudioElements.clear();
         this.watchingScreenShares.clear();
 
         // Stop local screen share
@@ -1042,16 +1035,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             return;
         }
 
-        // Handle screen share audio — route through Web Audio pipeline
+        // Handle screen share audio — use <audio> element
         if (publication.source === Track.Source.ScreenShareAudio) {
             this.updateScreenShares();
-            if (!this.audioContext || !this.outputMasterGain) return;
             try {
-                // MediaStream is stored in screenShareStreams to prevent GC —
-                // if the wrapper is collected, the source node goes silent.
-                const mediaStream = new MediaStream([track.mediaStreamTrack]);
-                const source = this.audioContext.createMediaStreamSource(mediaStream);
-                const gain = this.audioContext.createGain();
+                const audio = new Audio();
+                audio.srcObject = new MediaStream([track.mediaStreamTrack]);
                 // Restore persisted volume if available
                 const ssUserId = this.resolveIdentityToUserId(participant.identity);
                 const ssSavedVol = ssUserId
@@ -1059,19 +1048,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     : null;
                 const ssInitialVol = ssSavedVol ?? this.screenShareVolumes.get(participant.identity) ?? 1;
                 if (ssSavedVol !== null) this.screenShareVolumes.set(participant.identity, ssSavedVol);
-                // Audio muted until user opts in to watch (gain=0)
-                gain.gain.value = this.watchingScreenShares.has(participant.identity) ? ssInitialVol : 0;
-                source.connect(gain);
-                gain.connect(this.outputMasterGain);
-                this.screenShareStreams.set(participant.identity, mediaStream);
-                this.screenShareSources.set(participant.identity, source);
-                this.screenShareGains.set(participant.identity, gain);
-                if (this.audioContext.state === "suspended") {
-                    this.audioContext.resume().catch(() => {});
-                }
-                if (this.outputAudioElement?.paused) {
-                    this.outputAudioElement.play().catch(() => {});
-                }
+                // Audio muted until user opts in to watch (volume=0)
+                const watching = this.watchingScreenShares.has(participant.identity);
+                audio.volume = watching ? Math.min(1, ssInitialVol * this._masterOutputVolume) : 0;
+                audio.play().catch(() => {});
+                this.screenShareAudioElements.set(participant.identity, audio);
             } catch (e) {
                 logger.warn("onTrackSubscribed (ScreenShareAudio) error:", e);
             }
@@ -1079,33 +1060,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         if (track.kind !== "audio") return;
-        if (!this.audioContext || !this.outputMasterGain) return;
 
         try {
-            // MediaStream is stored in outputStreams to prevent GC —
-            // if the wrapper is collected, the source node goes silent.
-            const mediaStream = new MediaStream([track.mediaStreamTrack]);
-            const source = this.audioContext.createMediaStreamSource(mediaStream);
+            // Use per-participant <audio> element — Chrome does not route
+            // remote WebRTC audio through MediaStreamAudioSourceNode.
+            const audio = new Audio();
+            audio.srcObject = new MediaStream([track.mediaStreamTrack]);
 
-            // Per-participant gain node — restore persisted volume if available
-            const participantGain = this.audioContext.createGain();
+            // Restore persisted volume if available
             const resolvedUserId = this.resolveIdentityToUserId(participant.identity);
             const savedVol = resolvedUserId
                 ? this.loadPersistedVolume(NexusVoiceConnection.PARTICIPANT_VOLUMES_KEY, resolvedUserId)
                 : null;
             const initialVol = savedVol ?? this.participantVolumes.get(participant.identity) ?? 1;
-            participantGain.gain.value = initialVol;
             if (savedVol !== null) this.participantVolumes.set(participant.identity, savedVol);
-            source.connect(participantGain);
-            participantGain.connect(this.outputMasterGain);
+            audio.volume = Math.min(1, initialVol * this._masterOutputVolume);
+            audio.play().catch(() => {});
 
-            this.outputStreams.set(participant.identity, mediaStream);
-            this.outputParticipantGains.set(participant.identity, participantGain);
-            this.outputSources.set(participant.identity, source);
-
-            if (this.audioContext.state === "suspended") {
-                this.audioContext.resume().catch(() => {});
-            }
+            this.outputAudioElements.set(participant.identity, audio);
         } catch (e) {
             logger.warn("onTrackSubscribed error:", e);
         }
@@ -1131,29 +1103,31 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             return;
         }
 
-        // Handle screen share audio — clean up Web Audio nodes
+        // Handle screen share audio — clean up <audio> element
         if (publication.source === Track.Source.ScreenShareAudio) {
             this._screenShares = this._screenShares.filter(
                 (s) => s.participantIdentity !== participant.identity,
             );
             this.emit(CallEvent.ScreenShares, this._screenShares);
-            const ssSource = this.screenShareSources.get(participant.identity);
-            if (ssSource) { ssSource.disconnect(); this.screenShareSources.delete(participant.identity); }
-            const ssGain = this.screenShareGains.get(participant.identity);
-            if (ssGain) { ssGain.disconnect(); this.screenShareGains.delete(participant.identity); }
-            this.screenShareStreams.delete(participant.identity);
+            const ssAudio = this.screenShareAudioElements.get(participant.identity);
+            if (ssAudio) {
+                ssAudio.pause();
+                ssAudio.srcObject = null;
+                this.screenShareAudioElements.delete(participant.identity);
+            }
             this.watchingScreenShares.delete(participant.identity);
             return;
         }
 
         if (track.kind !== "audio") return;
 
-        // Disconnect and clean up Web Audio nodes
-        const source = this.outputSources.get(participant.identity);
-        if (source) { source.disconnect(); this.outputSources.delete(participant.identity); }
-        const gain = this.outputParticipantGains.get(participant.identity);
-        if (gain) { gain.disconnect(); this.outputParticipantGains.delete(participant.identity); }
-        this.outputStreams.delete(participant.identity);
+        // Clean up <audio> element
+        const audio = this.outputAudioElements.get(participant.identity);
+        if (audio) {
+            audio.pause();
+            audio.srcObject = null;
+            this.outputAudioElements.delete(participant.identity);
+        }
     };
 
     // ─── Private: Active Speakers ─────────────────────────────
