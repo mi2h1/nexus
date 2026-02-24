@@ -1041,25 +1041,27 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             device_id: this.client.getDeviceId(),
         };
 
-        // ── Self-hosted JWT service (preferred) ──
+        // ── Self-hosted JWT service (preferred, with fallback) ──
         if (NEXUS_JWT_SERVICE_URL) {
-            const jwtUrl = `${NEXUS_JWT_SERVICE_URL}/sfu/get`;
+            try {
+                const jwtUrl = `${NEXUS_JWT_SERVICE_URL}/sfu/get`;
 
-            // Tauri: direct access (no CORS restrictions)
-            if (isTauri()) {
-                return corsFreePost<LivekitTokenResponse>(jwtUrl, body);
-            }
+                if (isTauri()) {
+                    return await corsFreePost<LivekitTokenResponse>(jwtUrl, body);
+                }
 
-            // Browser: direct fetch (CORS handled by nginx)
-            const response = await fetch(jwtUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            if (!response.ok) {
-                throw new Error(`Failed to get LiveKit token: ${response.status} ${response.statusText}`);
+                const response = await fetch(jwtUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                });
+                if (!response.ok) {
+                    throw new Error(`${response.status} ${response.statusText}`);
+                }
+                return (await response.json()) as LivekitTokenResponse;
+            } catch (e) {
+                logger.warn(`Self-hosted JWT service failed, falling back to transport URL: ${e}`);
             }
-            return (await response.json()) as LivekitTokenResponse;
         }
 
         // ── Fallback: Element's JWT service via transport URL ──
