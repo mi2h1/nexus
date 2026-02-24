@@ -47,6 +47,7 @@ export function NexusParticipantContextMenu({
             left={left}
             top={top}
             onFinished={onFinished}
+            managed={false}
         >
             <div className="nx_ParticipantContextMenu">
                 <div className="nx_ParticipantContextMenu_label">
@@ -108,6 +109,7 @@ export function NexusScreenShareContextMenu({
             left={left}
             top={top}
             onFinished={onFinished}
+            managed={false}
         >
             <div className="nx_ParticipantContextMenu">
                 <div className="nx_ParticipantContextMenu_label">

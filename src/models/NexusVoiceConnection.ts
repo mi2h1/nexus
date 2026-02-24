@@ -213,7 +213,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             ]);
             this.localAudioTrack = audioTrack;
 
-            // ── Phase 2: Connect to LiveKit (requires JWT) ───────────
+            // ── Phase 2: Build audio pipeline BEFORE connecting ──────
+            // AudioContext and outputMasterGain must exist before LiveKit
+            // connection so that onTrackSubscribed can immediately route
+            // tracks from already-connected participants.
+            this.audioContext = new AudioContext();
+
+            this.outputMasterGain = this.audioContext.createGain();
+            const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
+            this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
+            this.outputMasterGain.connect(this.audioContext.destination);
+
+            // ── Phase 3: Connect to LiveKit (requires JWT) ───────────
             this.livekitRoom = new LivekitRoom();
             this.livekitRoom.on(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.on(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
@@ -222,17 +233,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             await this.livekitRoom.connect(url, jwt);
 
-            // ── Phase 3: Build audio pipeline ────────────────────────
+            // ── Phase 4: Build input pipeline ────────────────────────
             // Audio pipeline:
             //   NC disabled: source → analyser + inputGainNode → dest
             //   NC enabled:  source → rnnoiseNode → analyser + inputGainNode → dest
-            this.audioContext = new AudioContext();
-
-            // Output master gain (initialized here in user-gesture context)
-            this.outputMasterGain = this.audioContext.createGain();
-            const masterVol = SettingsStore.getValue("nexus_output_volume") ?? 100;
-            this.outputMasterGain.gain.value = Math.max(0, Math.min(2, masterVol / 100));
-            this.outputMasterGain.connect(this.audioContext.destination);
 
             this.sourceNode = this.audioContext.createMediaStreamSource(
                 new MediaStream([this.localAudioTrack.mediaStreamTrack]),
