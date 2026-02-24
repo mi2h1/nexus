@@ -598,18 +598,27 @@ mod platform {
 
             println!("[WASAPI] Process-excluded loopback client activated (PID={} excluded)", std::process::id());
 
-            // Get mix format
-            let format_ptr = client
-                .GetMixFormat()
-                .map_err(|e| format!("GetMixFormat: {}", e))?;
-            let format = &*format_ptr;
-            let sample_rate = format.nSamplesPerSec;
-            let channels = format.nChannels as usize;
-            let bits = format.wBitsPerSample;
-            let bytes_per_sample = (bits / 8) as usize;
+            // Process loopback virtual device does NOT support GetMixFormat.
+            // Instead, specify the format directly. With AUTOCONVERTPCM flag,
+            // Windows will convert from the device's native format automatically.
+            // Use 48kHz stereo float32 — the standard LiveKit/WebRTC format.
+            let sample_rate: u32 = 48000;
+            let channels: usize = 2;
+            let bits: u16 = 32;
+            let bytes_per_sample: usize = 4;
+            let mut format = windows::Win32::Media::Audio::WAVEFORMATEX {
+                wFormatTag: 3, // WAVE_FORMAT_IEEE_FLOAT
+                nChannels: channels as u16,
+                nSamplesPerSec: sample_rate,
+                nAvgBytesPerSec: sample_rate * channels as u32 * bytes_per_sample as u32,
+                nBlockAlign: (channels * bytes_per_sample) as u16,
+                wBitsPerSample: bits,
+                cbSize: 0,
+            };
+            let format_ptr = &mut format as *mut windows::Win32::Media::Audio::WAVEFORMATEX;
 
             println!(
-                "[WASAPI] Process-excluded format: {}Hz, {}ch, {}bit",
+                "[WASAPI] Process-excluded format: {}Hz, {}ch, {}bit (specified directly)",
                 sample_rate, channels, bits
             );
             let _ = app.emit(
@@ -620,7 +629,7 @@ mod platform {
             // Initialize client: shared mode, event-driven, auto-convert PCM
             // Note: no AUDCLNT_STREAMFLAGS_LOOPBACK needed — the virtual device
             // is already a loopback interface.
-            // Raw flag values (these are u32 constants in the Windows SDK):
+            // AUTOCONVERTPCM: Windows resamples from device native format to our format.
             let init_flags: u32 = 0x00040000   // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
                 | 0x80000000                    // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
                 | 0x08000000;                   // AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
@@ -628,9 +637,9 @@ mod platform {
                 .Initialize(
                     AUDCLNT_SHAREMODE_SHARED,
                     init_flags,
+                    2_000_000, // 200ms buffer (in 100ns units)
                     0,
-                    0,
-                    format_ptr,
+                    format_ptr as *const _,
                     None,
                 )
                 .map_err(|e| format!("Initialize: {}", e))?;
