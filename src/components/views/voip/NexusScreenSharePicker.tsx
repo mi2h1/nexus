@@ -120,7 +120,11 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                         className={classNames("nx_ScreenSharePicker_tab", {
                             "nx_ScreenSharePicker_tab--active": activeTab === "monitor",
                         })}
-                        onClick={() => setActiveTab("monitor")}
+                        onClick={() => {
+                            setActiveTab("monitor");
+                            const first = monitors[0];
+                            setSelectedId(first ? first.id : null);
+                        }}
                     >
                         画面
                         {!loading && <span className="nx_ScreenSharePicker_tabCount">{monitors.length}</span>}
@@ -129,7 +133,10 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                         className={classNames("nx_ScreenSharePicker_tab", {
                             "nx_ScreenSharePicker_tab--active": activeTab === "window",
                         })}
-                        onClick={() => setActiveTab("window")}
+                        onClick={() => {
+                            setActiveTab("window");
+                            setSelectedId(null);
+                        }}
                     >
                         ウィンドウ
                         {!loading && <span className="nx_ScreenSharePicker_tabCount">{windows.length}</span>}

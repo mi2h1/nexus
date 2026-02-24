@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { EndCallIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 import ShareScreenIcon from "@vector-im/compound-design-tokens/assets/web/icons/share-screen";
 
@@ -16,6 +16,7 @@ import { useNexusVoice } from "../../../../hooks/useNexusVoice";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
 import AccessibleButton from "../../elements/AccessibleButton";
+import { NexusScreenSharePanel } from "../../voip/NexusScreenSharePanel";
 
 interface NexusCallStatusPanelProps {
     call: Call | NexusVoiceConnection;
@@ -35,6 +36,8 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
     const client = useMatrixClientContext();
     const room = client.getRoom(call.roomId);
     const roomName = room?.name ?? call.roomId;
+    const [showSharePanel, setShowSharePanel] = useState(false);
+    const shareButtonRef = useRef<HTMLButtonElement>(null);
 
     // Show "接続中…" until local user appears in participant list
     const myUserId = client.getUserId();
@@ -59,11 +62,15 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
     }, [call]);
 
     const onToggleScreenShare = useCallback(async () => {
-        const voiceConn = NexusVoiceStore.instance.getConnection(call.roomId);
-        if (voiceConn) {
-            await voiceConn.toggleScreenShare();
+        if (isScreenSharing) {
+            const voiceConn = NexusVoiceStore.instance.getConnection(call.roomId);
+            if (voiceConn) {
+                await voiceConn.stopScreenShare();
+            }
+        } else {
+            setShowSharePanel((prev) => !prev);
         }
-    }, [call]);
+    }, [call, isScreenSharing]);
 
     let dotClass: string;
     if (displayState === ConnectionState.Connected) {
@@ -90,11 +97,24 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
             </div>
             <AccessibleButton
                 className={`mx_NexusCallStatusPanel_screenShareButton${isScreenSharing ? " mx_NexusCallStatusPanel_screenShareButton--active" : ""}`}
+                element="button"
                 onClick={onToggleScreenShare}
+                ref={shareButtonRef}
                 title={isScreenSharing ? "画面共有を停止" : "画面を共有"}
             >
                 <ShareScreenIcon width={20} height={20} />
             </AccessibleButton>
+            {showSharePanel && shareButtonRef.current && (() => {
+                const rect = shareButtonRef.current!.getBoundingClientRect();
+                return (
+                    <NexusScreenSharePanel
+                        isScreenSharing={isScreenSharing}
+                        anchorLeft={rect.left + rect.width / 2}
+                        anchorBottom={window.innerHeight - rect.top + 8}
+                        onFinished={() => setShowSharePanel(false)}
+                    />
+                );
+            })()}
             <AccessibleButton
                 className="mx_NexusCallStatusPanel_disconnectButton"
                 onClick={onDisconnect}

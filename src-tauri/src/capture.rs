@@ -145,15 +145,26 @@ mod platform {
             let mut buffer = frame.buffer()?;
             let raw = buffer.as_raw_buffer();
 
-            // Convert BGRA → RGB for turbojpeg
+            // Convert BGRA → RGB for turbojpeg.
+            // WGC frame buffers may have row padding (stride > width * 4),
+            // especially for window captures. Compute actual stride from buffer size.
+            let expected_row_bytes = width as usize * 4;
+            let stride = if height > 0 {
+                raw.len() / height as usize
+            } else {
+                expected_row_bytes
+            };
+
             let pixel_count = (width * height) as usize;
             let mut rgb = Vec::with_capacity(pixel_count * 3);
-            for i in 0..pixel_count {
-                let offset = i * 4;
-                if offset + 2 < raw.len() {
-                    rgb.push(raw[offset + 2]); // R (BGRA → R)
-                    rgb.push(raw[offset + 1]); // G
-                    rgb.push(raw[offset]);     // B
+            for y in 0..height as usize {
+                for x in 0..width as usize {
+                    let offset = y * stride + x * 4;
+                    if offset + 2 < raw.len() {
+                        rgb.push(raw[offset + 2]); // R (BGRA → R)
+                        rgb.push(raw[offset + 1]); // G
+                        rgb.push(raw[offset]);     // B
+                    }
                 }
             }
 
