@@ -1,44 +1,44 @@
 # VC 接続高速化 調査・設計メモ — vc-optimization.md
 
-> 最終更新: 2026-02-24
+> 最終更新: 2026-02-25
 
 ## 概要
 
 VC チャンネルクリックから接続完了までの時間を短縮するための調査と設計メモ。
 Discord のドキュメント・技術ブログも参考にした。
 
-## 現在の接続フロー（直列）
+## 現在の接続フロー（最適化済み）
 
 ```
 T=0ms    クリック → joinVoiceChannel()
 T=10ms   NexusVoiceConnection 作成 + スピナー表示開始
 T=50ms   connection.connect() 開始
            │
-           ├─ ① await getJwt()                    ... 200-500ms
-           │    ├─ await getOpenIdToken()           （Homeserver 通信）
-           │    └─ await fetch(CORS プロキシ)       （JWT 取得）
+           ├─ Phase 0: AudioContext 生成（同期、~5ms）
            │
-           ├─ ② await livekitRoom.connect()        ... 500-5000ms ★最大ボトルネック
-           │    └─ ICE candidate + DTLS handshake   （WebRTC 確立）
+           ├─ Phase 1: Promise.all ──────────────────────
+           │    ├─ getJwt()                       ... ~100-200ms (キャッシュ時) / ~200-400ms (初回)
+           │    │    ├─ getCachedOpenIdToken()      (キャッシュ or matrix.org)
+           │    │    └─ POST /sfu/get              (自前SFU)
+           │    ├─ createLocalAudioTrack()         ... 50-200ms (getUserMedia)
+           │    └─ preloadRnnoiseWasm()            ... ~0ms (キャッシュ済み)
            │
-           ├─ ③ await createLocalAudioTrack()       ... 50-200ms
-           │    └─ getUserMedia()                   （マイクアクセス）
+           ├─ Phase 3+4: 並列実行 ──────────────────────
+           │    ├─ livekitRoom.connect()           ... ~60-100ms (自前SFU)
+           │    └─ buildInputPipeline()            ... ~10-50ms (並列)
+           │         ├─ AudioNode 作成（同期）
+           │         ├─ setupRnnoiseNode()         (NC 有効時)
+           │         └─ MediaStreamDestination 作成
            │
-           ├─ ④ AudioContext 構築                    ... 同期
+           ├─ await publishTrack()                 ... 100-300ms
            │
-           ├─ ⑤ await setupRnnoiseNode()            ... 50-150ms（NC 有効時のみ）
-           │    ├─ await loadRnnoise()               （WASM 読み込み）
-           │    └─ await addModule()                 （AudioWorklet 登録）
+           └─ joinRoomSession()                    ... 0ms（await なし）
            │
-           ├─ ⑥ await publishTrack()                 ... 100-300ms
-           │
-           └─ ⑦ joinRoomSession()                    ... 0ms（await なし）
-           │
-T=1-2.5s ConnectionState.Connected
-T=1.5-3s MatrixRTC メンバーシップ反映 → スピナー消滅
+T=~600ms ConnectionState.Connected（再接続時、自前SFU）
+T=~800ms ConnectionState.Connected（初回接続時、自前SFU）
 ```
 
-**低遅延環境で 1〜2.5 秒、高遅延環境で 3〜10 秒。**
+**自前 SFU + 最適化後: 再接続 ~600ms、初回 ~800ms。**
 
 ## Discord との比較
 
@@ -95,41 +95,43 @@ Discord は WebRTC 標準を大幅に逸脱した独自プロトコルを使用:
 
 ## 最適化戦略
 
-### 実装済み / 実装予定
+### 実装済み
 
-#### A. 接続フローの並列化（実装予定）
+#### A. 接続フローの並列化 ✅
 
 ```
-Before (直列):
-  getJwt() → livekitRoom.connect() → createLocalAudioTrack() → setupRnnoise → publishTrack
-
-After (並列化):
+Phase 1 (Promise.all):
   ┌─ getJwt() ──────────────────┐
   ├─ createLocalAudioTrack() ───┤  Promise.all
   └─ preloadRnnoiseWasm() ──────┘
             ↓
-  livekitRoom.connect() ← JWT が必要なので後
+Phase 3+4 (並列):
+  ┌─ livekitRoom.connect()      ┐  並列実行
+  └─ buildInputPipeline()       ┘  (パイプライン構築 + RNNoise)
             ↓
-  AudioContext構築 + publishTrack ← マイクトラックが必要なので後
+  publishTrack(processedTrack)
 ```
 
-**短縮見込み: 最大 500ms**
+**短縮効果: Phase 1 で ~500ms、Phase 3+4 並列化で ~50-100ms**
 
-#### B. RNNoise WASM のプリロード（実装予定）
+#### B. RNNoise WASM のプリロード ✅
 
-- `loadRnnoise()` はアプリ起動時に実行可能（static キャッシュ済み）
-- 接続フロー内では WASM ダウンロード待ちが不要になる
+- `preloadRnnoiseWasm()` で Phase 1 中に WASM バイナリを static キャッシュ
+- `setupRnnoiseNode()` では WASM ダウンロード待ちが不要
 
-#### C. RNNoise AudioWorklet の事前登録（実装予定）
+#### C. パイプライン構築の並列化 ✅
 
-- AudioContext は connect() 内で作るが、AudioWorklet 登録も含めて並列化
+- `buildInputPipeline()` メソッドで AudioNode 作成 + RNNoise AudioWorklet 登録 + パイプライン接続 + MediaStreamDestination 作成
+- `livekitRoom.connect()` と同時実行し、先に終わった方が後方を待つ
+
+#### D. OpenID トークンキャッシュ ✅
+
+- `getCachedOpenIdToken()` で `getOpenIdToken()` の結果をキャッシュ
+- `expires_in` の 80% の期間で有効（デフォルト 3600秒 → 2880秒キャッシュ）
+- 静的変数で NexusVoiceConnection インスタンス間共有
+- **再接続時に ~100-200ms 短縮**（matrix.org へのラウンドトリップ省略）
 
 ### 将来の検討
-
-#### D. JWT キャッシュ
-
-- 有効期限内の JWT を再利用
-- 再接続時に 200-500ms 短縮
 
 #### E. LiveKit reconnect() の活用
 
@@ -145,9 +147,10 @@ After (並列化):
 
 | フェーズ | 施策 | 効果 |
 |---------|------|------|
-| ✅ **Phase 2.5** | 並列化 + WASM プリロード | ~500ms 短縮（実装済み） |
-| **★ 次にやること** | 自前 LiveKit SFU (日本VPS) | **~1000-1200ms 短縮** |
-| **中期** | JWT キャッシュ + reconnect() | 再接続時改善 |
+| ✅ **Phase 2.5** | 並列化 + WASM プリロード | ~500ms 短縮 |
+| ✅ **自前 SFU** | 自前 LiveKit SFU (日本VPS) | **~1000-1200ms 短縮** |
+| ✅ **接続最適化** | パイプライン並列化 + OpenID キャッシュ | ~150-300ms 短縮（再接続時） |
+| **中期** | reconnect() | 再接続時改善 |
 | **Tauri 2** | Rust UDP 高速パス + WebRTC フォールバック | 根本改善 |
 | **長期** | WebTransport/MoQ 移行 | ブラウザ版も改善 |
 

@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-27
+> 最終更新: 2026-02-25
 
 ## リポジトリ情報
 
@@ -93,8 +93,9 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 
 | 施策 | 難易度 | 効果 | 状態 | 詳細 |
 |------|--------|------|------|------|
-| 自前 LiveKit SFU (日本VPS) | 中 | **~1秒短縮** | 未着手 | [vc-optimization.md](vc-optimization.md) |
-| JWT キャッシュ（有効期限内再利用） | 低 | ~200ms (再接続時) | 未着手 | |
+| 自前 LiveKit SFU (日本VPS) | 中 | **~1秒短縮** | ✅ 完了 | [vc-optimization.md](vc-optimization.md) |
+| パイプライン構築を connect() と並列化 | 低 | ~50-100ms | ✅ 完了 | `buildInputPipeline()` + `livekitRoom.connect()` 並列 |
+| OpenID トークンキャッシュ | 低 | ~100-200ms (再接続時) | ✅ 完了 | `getCachedOpenIdToken()` — expires_in の 80% でキャッシュ |
 | LiveKit reconnect() | 低 | 再接続時大幅短縮 | 未着手 | Discord の Resume に相当 |
 | マイク権限の事前取得 | 低 | 初回 ~300ms | 未着手 | VC パネル表示時に先行 getUserMedia |
 
@@ -146,7 +147,7 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | 機能 | 実装 |
 |------|------|
 | VC 接続/切断 | `NexusVoiceConnection` — LiveKit 直接接続 + MatrixRTC シグナリング |
-| VC 接続高速化 | `connect()` で JWT取得+マイクアクセス+WASMプリロードを並列実行 |
+| VC 接続高速化 | `connect()` で JWT取得+マイクアクセス+WASMプリロードを並列実行 + パイプライン/connect 並列化 + OpenID キャッシュ |
 | マイクミュート | `setMicMuted()` — `mediaStreamTrack.enabled` 直接操作（非publish トラック経由） |
 | 画面共有 | `startScreenShare()/stopScreenShare()` — `getDisplayMedia()` + 720p30/simulcast エンコーディング |
 | 画面共有オプトイン視聴 | Discord 準拠 — 他者の画面共有はプレビュー+「画面を視聴する」クリックで表示 |
@@ -178,6 +179,15 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-25 (VC 接続速度最適化)
+- **パイプライン構築を connect() と並列化**: `buildInputPipeline()` メソッドを新設
+  - 入力パイプライン構築（ノード作成 + RNNoise AudioWorklet 登録）を `livekitRoom.connect()` と `Promise` で並列実行
+  - WebSocket + ICE/DTLS ハンドシェイク中にパイプラインが完成するため ~50-100ms 短縮
+- **OpenID トークンキャッシュ**: `getCachedOpenIdToken()` メソッドを新設
+  - `getOpenIdToken()` の結果を `expires_in` の 80% でキャッシュ（静的変数、インスタンス間共有）
+  - 再接続時に matrix.org へのラウンドトリップ (~100-200ms) を省略
+- **合計効果**: 再接続時 ~150-300ms（約30%）短縮。初回接続時も ~50-100ms 短縮
 
 #### 2026-02-27
 - **画面共有 PiP**: VC ルーム外で視聴中のリモート画面共有を PiP ウィンドウで表示
