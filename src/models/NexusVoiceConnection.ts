@@ -1597,14 +1597,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
             // Tauri: route through Web Audio for >100% volume
             if (this.outputAudioContext && this.outputMasterGain) {
+                // IMPORTANT: createMediaElementSource BEFORE play() so audio
+                // is routed through Web Audio API from the start.
                 audio.volume = 1; // let GainNode control volume
-                audio.play().catch(() => {});
                 const source = this.outputAudioContext.createMediaElementSource(audio);
                 const gain = this.outputAudioContext.createGain();
                 gain.gain.value = initialVol;
                 source.connect(gain).connect(this.outputMasterGain);
                 this.outputMediaSources.set(participant.identity, source);
                 this.outputParticipantGains.set(participant.identity, gain);
+                audio.play().catch(() => {});
             } else {
                 // Browser: audio.volume capped at 1.0
                 audio.volume = Math.min(1, initialVol * this._masterOutputVolume);
