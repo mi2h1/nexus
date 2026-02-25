@@ -488,6 +488,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         targetId: string,
         fps: number,
         captureAudio: boolean,
+        targetProcessId: number = 0,
     ): Promise<void> {
         if (!this.livekitRoom || !this.connected) return;
 
@@ -500,6 +501,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 targetId,
                 fps,
                 captureAudio,
+                targetProcessId,
             });
 
             // Create video pipeline

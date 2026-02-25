@@ -27,6 +27,7 @@ interface CaptureTarget {
     title: string;
     target_type: "window" | "monitor";
     process_name: string;
+    process_id: number;
     width: number;
     height: number;
     thumbnail: string; // base64 JPEG (may be empty)
@@ -37,7 +38,7 @@ type PickerTab = "window" | "monitor";
 
 interface NexusScreenSharePickerProps {
     /** Called when user selects a target and confirms */
-    onSelect: (targetId: string, fps: number, captureAudio: boolean) => void;
+    onSelect: (targetId: string, fps: number, captureAudio: boolean, processId: number) => void;
     /** Called when user cancels */
     onCancel: () => void;
     /** "start" = new share, "switch" = change target during active share */
@@ -143,9 +144,10 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
             if (!isSwitch) {
                 SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selectedPreset);
             }
-            onSelect(id, preset.fps, captureAudio);
+            const target = targets.find((t) => t.id === id);
+            onSelect(id, preset.fps, captureAudio, target?.process_id ?? 0);
         },
-        [selectedId, selectedPreset, captureAudio, onSelect, isSwitch],
+        [selectedId, selectedPreset, captureAudio, onSelect, isSwitch, targets],
     );
 
     const windows = targets.filter((t) => t.target_type === "window");

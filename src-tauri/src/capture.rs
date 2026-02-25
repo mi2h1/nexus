@@ -20,6 +20,7 @@ pub struct CaptureTarget {
     pub title: String,
     pub target_type: String, // "window" | "monitor"
     pub process_name: String,
+    pub process_id: u32, // HWND → GetWindowThreadProcessId (0 for monitors)
     pub width: u32,
     pub height: u32,
     pub thumbnail: String, // base64 JPEG (empty for now)
@@ -482,6 +483,15 @@ mod platform {
                         continue;
                     }
 
+                    let process_id = {
+                        use windows::Win32::Foundation::HWND;
+                        use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+                        let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+                        let mut pid: u32 = 0;
+                        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)); }
+                        pid
+                    };
+
                     let (thumbnail, width, height) = capture_window_thumbnail(hwnd_val);
 
                     targets.push(CaptureTarget {
@@ -489,6 +499,7 @@ mod platform {
                         title,
                         target_type: "window".to_string(),
                         process_name,
+                        process_id,
                         width,
                         height,
                         thumbnail,
@@ -511,6 +522,7 @@ mod platform {
                         title: format!("画面 {} ({})", i + 1, name),
                         target_type: "monitor".to_string(),
                         process_name: String::new(),
+                        process_id: 0,
                         width: w,
                         height: h,
                         thumbnail,
@@ -627,6 +639,7 @@ mod platform {
         target_id: String,
         fps: u32,
         capture_audio: bool,
+        target_process_id: u32,
     ) -> Result<(), String> {
         if CAPTURE_RUNNING.load(Ordering::SeqCst) {
             return Err("Capture already running".into());
@@ -643,8 +656,9 @@ mod platform {
             let stop_flag = Arc::new(AtomicBool::new(false));
             *AUDIO_STOP_FLAG.lock().unwrap() = Some(stop_flag.clone());
 
+            let target_pid = target_process_id;
             let handle = std::thread::spawn(move || {
-                if let Err(e) = run_wasapi_loopback(audio_app, stop_flag) {
+                if let Err(e) = run_wasapi_loopback(audio_app, stop_flag, target_pid) {
                     eprintln!("WASAPI loopback error: {}", e);
                 }
             });
@@ -752,32 +766,33 @@ mod platform {
 
     // ─── WASAPI loopback capture (entry point) ───────────────────────
 
-    /// Try process-excluded loopback first (Win10 2004+), fall back to regular.
-    fn run_wasapi_loopback(app: AppHandle, stop_flag: Arc<AtomicBool>) -> Result<(), String> {
-        // Try process-excluded loopback: captures all system audio EXCEPT
-        // audio from our own process (prevents voice chat echo).
-        match run_process_excluded_loopback(&app, &stop_flag) {
+    /// Try process loopback first (Win10 2004+), fall back to regular.
+    /// target_pid > 0: INCLUDE mode (window share — capture only that app's audio)
+    /// target_pid == 0: EXCLUDE mode (monitor share — all system audio minus Nexus)
+    fn run_wasapi_loopback(app: AppHandle, stop_flag: Arc<AtomicBool>, target_pid: u32) -> Result<(), String> {
+        match run_process_loopback(&app, &stop_flag, target_pid) {
             Ok(()) => return Ok(()),
             Err(e) => {
                 println!(
-                    "[WASAPI] Process-excluded loopback unavailable: {}. \
+                    "[WASAPI] Process loopback unavailable: {}. \
                      Falling back to regular loopback (voice echo possible).",
                     e
                 );
                 let _ = app.emit(
                     "wasapi-info",
-                    "WASAPI: regular loopback (process exclusion unavailable)",
+                    "WASAPI: regular loopback (process loopback unavailable)",
                 );
             }
         }
         run_regular_loopback(app, stop_flag)
     }
 
-    // ─── Process-excluded loopback (Windows 10 2004+) ────────────────
+    // ─── Process loopback (Windows 10 2004+) ──────────────────────────
     //
-    // Uses ActivateAudioInterfaceAsync with PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
-    // to capture all system audio EXCEPT our own process's output.
-    // This prevents voice chat audio from being captured and echoed back.
+    // target_pid > 0: INCLUDE mode — capture only the target process tree's audio
+    //                 (window share: "share only the selected app's audio")
+    // target_pid == 0: EXCLUDE mode — capture all system audio EXCEPT our own process
+    //                  (monitor share: "share all system audio minus Nexus")
 
     /// Raw PROPVARIANT layout for VT_BLOB on x64.
     /// Used to pass AUDIOCLIENT_ACTIVATION_PARAMS to ActivateAudioInterfaceAsync.
@@ -796,8 +811,8 @@ mod platform {
     #[repr(C)]
     struct ProcessLoopbackActivationParams {
         activation_type: i32,        // AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK = 1
-        target_process_id: u32,      // our PID
-        process_loopback_mode: i32,  // PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE = 1
+        target_process_id: u32,      // target PID (INCLUDE) or our PID (EXCLUDE)
+        process_loopback_mode: i32,  // 0 = INCLUDE_TARGET_PROCESS_TREE, 1 = EXCLUDE_TARGET_PROCESS_TREE
     }
 
     /// COM completion handler for ActivateAudioInterfaceAsync.
@@ -818,15 +833,24 @@ mod platform {
         }
     }
 
-    fn run_process_excluded_loopback(
+    fn run_process_loopback(
         app: &AppHandle,
         stop_flag: &Arc<AtomicBool>,
+        target_pid: u32,
     ) -> Result<(), String> {
         use windows::core::Interface;
         use windows::Win32::Media::Audio::*;
         use windows::Win32::System::Com::*;
 
-        println!("[WASAPI] Attempting process-excluded loopback (Win10 2004+)");
+        // target_pid > 0: INCLUDE mode (capture only target app's audio)
+        // target_pid == 0: EXCLUDE mode (capture all system audio minus Nexus)
+        let (pid, mode, mode_name) = if target_pid > 0 {
+            (target_pid, 0i32, "INCLUDE")  // PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
+        } else {
+            (std::process::id(), 1i32, "EXCLUDE")  // PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
+        };
+
+        println!("[WASAPI] Attempting process loopback: {} mode, PID={}", mode_name, pid);
 
         // Step 1: Get the device's native format from the default render device.
         // The process loopback virtual device does NOT support GetMixFormat,
@@ -862,8 +886,8 @@ mod platform {
 
             let params = ProcessLoopbackActivationParams {
                 activation_type: 1,        // AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
-                target_process_id: std::process::id(),
-                process_loopback_mode: 1,  // PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
+                target_process_id: pid,
+                process_loopback_mode: mode,
             };
 
             let prop = PropVariantBlob {
@@ -910,8 +934,8 @@ mod platform {
                 .map_err(|e| format!("Cast IAudioClient: {}", e))?;
 
             println!(
-                "[WASAPI] Process-excluded loopback client activated (PID={} excluded)",
-                std::process::id()
+                "[WASAPI] Process loopback client activated ({} mode, PID={})",
+                mode_name, pid
             );
 
             // Step 3: Initialize with the device's native format.
@@ -925,8 +949,8 @@ mod platform {
             let _ = app.emit(
                 "wasapi-info",
                 format!(
-                    "WASAPI (process-excluded): {}Hz {}ch {}bit",
-                    sample_rate, channels, bits
+                    "WASAPI (process-{}, PID={}): {}Hz {}ch {}bit",
+                    mode_name.to_lowercase(), pid, sample_rate, channels, bits
                 ),
             );
 
@@ -1192,6 +1216,7 @@ mod stub {
         _target_id: String,
         _fps: u32,
         _capture_audio: bool,
+        _target_process_id: u32,
     ) -> Result<(), String> {
         Err("Native capture is only supported on Windows".into())
     }

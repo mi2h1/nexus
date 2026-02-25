@@ -95,10 +95,10 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     }, [selected, onFinished]);
 
     const onNativePickerSelect = useCallback(
-        (targetId: string, fps: number, captureAudio: boolean) => {
+        (targetId: string, fps: number, captureAudio: boolean, processId: number) => {
             onFinished();
             const conn = NexusVoiceStore.instance.getActiveConnection();
-            conn?.startNativeScreenShare(targetId, fps, captureAudio).catch((e) =>
+            conn?.startNativeScreenShare(targetId, fps, captureAudio, processId).catch((e) =>
                 logger.warn("Failed to start native screen share", e),
             );
         },
