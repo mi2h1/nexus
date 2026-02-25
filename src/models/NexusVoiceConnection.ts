@@ -133,6 +133,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _screenShares: ScreenShareInfo[] = [];
     private _activeSpeakers = new Set<string>();
     private _participantStates = new Map<string, ParticipantState>();
+    /** Remote mute states received via data messages (identity → muted) */
+    private remoteMuteStates = new Map<string, boolean>();
     private speakerPollTimer: ReturnType<typeof setInterval> | null = null;
     private statsTimer: ReturnType<typeof setInterval> | null = null;
     // ─── Audio pipeline ──────────────────────────────────────
@@ -297,6 +299,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             this.livekitRoom.on(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
+            this.livekitRoom.on(LivekitRoomEvent.DataReceived, this.onDataReceived);
             await this.livekitRoom.connect(url, jwt);
 
             // ── Phase 4: Build input pipeline ────────────────────────
@@ -433,38 +436,26 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     public setMicMuted(muted: boolean): void {
         // Control audio via inputGainNode (immediate, actual silence) +
-        // signal mute state to LiveKit server via engine.client.sendMuteTrack().
+        // signal mute state to other participants via LiveKit data messages.
         //
-        // Why NOT track.mute()/unmute() or setTrackMuted():
-        //   track.mute()/unmute() call pauseUpstream()/resumeUpstream() which
-        //   disrupt the RTP sender → DTLS timeouts → brief disconnections.
-        //   setTrackMuted() emits TrackEvent which propagates through the event
-        //   chain and ALSO triggers pauseUpstream() in LocalParticipant listeners.
+        // Why we bypass ALL of LiveKit's mute mechanisms:
+        //   - track.mute()/unmute(): calls pauseUpstream()/resumeUpstream()
+        //     → RTP sender disruption → DTLS timeouts → brief disconnections
+        //   - setTrackMuted(): event chain triggers pauseUpstream() too
+        //   - sendMuteTrack(): tells SFU "track muted" → SFU stops forwarding
+        //     audio → multi-second delay on unmute while SFU resumes
         //
-        // Our approach (bypasses entire event chain):
-        //   1. inputGainNode.gain = 0 for actual audio silencing
-        //   2. track.isMuted = muted (local state)
-        //   3. engine.client.sendMuteTrack() for remote signaling (direct)
+        // Our approach (completely independent of LiveKit mute):
+        //   1. inputGainNode.gain = 0 for actual audio silencing (instant)
+        //   2. publishData() to broadcast mute state to other participants
+        //   3. Remote clients read mute state from data messages, not micPub.isMuted
         if (this.inputGainNode) {
             this.inputGainNode.gain.value = muted
                 ? 0
                 : (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
         }
-        const pub = this.livekitRoom?.localParticipant.getTrackPublication(Track.Source.Microphone);
-        if (pub?.track) {
-            // Set local mute state directly — no events, no pauseUpstream()
-            // Do NOT touch mediaStreamTrack.enabled — toggling it pauses/resumes
-            // the RTP sender, causing multi-second delays on unmute.
-            // inputGainNode.gain = 0 already silences audio; DTX skips silence frames.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (pub.track as any).isMuted = muted;
-            // Signal mute state to LiveKit server directly via signaling channel
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const engine = (this.livekitRoom as any)?.engine;
-            if (engine?.client && pub.trackSid) {
-                engine.client.sendMuteTrack(pub.trackSid, muted);
-            }
-        }
+        // Broadcast mute state to all participants via data channel
+        this.broadcastMuteState(muted);
         this._isMicMuted = muted;
         this._voiceGateOpen = true;
         this.emit(CallEvent.MicMuted, muted);
@@ -1377,6 +1368,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.off(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             this.livekitRoom.off(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.off(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
+            this.livekitRoom.off(LivekitRoomEvent.DataReceived, this.onDataReceived);
+            this.remoteMuteStates.clear();
             await this.livekitRoom.disconnect();
             this.livekitRoom = null;
         }
@@ -1728,9 +1721,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
             const userId = this.resolveIdentityToUserId(participant.identity);
             if (userId) {
+                // Use data-message-based mute state (our custom signaling),
+                // falling back to LiveKit's micPub.isMuted for participants
+                // that haven't sent a data message yet.
+                const dataMuted = this.remoteMuteStates.get(participant.identity);
                 const micPub = participant.getTrackPublication(Track.Source.Microphone);
-                // Muted = track is muted OR track is not published at all
-                const isMuted = micPub ? micPub.isMuted : true;
+                const isMuted = dataMuted ?? (micPub ? micPub.isMuted : true);
                 newStates.set(userId, {
                     isMuted,
                     isScreenSharing: screenSharingUserIds.has(userId),
@@ -1779,9 +1775,39 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.updateParticipants();
     };
 
-    private onParticipantDisconnected = (): void => {
+    private onParticipantDisconnected = (participant: Participant): void => {
+        this.remoteMuteStates.delete(participant.identity);
         this.updateParticipants();
         this.updateScreenShares();
+    };
+
+    // ─── Private: Data-channel mute signaling ─────────────────
+
+    private static readonly MUTE_TOPIC = "nexus-mute";
+
+    private broadcastMuteState(muted: boolean): void {
+        if (!this.livekitRoom?.localParticipant) return;
+        const payload = new TextEncoder().encode(JSON.stringify({ m: muted }));
+        this.livekitRoom.localParticipant
+            .publishData(payload, { reliable: true, topic: NexusVoiceConnection.MUTE_TOPIC })
+            .catch((e) => logger.warn("Failed to broadcast mute state", e));
+    }
+
+    private onDataReceived = (
+        payload: Uint8Array,
+        participant?: Participant,
+        _kind?: unknown,
+        topic?: string,
+    ): void => {
+        if (topic !== NexusVoiceConnection.MUTE_TOPIC || !participant) return;
+        try {
+            const data = JSON.parse(new TextDecoder().decode(payload));
+            if (typeof data.m === "boolean") {
+                this.remoteMuteStates.set(participant.identity, data.m);
+            }
+        } catch {
+            // ignore malformed data
+        }
     };
 
     private onMembershipsChanged = (): void => {
