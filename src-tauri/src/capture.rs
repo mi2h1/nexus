@@ -566,7 +566,7 @@ mod platform {
                         target_window,
                         CursorCaptureSettings::WithCursor,
                         DrawBorderSettings::WithoutBorder,
-                        SecondaryWindowSettings::WithoutSecondaryWindows,
+                        SecondaryWindowSettings::Exclude,
                         MinimumUpdateIntervalSettings::Default,
                         DirtyRegionSettings::Default,
                         ColorFormat::Bgra8,
