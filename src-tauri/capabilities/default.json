@@ -6,13 +6,20 @@
     "permissions": [
         "core:default",
         "opener:default",
-        "http:default",
         {
             "identifier": "http:default",
             "allow": [
-                {
-                    "url": "https://*"
-                }
+                { "url": "https://*" },
+                { "url": "https://*:*" },
+                { "url": "https://*:*/*" }
+            ]
+        },
+        {
+            "identifier": "http:allow-fetch",
+            "allow": [
+                { "url": "https://*" },
+                { "url": "https://*:*" },
+                { "url": "https://*:*/*" }
             ]
         },
         "updater:default",
