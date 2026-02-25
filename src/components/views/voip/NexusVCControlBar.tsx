@@ -49,9 +49,15 @@ export function NexusVCControlBar({
         NexusVoiceStore.instance.toggleMic();
     }, []);
 
-    const onToggleSharePanel = useCallback(() => {
-        setShowSharePanel((prev) => !prev);
-    }, []);
+    const onScreenShareClick = useCallback(() => {
+        if (isScreenSharing) {
+            // Stop immediately without opening the panel
+            const conn = NexusVoiceStore.instance.getActiveConnection();
+            conn?.stopScreenShare();
+        } else {
+            setShowSharePanel((prev) => !prev);
+        }
+    }, [isScreenSharing]);
 
     const onEndCall = useCallback(() => {
         NexusVoiceStore.instance.leaveVoiceChannel();
@@ -88,9 +94,9 @@ export function NexusVCControlBar({
                         "nx_VCControlBar_button--screenSharing": isScreenSharing,
                     })}
                     element="button"
-                    onClick={onToggleSharePanel}
+                    onClick={onScreenShareClick}
                     ref={shareButtonRef}
-                    title={isScreenSharing ? "配信設定" : "画面を共有"}
+                    title={isScreenSharing ? "共有を停止" : "画面を共有"}
                 >
                     <ShareScreenSolidIcon width={22} height={22} />
                 </AccessibleButton>

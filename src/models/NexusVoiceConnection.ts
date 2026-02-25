@@ -582,7 +582,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                         height: { ideal: preset.height },
                         frameRate: { ideal: preset.fps },
                     },
-                    audio: true,
+                    audio: isTauri(),
                 });
             } catch (e) {
                 if (e instanceof DOMException && e.name === "NotReadableError") {

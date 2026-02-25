@@ -69,7 +69,7 @@ interface NexusScreenSharePanelProps {
  * Shown above the screen share button in the VC control bar.
  *
  * - Not sharing → select preset + "共有を開始"
- * - Sharing → change preset + "画質を変更" / "共有を停止"
+ * - Sharing → "共有を停止"
  *
  * In Tauri mode, clicking "共有を開始" opens the native capture picker
  * (NexusScreenSharePicker) instead of the browser's getDisplayMedia.
@@ -117,13 +117,6 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     const onNativePickerCancel = useCallback(() => {
         setShowNativePicker(false);
     }, []);
-
-    const onChangeQuality = useCallback(() => {
-        SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selected);
-        onFinished();
-        const conn = NexusVoiceStore.instance.getActiveConnection();
-        conn?.republishScreenShare().catch((e) => logger.warn("Failed to change quality", e));
-    }, [selected, onFinished]);
 
     const onStopShare = useCallback(() => {
         onFinished();
@@ -179,23 +172,20 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
                 })}
             </div>
 
+            {!isScreenSharing && !isTauri() && (
+                <div className="nx_ScreenSharePanel_notice">
+                    ブラウザ版では音声は共有されません
+                </div>
+            )}
+
             <div className="nx_ScreenSharePanel_actions">
                 {isScreenSharing ? (
-                    <>
-                        <button
-                            className="nx_ScreenSharePanel_button nx_ScreenSharePanel_button--primary"
-                            onClick={onChangeQuality}
-                            disabled={selected === currentKey}
-                        >
-                            画質を変更
-                        </button>
-                        <button
-                            className="nx_ScreenSharePanel_button nx_ScreenSharePanel_button--danger"
-                            onClick={onStopShare}
-                        >
-                            共有を停止
-                        </button>
-                    </>
+                    <button
+                        className="nx_ScreenSharePanel_button nx_ScreenSharePanel_button--danger"
+                        onClick={onStopShare}
+                    >
+                        共有を停止
+                    </button>
                 ) : (
                     <button
                         className="nx_ScreenSharePanel_button nx_ScreenSharePanel_button--primary"
