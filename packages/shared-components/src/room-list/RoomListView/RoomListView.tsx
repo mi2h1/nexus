@@ -8,7 +8,7 @@
 import React, { type JSX, type ReactNode } from "react";
 
 import { useViewModel, type ViewModel } from "../../viewmodel";
-import { RoomListPrimaryFilters, type FilterId } from "../RoomListPrimaryFilters";
+import { type FilterId } from "../RoomListPrimaryFilters";
 import { RoomListLoadingSkeleton } from "./RoomListLoadingSkeleton";
 import { RoomListEmptyStateView } from "./RoomListEmptyStateView";
 import { VirtualizedRoomListView, type RoomListViewState } from "../VirtualizedRoomListView";
