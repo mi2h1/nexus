@@ -938,31 +938,19 @@ mod platform {
                 mode_name, pid
             );
 
-            // Step 3: Get the process loopback client's own mix format and
-            // use it for initialization (NOT the device format — the virtual
-            // device may report a different supported format).
-            let mix_format_ptr = client
-                .GetMixFormat()
-                .map_err(|e| format!("GetMixFormat on process loopback: {}", e))?;
-
-            let init_sample_rate = (*mix_format_ptr).nSamplesPerSec;
-            let init_channels = (*mix_format_ptr).nChannels as usize;
-            let init_bits = (*mix_format_ptr).wBitsPerSample;
-
-            println!(
-                "[WASAPI] Process loopback mix format: {}Hz, {}ch, {}bit",
-                init_sample_rate, init_channels, init_bits
-            );
+            // Step 3: Initialize with the device's native format
+            // (same WAVEFORMATEXTENSIBLE that works for EXCLUDE mode).
+            let format_ptr = device_format.as_waveformatex_ref()
+                as *const _ as *const WAVEFORMATEX;
 
             let _ = app.emit(
                 "wasapi-info",
                 format!(
                     "WASAPI (process-{}, PID={}): {}Hz {}ch {}bit",
-                    mode_name.to_lowercase(), pid, init_sample_rate, init_channels, init_bits
+                    mode_name.to_lowercase(), pid, sample_rate, channels, bits
                 ),
             );
 
-            // Event-driven shared mode — use the client's own mix format.
             let init_flags: u32 = 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
             client
                 .Initialize(
@@ -970,15 +958,10 @@ mod platform {
                     init_flags,
                     0,
                     0,
-                    mix_format_ptr,
+                    format_ptr,
                     None,
                 )
-                .map_err(|e| {
-                    CoTaskMemFree(Some(mix_format_ptr as *const _ as *const std::ffi::c_void));
-                    format!("Initialize: {}", e)
-                })?;
-
-            CoTaskMemFree(Some(mix_format_ptr as *const _ as *const std::ffi::c_void));
+                .map_err(|e| format!("Initialize: {}", e))?;
 
             // Get capture client and set up event handle
             let capture_client: IAudioCaptureClient = client
@@ -991,10 +974,10 @@ mod platform {
                 .SetEventHandle(event_handle)
                 .map_err(|e| format!("SetEventHandle: {}", e))?;
 
-            // Use the actual initialized format for the capture loop
-            let cap_channels = init_channels;
-            let cap_bytes_per_sample = (init_bits / 8) as usize;
-            let cap_sample_rate = init_sample_rate;
+            // Use the device format parameters for the capture loop
+            let cap_channels = channels;
+            let cap_bytes_per_sample = bytes_per_sample;
+            let cap_sample_rate = sample_rate;
 
             // Start the stream
             client.Start().map_err(|e| format!("Start: {}", e))?;
