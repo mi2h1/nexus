@@ -446,9 +446,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const pub = this.livekitRoom?.localParticipant.getTrackPublication(Track.Source.Microphone);
         if (pub?.track) {
             // Set local mute state directly — no events, no pauseUpstream()
+            // Do NOT touch mediaStreamTrack.enabled — toggling it pauses/resumes
+            // the RTP sender, causing multi-second delays on unmute.
+            // inputGainNode.gain = 0 already silences audio; DTX skips silence frames.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (pub.track as any).isMuted = muted;
-            pub.track.mediaStreamTrack.enabled = !muted;
             // Signal mute state to LiveKit server directly via signaling channel
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const engine = (this.livekitRoom as any)?.engine;
