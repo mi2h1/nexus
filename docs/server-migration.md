@@ -17,7 +17,62 @@
 
 ---
 
-## Step 0: プロジェクト知識の取得
+## Step 0: 依存環境のインストール
+
+まっさらな Ubuntu サーバーを前提とする。以下を順番にインストールする。
+
+### 0-1. 基本パッケージ
+
+```bash
+apt update && apt upgrade -y
+apt install -y git curl wget ca-certificates gnupg lsb-release
+```
+
+### 0-2. Docker Engine + Docker Compose
+
+```bash
+# Docker 公式 GPG キーを追加
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+
+# リポジトリを追加
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# インストール
+apt update
+apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 動作確認
+docker --version        # Docker Engine 27.x+
+docker compose version  # Docker Compose v2.x+
+```
+
+### 0-3. certbot（SSL 証明書取得用）
+
+```bash
+apt install -y certbot
+```
+
+### 0-4. 確認
+
+```bash
+docker --version         # 必須: Docker Engine
+docker compose version   # 必須: Docker Compose v2
+certbot --version        # 必須: certbot
+git --version            # 必須: git
+curl --version           # 必須: curl
+```
+
+> **Note**: pnpm / Node.js はこのサーバーには不要。ビルドは GitHub Actions で行い、
+> このサーバーは Docker で LiveKit SFU を動かすだけ。
+
+---
+
+## Step 1: プロジェクト知識の取得
 
 ```bash
 # リポジトリをクローン
@@ -35,7 +90,7 @@ cd /root/dev/nexus
 
 ---
 
-## Step 1: SSL 証明書の配置
+## Step 2: SSL 証明書の配置
 
 SSL 証明書が `lche2.xvps.jp` 用に発行されている前提。
 
@@ -58,7 +113,7 @@ chmod 600 /etc/ssl/lche2/privkey.pem
 
 ---
 
-## Step 2: ファイアウォール設定
+## Step 3: ファイアウォール設定
 
 以下のポートを開放する:
 
@@ -85,7 +140,7 @@ iptables -A INPUT -p tcp --dport 7891 -j ACCEPT
 
 ---
 
-## Step 3: Docker で Nexus サービスを起動
+## Step 4: Docker で Nexus サービスを起動
 
 ```bash
 cd /root/dev/nexus/infra/livekit
@@ -99,16 +154,16 @@ docker compose up -d
 
 ---
 
-## Step 4: 動作確認
+## Step 5: 動作確認
 
-### 4-1. コンテナ状態
+### 5-1. コンテナ状態
 
 ```bash
 docker ps
 # 3 コンテナ全て "Up" であること
 ```
 
-### 4-2. JWT エンドポイント
+### 5-2. JWT エンドポイント
 
 ```bash
 curl -k https://lche2.xvps.jp:7891/healthz
@@ -116,14 +171,14 @@ curl -k https://lche2.xvps.jp:7891/healthz
 curl -k -o /dev/null -w "%{http_code}" https://lche2.xvps.jp:7891/
 ```
 
-### 4-3. LiveKit WebSocket
+### 5-3. LiveKit WebSocket
 
 ```bash
 # WebSocket 接続テスト（upgrade が返ること）
 curl -k -I -H "Upgrade: websocket" -H "Connection: Upgrade" https://lche2.xvps.jp:7880/
 ```
 
-### 4-4. ブラウザ確認
+### 5-4. ブラウザ確認
 
 1. https://mi2h1.github.io/nexus/ を開く
 2. ログイン → VC チャンネルに参加
@@ -132,7 +187,7 @@ curl -k -I -H "Upgrade: websocket" -H "Connection: Upgrade" https://lche2.xvps.j
 
 ---
 
-## Step 5: certbot 自動更新の設定（推奨）
+## Step 6: certbot 自動更新の設定（推奨）
 
 ```bash
 # certbot の renew hook で証明書をコピー + nginx リロード
