@@ -63,6 +63,7 @@ mod platform {
     // The type is erased to avoid complex generics — we only need stop().
     static CAPTURE_CONTROL: Mutex<Option<Box<dyn CaptureControlHandle>>> = Mutex::new(None);
     static AUDIO_STOP_FLAG: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+    static AUDIO_THREAD_HANDLE: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
 
     /// Type-erased wrapper so we can store CaptureControl in a static.
     trait CaptureControlHandle: Send + Sync {
@@ -642,11 +643,12 @@ mod platform {
             let stop_flag = Arc::new(AtomicBool::new(false));
             *AUDIO_STOP_FLAG.lock().unwrap() = Some(stop_flag.clone());
 
-            std::thread::spawn(move || {
+            let handle = std::thread::spawn(move || {
                 if let Err(e) = run_wasapi_loopback(audio_app, stop_flag) {
                     eprintln!("WASAPI loopback error: {}", e);
                 }
             });
+            *AUDIO_THREAD_HANDLE.lock().unwrap() = Some(handle);
         }
 
         Ok(())
@@ -680,9 +682,16 @@ mod platform {
     pub async fn stop_capture() -> Result<(), String> {
         CAPTURE_RUNNING.store(false, Ordering::SeqCst);
 
-        // Stop audio loopback
+        // Signal audio loopback to stop
         if let Some(flag) = AUDIO_STOP_FLAG.lock().unwrap().take() {
             flag.store(true, Ordering::SeqCst);
+        }
+
+        // Wait for WASAPI thread to fully exit (COM cleanup must complete
+        // before returning, otherwise the audio endpoint is left in a
+        // broken state and system audio goes silent).
+        if let Some(handle) = AUDIO_THREAD_HANDLE.lock().unwrap().take() {
+            let _ = handle.join();
         }
 
         // Stop WGC capture
@@ -1006,7 +1015,9 @@ mod platform {
             }
 
             // Stop — explicit drop order matters for COM cleanup.
-            // Stop the stream, then release COM objects BEFORE CoUninitialize.
+            // Reset flushes all pending buffers, then Stop halts the stream.
+            // Both must succeed before releasing COM objects.
+            let _ = client.Reset();
             let _ = client.Stop();
             let _ = CloseHandle(event_handle);
             drop(capture_client);

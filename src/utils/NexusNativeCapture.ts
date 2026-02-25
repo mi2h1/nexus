@@ -132,6 +132,7 @@ export class NativeAudioCaptureStream {
     private scriptProcessor: ScriptProcessorNode;
     private silentSource: ConstantSourceNode;
     private destination: MediaStreamAudioDestinationNode;
+    private keepAliveGain: GainNode;
     private ringBuffer: Float32Array;
     private writePos = 0;
     private readPos = 0;
@@ -162,6 +163,16 @@ export class NativeAudioCaptureStream {
         this.silentSource.offset.value = 0;
         this.silentSource.connect(this.scriptProcessor);
         this.scriptProcessor.connect(this.destination);
+
+        // Keep-alive: also route scriptProcessor → zero-gain → audioContext.destination.
+        // In some WebView2 builds, onaudioprocess only fires if the node is in
+        // the rendering graph leading to audioContext.destination.
+        // The zero gain ensures no audible output.
+        this.keepAliveGain = this.audioContext.createGain();
+        this.keepAliveGain.gain.value = 0;
+        this.scriptProcessor.connect(this.keepAliveGain);
+        this.keepAliveGain.connect(this.audioContext.destination);
+
         this.silentSource.start();
 
         this.scriptProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
@@ -234,6 +245,7 @@ export class NativeAudioCaptureStream {
         this.silentSource.stop();
         this.silentSource.disconnect();
         this.scriptProcessor.disconnect();
+        this.keepAliveGain.disconnect();
         this.destination.disconnect();
         // AudioContext is externally owned — do NOT close it here.
         for (const track of this.destination.stream.getTracks()) {
