@@ -853,8 +853,8 @@ mod platform {
         println!("[WASAPI] Attempting process loopback: {} mode, PID={}", mode_name, pid);
 
         // Step 1: Get the device's native format from the default render device.
-        // The process loopback virtual device does NOT support GetMixFormat,
-        // so we query the real device and use its format for initialization.
+        // Used for EXCLUDE mode; INCLUDE mode queries the process loopback
+        // client's own mix format instead (see Step 3).
         wasapi::initialize_mta();
         let device_format = {
             let enumerator = wasapi::DeviceEnumerator::new()
@@ -938,38 +938,21 @@ mod platform {
                 mode_name, pid
             );
 
-            // Step 3: Initialize the client.
-            // INCLUDE mode: use stereo 48kHz 32-bit float (process loopback
-            // virtual device rejects multi-channel formats like 7.1ch).
-            // EXCLUDE mode: use the device's native format.
-            let stereo_fmt = WAVEFORMATEX {
-                wFormatTag: 3, // WAVE_FORMAT_IEEE_FLOAT
-                nChannels: 2,
-                nSamplesPerSec: 48000,
-                nAvgBytesPerSec: 48000 * 2 * 4,
-                nBlockAlign: 2 * 4,
-                wBitsPerSample: 32,
-                cbSize: 0,
-            };
+            // Step 3: Get the process loopback client's own mix format and
+            // use it for initialization (NOT the device format — the virtual
+            // device may report a different supported format).
+            let mix_format_ptr = client
+                .GetMixFormat()
+                .map_err(|e| format!("GetMixFormat on process loopback: {}", e))?;
 
-            let (format_ptr, init_sample_rate, init_channels, init_bits) = if target_pid > 0 {
-                // INCLUDE mode: stereo format
-                (
-                    &stereo_fmt as *const WAVEFORMATEX,
-                    48000u32,
-                    2usize,
-                    32u16,
-                )
-            } else {
-                // EXCLUDE mode: device native format
-                (
-                    device_format.as_waveformatex_ref()
-                        as *const _ as *const WAVEFORMATEX,
-                    sample_rate,
-                    channels,
-                    bits,
-                )
-            };
+            let init_sample_rate = (*mix_format_ptr).nSamplesPerSec;
+            let init_channels = (*mix_format_ptr).nChannels as usize;
+            let init_bits = (*mix_format_ptr).wBitsPerSample;
+
+            println!(
+                "[WASAPI] Process loopback mix format: {}Hz, {}ch, {}bit",
+                init_sample_rate, init_channels, init_bits
+            );
 
             let _ = app.emit(
                 "wasapi-info",
@@ -979,21 +962,23 @@ mod platform {
                 ),
             );
 
-            // Event-driven shared mode with AUTOCONVERTPCM so Windows handles
-            // format conversion between process output and our requested format.
-            let init_flags: u32 = 0x00040000  // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
-                                | 0x80000000  // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
-                                | 0x08000000; // AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
+            // Event-driven shared mode — use the client's own mix format.
+            let init_flags: u32 = 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
             client
                 .Initialize(
                     AUDCLNT_SHAREMODE_SHARED,
                     init_flags,
                     0,
                     0,
-                    format_ptr,
+                    mix_format_ptr,
                     None,
                 )
-                .map_err(|e| format!("Initialize: {}", e))?;
+                .map_err(|e| {
+                    CoTaskMemFree(Some(mix_format_ptr as *const _ as *const std::ffi::c_void));
+                    format!("Initialize: {}", e)
+                })?;
+
+            CoTaskMemFree(Some(mix_format_ptr as *const _ as *const std::ffi::c_void));
 
             // Get capture client and set up event handle
             let capture_client: IAudioCaptureClient = client
