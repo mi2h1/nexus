@@ -668,21 +668,44 @@ mod platform {
         Ok(())
     }
 
-    // ─── Switch capture target (WGC only, audio untouched) ──────────
+    // ─── Switch capture target (WGC + WASAPI restart) ─────────────
     #[tauri::command]
     pub async fn switch_capture_target(
         app: AppHandle,
         target_id: String,
         fps: u32,
+        target_process_id: u32,
     ) -> Result<(), String> {
         if !CAPTURE_RUNNING.load(Ordering::SeqCst) {
             return Err("No capture running".into());
         }
 
-        // Stop only the current WGC capture (audio loopback continues)
+        // Stop current WGC capture
         if let Some(control) = CAPTURE_CONTROL.lock().unwrap().take() {
             control.stop_capture()?;
         }
+
+        // Restart WASAPI loopback with the new process's PID
+        // (stop old audio thread, start new one)
+        if let Some(flag) = AUDIO_STOP_FLAG.lock().unwrap().take() {
+            flag.store(true, Ordering::SeqCst);
+        }
+        if let Some(handle) = AUDIO_THREAD_HANDLE.lock().unwrap().take() {
+            let _ = handle.join();
+        }
+
+        // Start new WASAPI loopback for the new target process
+        let audio_app = app.clone();
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        *AUDIO_STOP_FLAG.lock().unwrap() = Some(stop_flag.clone());
+
+        let target_pid = target_process_id;
+        let handle = std::thread::spawn(move || {
+            if let Err(e) = run_wasapi_loopback(audio_app, stop_flag, target_pid) {
+                eprintln!("WASAPI loopback error: {}", e);
+            }
+        });
+        *AUDIO_THREAD_HANDLE.lock().unwrap() = Some(handle);
 
         // Start a new WGC capture for the new target
         let control = start_wgc_capture(app, target_id, fps).await?;
@@ -1247,6 +1270,7 @@ mod stub {
         _app: tauri::AppHandle,
         _target_id: String,
         _fps: u32,
+        _target_process_id: u32,
     ) -> Result<(), String> {
         Err("Native capture is only supported on Windows".into())
     }

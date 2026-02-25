@@ -112,10 +112,10 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     }, [onFinished]);
 
     const onSwitchTarget = useCallback(
-        (targetId: string) => {
+        (targetId: string, _fps: number, _captureAudio: boolean, processId: number) => {
             onFinished();
             const conn = NexusVoiceStore.instance.getActiveConnection();
-            conn?.switchNativeScreenShareTarget(targetId).catch((e) =>
+            conn?.switchNativeScreenShareTarget(targetId, processId).catch((e) =>
                 logger.warn("Failed to switch capture target", e),
             );
         },
@@ -126,7 +126,7 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     if (isScreenSharing && isTauri()) {
         return (
             <NexusScreenSharePicker
-                onSelect={(targetId) => onSwitchTarget(targetId)}
+                onSelect={onSwitchTarget}
                 onCancel={onFinished}
                 onStop={onStopShare}
                 mode="switch"

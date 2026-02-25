@@ -577,14 +577,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * the Rust-side capture target automatically sends new frames to the same
      * MediaStreamTrack — no replaceTrack() needed.
      */
-    public async switchNativeScreenShareTarget(targetId: string): Promise<void> {
+    public async switchNativeScreenShareTarget(targetId: string, targetProcessId: number = 0): Promise<void> {
         if (!this._isScreenSharing || !this._isNativeCapture) return;
 
         this._isSwitchingTarget = true;
         try {
             const { invoke } = await import("@tauri-apps/api/core");
             const preset = this.getScreenSharePreset();
-            await invoke("switch_capture_target", { targetId, fps: preset.fps });
+            await invoke("switch_capture_target", { targetId, fps: preset.fps, targetProcessId });
             logger.info("Switched native capture target to:", targetId);
         } finally {
             this._isSwitchingTarget = false;
@@ -1661,6 +1661,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this._screenShares = this._screenShares.filter(
                 (s) => s.participantIdentity !== participant.identity,
             );
+            // Clear watching state so re-share requires explicit watch action
+            if (this.watchingScreenShares.delete(participant.identity)) {
+                this.emit(CallEvent.WatchingChanged, new Set(this.watchingScreenShares));
+            }
             if (had && this.connected) playVcSound(VC_SCREEN_OFF_SOUND);
             this.emit(CallEvent.ScreenShares, this._screenShares);
             return;
