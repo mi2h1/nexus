@@ -425,10 +425,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     public setMicMuted(muted: boolean): void {
-        // Control audio via inputGainNode (immediate) + signal via LiveKit track mute.
-        // Our published track is "user-provided" (raw MediaStreamTrack passed to
-        // publishTrack), so LiveKit skips stopOnMute/restartTrack — safe to use
-        // track.mute()/unmute() for remote mute indicator signaling.
+        // Control audio via inputGainNode (immediate, actual silence) +
+        // signal mute state via setTrackMuted (metadata only, no RTP disruption).
+        //
+        // Why NOT track.mute()/unmute():
+        //   They call pauseUpstream()/resumeUpstream() which pause/resume the
+        //   RTP sender, causing DTLS timeouts and brief disconnections in browsers.
+        //
+        // setTrackMuted(muted) does three things without touching the RTP sender:
+        //   1. Sets track.isMuted
+        //   2. Sets mediaStreamTrack.enabled = !muted
+        //   3. Emits TrackEvent.Muted/Unmuted → signals to remote participants
         if (this.inputGainNode) {
             this.inputGainNode.gain.value = muted
                 ? 0
@@ -436,8 +443,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         const pub = this.livekitRoom?.localParticipant.getTrackPublication(Track.Source.Microphone);
         if (pub?.track) {
-            if (muted) pub.track.mute();
-            else pub.track.unmute();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (pub.track as any).setTrackMuted(muted);
         }
         this._isMicMuted = muted;
         this._voiceGateOpen = true;
