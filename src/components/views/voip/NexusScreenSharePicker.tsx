@@ -27,12 +27,16 @@ interface CaptureTarget {
 type PickerTab = "window" | "monitor";
 
 interface NexusScreenSharePickerProps {
-    /** Called when user selects a target and clicks "共有を開始" */
+    /** Called when user selects a target and clicks "共有を開始" / "変更" */
     onSelect: (targetId: string, fps: number, captureAudio: boolean) => void;
     /** Called when user cancels */
     onCancel: () => void;
     /** Default FPS from screen share quality preset */
     defaultFps: number;
+    /** "start" = new share, "switch" = change target during active share */
+    mode?: "start" | "switch";
+    /** Called when user clicks "共有を停止" (switch mode only) */
+    onStop?: () => void;
 }
 
 /**
@@ -44,6 +48,8 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
     onSelect,
     onCancel,
     defaultFps,
+    mode = "start",
+    onStop,
 }: NexusScreenSharePickerProps): JSX.Element {
     const overlayRef = useRef<HTMLDivElement>(null);
     const [targets, setTargets] = useState<CaptureTarget[]>([]);
@@ -80,6 +86,26 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
         };
     }, []);
 
+    // Poll targets every 2 seconds for real-time updates
+    useEffect(() => {
+        const poll = async (): Promise<void> => {
+            try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                const result = await invoke<CaptureTarget[]>("enumerate_capture_targets");
+                setTargets(result);
+                // Reset selectedId if the selected target no longer exists
+                setSelectedId((prev) => {
+                    if (prev && !result.some((t) => t.id === prev)) return null;
+                    return prev;
+                });
+            } catch {
+                // Silently ignore polling errors
+            }
+        };
+        const id = setInterval(poll, 2000);
+        return () => clearInterval(id);
+    }, []);
+
     // Close on Escape
     useEffect(() => {
         const handler = (e: KeyboardEvent): void => {
@@ -106,12 +132,16 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
     const monitors = targets.filter((t) => t.target_type === "monitor");
     const visibleTargets = activeTab === "window" ? windows : monitors;
 
+    const isSwitch = mode === "switch";
+
     return ReactDOM.createPortal(
         <div className="nx_ScreenSharePicker_overlay" ref={overlayRef} onClick={onOverlayClick}>
             <div className="nx_ScreenSharePicker">
                 {/* Header */}
                 <div className="nx_ScreenSharePicker_header">
-                    <h2 className="nx_ScreenSharePicker_title">画面を共有</h2>
+                    <h2 className="nx_ScreenSharePicker_title">
+                        {isSwitch ? "共有先を変更" : "画面を共有"}
+                    </h2>
                 </div>
 
                 {/* Tabs */}
@@ -215,15 +245,25 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
 
                 {/* Footer */}
                 <div className="nx_ScreenSharePicker_footer">
-                    <label className="nx_ScreenSharePicker_audioToggle">
-                        <input
-                            type="checkbox"
-                            checked={captureAudio}
-                            onChange={(e) => setCaptureAudio(e.target.checked)}
-                        />
-                        <span>音声も共有する</span>
-                    </label>
+                    {!isSwitch && (
+                        <label className="nx_ScreenSharePicker_audioToggle">
+                            <input
+                                type="checkbox"
+                                checked={captureAudio}
+                                onChange={(e) => setCaptureAudio(e.target.checked)}
+                            />
+                            <span>音声も共有する</span>
+                        </label>
+                    )}
                     <div className="nx_ScreenSharePicker_actions">
+                        {isSwitch && onStop && (
+                            <button
+                                className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--danger"
+                                onClick={onStop}
+                            >
+                                共有を停止
+                            </button>
+                        )}
                         <button
                             className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--cancel"
                             onClick={onCancel}
@@ -235,7 +275,7 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                             onClick={onStart}
                             disabled={!selectedId}
                         >
-                            共有を開始
+                            {isSwitch ? "変更" : "共有を開始"}
                         </button>
                     </div>
                 </div>

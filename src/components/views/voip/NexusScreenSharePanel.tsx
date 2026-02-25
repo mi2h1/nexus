@@ -124,6 +124,31 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
         conn?.stopScreenShare().catch((e) => logger.warn("Failed to stop screen share", e));
     }, [onFinished]);
 
+    const onSwitchTarget = useCallback(
+        (targetId: string) => {
+            onFinished();
+            const conn = NexusVoiceStore.instance.getActiveConnection();
+            conn?.switchNativeScreenShareTarget(targetId).catch((e) =>
+                logger.warn("Failed to switch capture target", e),
+            );
+        },
+        [onFinished],
+    );
+
+    // Tauri + currently sharing → show picker in switch mode
+    if (isScreenSharing && isTauri()) {
+        const preset = SCREEN_SHARE_PRESETS[selected];
+        return (
+            <NexusScreenSharePicker
+                onSelect={(targetId) => onSwitchTarget(targetId)}
+                onCancel={onFinished}
+                onStop={onStopShare}
+                defaultFps={preset.fps}
+                mode="switch"
+            />
+        );
+    }
+
     // If native picker is shown, render that instead
     if (showNativePicker) {
         const preset = SCREEN_SHARE_PRESETS[selected];

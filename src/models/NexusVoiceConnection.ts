@@ -130,6 +130,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private nativeAudioCapture: NativeAudioCaptureStream | null = null;
     private _isNativeCapture = false;
     private _isScreenSharing = false;
+    private _isSwitchingTarget = false;
     private _screenShares: ScreenShareInfo[] = [];
     private _activeSpeakers = new Set<string>();
     private _participantStates = new Map<string, ParticipantState>();
@@ -544,7 +545,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // Listen for capture events
             import("@tauri-apps/api/event").then(({ listen }) => {
                 listen("capture-stopped", () => {
-                    if (this._isNativeCapture && this._isScreenSharing) {
+                    if (this._isNativeCapture && this._isScreenSharing && !this._isSwitchingTarget) {
                         this.stopScreenShare().catch((e) =>
                             logger.warn("Failed to stop after capture-stopped", e),
                         );
@@ -558,6 +559,28 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         } catch (e) {
             logger.warn("Failed to start native screen share", e);
             await this.cleanupNativeCapture();
+        }
+    }
+
+    // ─── Switch native capture target (Tauri) ─────────────────
+
+    /**
+     * Switch the WGC capture target while keeping audio and LiveKit tracks intact.
+     * The NativeVideoCaptureStream receives frames via Tauri events, so switching
+     * the Rust-side capture target automatically sends new frames to the same
+     * MediaStreamTrack — no replaceTrack() needed.
+     */
+    public async switchNativeScreenShareTarget(targetId: string): Promise<void> {
+        if (!this._isScreenSharing || !this._isNativeCapture) return;
+
+        this._isSwitchingTarget = true;
+        try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            const preset = this.getScreenSharePreset();
+            await invoke("switch_capture_target", { targetId, fps: preset.fps });
+            logger.info("Switched native capture target to:", targetId);
+        } finally {
+            this._isSwitchingTarget = false;
         }
     }
 

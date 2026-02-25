@@ -25,6 +25,7 @@ import { type OpenToTabPayload } from "../../../dispatcher/payloads/OpenToTabPay
 import { UserTab } from "../../views/dialogs/UserTab";
 import AccessibleButton from "../elements/AccessibleButton";
 import { NexusScreenSharePanel } from "./NexusScreenSharePanel";
+import { isTauri } from "../../../utils/tauriHttp";
 
 export type VCLayoutMode = "spotlight" | "grid";
 
@@ -50,11 +51,12 @@ export function NexusVCControlBar({
     }, []);
 
     const onScreenShareClick = useCallback(() => {
-        if (isScreenSharing) {
-            // Stop immediately without opening the panel
+        if (isScreenSharing && !isTauri()) {
+            // Browser: stop immediately without opening the panel
             const conn = NexusVoiceStore.instance.getActiveConnection();
             conn?.stopScreenShare();
         } else {
+            // Not sharing: open panel / Tauri + sharing: open picker in switch mode
             setShowSharePanel((prev) => !prev);
         }
     }, [isScreenSharing]);
@@ -96,7 +98,7 @@ export function NexusVCControlBar({
                     element="button"
                     onClick={onScreenShareClick}
                     ref={shareButtonRef}
-                    title={isScreenSharing ? "共有を停止" : "画面を共有"}
+                    title={isScreenSharing ? (isTauri() ? "配信設定" : "共有を停止") : "画面を共有"}
                 >
                     <ShareScreenSolidIcon width={22} height={22} />
                 </AccessibleButton>

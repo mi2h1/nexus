@@ -271,6 +271,102 @@ mod platform {
         .map_err(|e| format!("spawn_blocking: {}", e))?
     }
 
+    // ─── WGC capture helper ─────────────────────────────────────────
+    /// Start a WGC capture session for the given target and return its control handle.
+    /// Shared by `start_capture` and `switch_capture_target`.
+    async fn start_wgc_capture(
+        app: AppHandle,
+        target_id: String,
+        fps: u32,
+    ) -> Result<Box<dyn CaptureControlHandle>, String> {
+        let fps = fps.max(1).min(60);
+
+        // Parse target_id: "window:{hwnd}" or "monitor:{index}"
+        let parts: Vec<&str> = target_id.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            return Err(format!("Invalid target_id: {}", target_id));
+        }
+
+        let capture_app = app;
+        let target_type = parts[0].to_string();
+        let target_value = parts[1].to_string();
+
+        tauri::async_runtime::spawn_blocking(move || -> Result<Box<dyn CaptureControlHandle>, String> {
+            let flags = CaptureFlags {
+                app: capture_app,
+                fps,
+            };
+
+            match target_type.as_str() {
+                "window" => {
+                    let hwnd_val: isize = target_value
+                        .parse()
+                        .map_err(|e| format!("Invalid HWND: {}", e))?;
+
+                    let windows =
+                        Window::enumerate().map_err(|e| format!("enumerate: {}", e))?;
+                    let target_window = windows
+                        .into_iter()
+                        .find(|w| w.as_raw_hwnd() as isize == hwnd_val)
+                        .ok_or_else(|| "Window not found".to_string())?;
+
+                    let settings = Settings::new(
+                        target_window,
+                        CursorCaptureSettings::WithCursor,
+                        DrawBorderSettings::WithoutBorder,
+                        SecondaryWindowSettings::Default,
+                        MinimumUpdateIntervalSettings::Default,
+                        DirtyRegionSettings::Default,
+                        ColorFormat::Bgra8,
+                        flags,
+                    );
+
+                    let control = CaptureHandler::start_free_threaded(settings)
+                        .map_err(|e| format!("start capture: {:?}", e))?;
+
+                    let wrapper: Box<dyn CaptureControlHandle> = Box::new(ControlWrapper {
+                        inner: Mutex::new(Some(control)),
+                    });
+                    Ok(wrapper)
+                }
+                "monitor" => {
+                    let index: usize = target_value
+                        .parse()
+                        .map_err(|e| format!("Invalid index: {}", e))?;
+
+                    let monitors =
+                        Monitor::enumerate().map_err(|e| format!("enumerate: {}", e))?;
+                    let target_monitor = monitors
+                        .into_iter()
+                        .nth(index)
+                        .ok_or_else(|| "Monitor not found".to_string())?;
+
+                    let settings = Settings::new(
+                        target_monitor,
+                        CursorCaptureSettings::WithCursor,
+                        DrawBorderSettings::WithoutBorder,
+                        SecondaryWindowSettings::Default,
+                        MinimumUpdateIntervalSettings::Default,
+                        DirtyRegionSettings::Default,
+                        ColorFormat::Bgra8,
+                        flags,
+                    );
+
+                    let control = CaptureHandler::start_free_threaded(settings)
+                        .map_err(|e| format!("start capture: {:?}", e))?;
+
+                    let wrapper: Box<dyn CaptureControlHandle> = Box::new(ControlWrapper {
+                        inner: Mutex::new(Some(control)),
+                    });
+                    Ok(wrapper)
+                }
+                _ => Err(format!("Unknown target type: {}", target_type)),
+            }
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking: {}", e))?
+    }
+
     // ─── Start capture ──────────────────────────────────────────────
     #[tauri::command]
     pub async fn start_capture(
@@ -283,94 +379,7 @@ mod platform {
             return Err("Capture already running".into());
         }
 
-        let fps = fps.max(1).min(60);
-
-        // Parse target_id: "window:{hwnd}" or "monitor:{index}"
-        let parts: Vec<&str> = target_id.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            return Err(format!("Invalid target_id: {}", target_id));
-        }
-
-        let capture_app = app.clone();
-        let target_type = parts[0].to_string();
-        let target_value = parts[1].to_string();
-
-        // Start capture on a blocking thread
-        let control: Box<dyn CaptureControlHandle> =
-            tauri::async_runtime::spawn_blocking(move || -> Result<Box<dyn CaptureControlHandle>, String> {
-                let flags = CaptureFlags {
-                    app: capture_app,
-                    fps,
-                };
-
-                match target_type.as_str() {
-                    "window" => {
-                        let hwnd_val: isize = target_value
-                            .parse()
-                            .map_err(|e| format!("Invalid HWND: {}", e))?;
-
-                        let windows =
-                            Window::enumerate().map_err(|e| format!("enumerate: {}", e))?;
-                        let target_window = windows
-                            .into_iter()
-                            .find(|w| w.as_raw_hwnd() as isize == hwnd_val)
-                            .ok_or_else(|| "Window not found".to_string())?;
-
-                        let settings = Settings::new(
-                            target_window,
-                            CursorCaptureSettings::WithCursor,
-                            DrawBorderSettings::WithoutBorder,
-                            SecondaryWindowSettings::Default,
-                            MinimumUpdateIntervalSettings::Default,
-                            DirtyRegionSettings::Default,
-                            ColorFormat::Bgra8,
-                            flags,
-                        );
-
-                        let control = CaptureHandler::start_free_threaded(settings)
-                            .map_err(|e| format!("start capture: {:?}", e))?;
-
-                        let wrapper: Box<dyn CaptureControlHandle> = Box::new(ControlWrapper {
-                            inner: Mutex::new(Some(control)),
-                        });
-                        Ok(wrapper)
-                    }
-                    "monitor" => {
-                        let index: usize = target_value
-                            .parse()
-                            .map_err(|e| format!("Invalid index: {}", e))?;
-
-                        let monitors =
-                            Monitor::enumerate().map_err(|e| format!("enumerate: {}", e))?;
-                        let target_monitor = monitors
-                            .into_iter()
-                            .nth(index)
-                            .ok_or_else(|| "Monitor not found".to_string())?;
-
-                        let settings = Settings::new(
-                            target_monitor,
-                            CursorCaptureSettings::WithCursor,
-                            DrawBorderSettings::WithoutBorder,
-                            SecondaryWindowSettings::Default,
-                            MinimumUpdateIntervalSettings::Default,
-                            DirtyRegionSettings::Default,
-                            ColorFormat::Bgra8,
-                            flags,
-                        );
-
-                        let control = CaptureHandler::start_free_threaded(settings)
-                            .map_err(|e| format!("start capture: {:?}", e))?;
-
-                        let wrapper: Box<dyn CaptureControlHandle> = Box::new(ControlWrapper {
-                            inner: Mutex::new(Some(control)),
-                        });
-                        Ok(wrapper)
-                    }
-                    _ => Err(format!("Unknown target type: {}", target_type)),
-                }
-            })
-            .await
-            .map_err(|e| format!("spawn_blocking: {}", e))??;
+        let control = start_wgc_capture(app.clone(), target_id, fps).await?;
 
         CAPTURE_RUNNING.store(true, Ordering::SeqCst);
         *CAPTURE_CONTROL.lock().unwrap() = Some(control);
@@ -387,6 +396,29 @@ mod platform {
                 }
             });
         }
+
+        Ok(())
+    }
+
+    // ─── Switch capture target (WGC only, audio untouched) ──────────
+    #[tauri::command]
+    pub async fn switch_capture_target(
+        app: AppHandle,
+        target_id: String,
+        fps: u32,
+    ) -> Result<(), String> {
+        if !CAPTURE_RUNNING.load(Ordering::SeqCst) {
+            return Err("No capture running".into());
+        }
+
+        // Stop only the current WGC capture (audio loopback continues)
+        if let Some(control) = CAPTURE_CONTROL.lock().unwrap().take() {
+            control.stop_capture()?;
+        }
+
+        // Start a new WGC capture for the new target
+        let control = start_wgc_capture(app, target_id, fps).await?;
+        *CAPTURE_CONTROL.lock().unwrap() = Some(control);
 
         Ok(())
     }
@@ -898,6 +930,15 @@ mod stub {
 
     #[tauri::command]
     pub async fn stop_capture() -> Result<(), String> {
+        Err("Native capture is only supported on Windows".into())
+    }
+
+    #[tauri::command]
+    pub async fn switch_capture_target(
+        _app: tauri::AppHandle,
+        _target_id: String,
+        _fps: u32,
+    ) -> Result<(), String> {
         Err("Native capture is only supported on Windows".into())
     }
 }

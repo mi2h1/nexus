@@ -10,6 +10,7 @@ pub fn run() {
             capture::enumerate_capture_targets,
             capture::start_capture,
             capture::stop_capture,
+            capture::switch_capture_target,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nexus");
