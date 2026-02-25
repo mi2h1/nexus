@@ -426,16 +426,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     public setMicMuted(muted: boolean): void {
         // Control audio via inputGainNode (immediate, actual silence) +
-        // signal mute state via setTrackMuted (metadata only, no RTP disruption).
+        // signal mute state to LiveKit server via engine.client.sendMuteTrack().
         //
-        // Why NOT track.mute()/unmute():
-        //   They call pauseUpstream()/resumeUpstream() which pause/resume the
-        //   RTP sender, causing DTLS timeouts and brief disconnections in browsers.
+        // Why NOT track.mute()/unmute() or setTrackMuted():
+        //   track.mute()/unmute() call pauseUpstream()/resumeUpstream() which
+        //   disrupt the RTP sender → DTLS timeouts → brief disconnections.
+        //   setTrackMuted() emits TrackEvent which propagates through the event
+        //   chain and ALSO triggers pauseUpstream() in LocalParticipant listeners.
         //
-        // setTrackMuted(muted) does three things without touching the RTP sender:
-        //   1. Sets track.isMuted
-        //   2. Sets mediaStreamTrack.enabled = !muted
-        //   3. Emits TrackEvent.Muted/Unmuted → signals to remote participants
+        // Our approach (bypasses entire event chain):
+        //   1. inputGainNode.gain = 0 for actual audio silencing
+        //   2. track.isMuted = muted (local state)
+        //   3. engine.client.sendMuteTrack() for remote signaling (direct)
         if (this.inputGainNode) {
             this.inputGainNode.gain.value = muted
                 ? 0
@@ -443,15 +445,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         const pub = this.livekitRoom?.localParticipant.getTrackPublication(Track.Source.Microphone);
         if (pub?.track) {
-            try {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (pub.track as any).setTrackMuted(muted);
-            } catch (e) {
-                logger.warn("setTrackMuted failed, falling back to direct property set", e);
-                // Fallback: set properties directly without triggering event chain
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (pub.track as any).isMuted = muted;
-                pub.track.mediaStreamTrack.enabled = !muted;
+            // Set local mute state directly — no events, no pauseUpstream()
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (pub.track as any).isMuted = muted;
+            pub.track.mediaStreamTrack.enabled = !muted;
+            // Signal mute state to LiveKit server directly via signaling channel
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const engine = (this.livekitRoom as any)?.engine;
+            if (engine?.client && pub.trackSid) {
+                engine.client.sendMuteTrack(pub.trackSid, muted);
             }
         }
         this._isMicMuted = muted;
