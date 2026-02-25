@@ -362,12 +362,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.connectionState = ConnectionState.Disconnecting;
         this._suppressMembershipSounds = true;
 
-        // Leave MatrixRTC
-        try {
-            await this.session.leaveRoomSession(5000);
-        } catch (e) {
+        // Leave MatrixRTC — fire-and-forget.
+        // The state event PUT to matrix.org can take 100-500ms+.
+        // No need to block the UI; membership auto-expires on timeout,
+        // and clean() handles stale memberships on next connect.
+        this.session.leaveRoomSession(5000).catch((e) => {
             logger.warn("Failed to leave MatrixRTC session", e);
-        }
+        });
 
         await this.cleanupLivekit();
 
@@ -1433,8 +1434,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.off(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             this.livekitRoom.off(LivekitRoomEvent.DataReceived, this.onDataReceived);
             this.remoteMuteStates.clear();
-            await this.livekitRoom.disconnect();
+            // Fire-and-forget — local tracks are already stopped, event
+            // handlers removed. The WebSocket close handshake (~50-100ms)
+            // doesn't need to block the UI.
+            const room = this.livekitRoom;
             this.livekitRoom = null;
+            room.disconnect().catch((e) => {
+                logger.warn("LiveKit room disconnect error", e);
+            });
         }
     }
 
