@@ -47,10 +47,16 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
   フォールバック: Element の LiveKit Cloud (CORS プロキシ経由)
 ```
 
-### VPS (lche2.xvps.jp)
+### VPS (lche2.xvps.jp / 162.43.31.143)
 - AMD EPYC 3コア / 3.8GB RAM / 28GB ディスク
-- Docker: LiveKit SFU（infra/livekit/docker-compose.yml）
-- SSL: Let's Encrypt（/etc/ssl/lche2/）
+- **Docker コンテナ** (3つ): `infra/livekit/docker-compose.yml` で管理
+  - `nexus-livekit` — LiveKit SFU (WebRTC メディア中継)
+  - `nexus-jwt` — lk-jwt-service (Matrix OpenID → LiveKit JWT 変換)
+  - `nexus-nginx` — TLS 終端 (Let's Encrypt)
+- **ポート**: 7880(WSS), 7881(TCP TURN), 7882(UDP WebRTC), 7891(HTTPS JWT)
+- **SSL 証明書**: `/etc/ssl/lche2/` (fullchain.pem + privkey.pem)
+- **設定ファイル**: `infra/livekit/` (docker-compose.yml, livekit.yaml, nginx.conf)
+- **セットアップ手順**: [docs/server-migration.md](./docs/server-migration.md)
 - 開発環境: Claude Code でコード編集 → git push
 
 ---
@@ -167,4 +173,5 @@ Phase 5: publishTrack(processedTrack)
 - [docs/tech-stack.md](./docs/tech-stack.md) — 技術スタック詳細
 - [docs/app-spec.md](./docs/app-spec.md) — アプリ仕様・UI設計
 - [docs/vc-optimization.md](./docs/vc-optimization.md) — VC 接続高速化・SFU 計画
+- [docs/server-migration.md](./docs/server-migration.md) — VPS セットアップ・移行手順
 - [docs/native-capture-plan.md](./docs/native-capture-plan.md) — ネイティブ画面キャプチャ計画

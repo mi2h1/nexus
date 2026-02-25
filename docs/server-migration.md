@@ -188,14 +188,7 @@ docker compose logs
 
 ---
 
-## 旧サーバーの停止（移行完了後）
+## 旧サーバーの停止 — ✅ 完了
 
-新サーバーで動作確認が取れたら、旧サーバーの Nexus コンテナを停止:
-
-```bash
-# 旧サーバーで実行
-cd /path/to/nexus/infra/livekit
-docker compose down
-```
-
-DNS の `lche.xvps.jp` は当面残しておいても問題ない（コードからの参照は全て削除済み）。
+旧サーバー (lche.xvps.jp) の Nexus コンテナは 2026-02-26 に停止済み。
+コード内の旧ドメイン/IP への参照も全て削除済み。
