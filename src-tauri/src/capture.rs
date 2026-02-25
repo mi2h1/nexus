@@ -983,7 +983,7 @@ mod platform {
             client.Start().map_err(|e| format!("Start: {}", e))?;
             println!(
                 "[WASAPI] Process loopback capture started ({}Hz {}ch {}bit)",
-                cap_sample_rate, cap_channels, init_bits
+                cap_sample_rate, cap_channels, bits
             );
 
             // Capture loop
