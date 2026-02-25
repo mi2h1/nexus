@@ -87,6 +87,70 @@
     &.mx_NexusUserPanel_button--muted {
         color: var(--cpd-color-icon-critical-primary);
     }
+
+    &.mx_NexusUserPanel_button--update {
+        color: var(--cpd-color-icon-success-primary);
+        animation: nexus-update-pulse 2s ease-in-out 3;
+
+        &:hover {
+            background-color: var(--cpd-color-bg-success-subtle);
+            color: var(--cpd-color-icon-success-primary);
+        }
+    }
+}
+
+.mx_NexusUserPanel_updateWrapper {
+    position: relative;
+}
+
+.mx_NexusUserPanel_updateTooltip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font: var(--cpd-font-body-xs-medium);
+    color: var(--cpd-color-text-on-solid-primary);
+    background-color: var(--cpd-color-bg-action-primary-rest);
+    padding: var(--cpd-space-1x) var(--cpd-space-2x);
+    border-radius: var(--cpd-space-1x);
+    pointer-events: none;
+    animation: nexus-tooltip-fade 5s ease-in-out forwards;
+
+    &::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 4px solid transparent;
+        border-top-color: var(--cpd-color-bg-action-primary-rest);
+    }
+}
+
+@keyframes nexus-update-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
+
+@keyframes nexus-tooltip-fade {
+    0% {
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    80% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
 }
 
 /* Call status panel */

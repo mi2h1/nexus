@@ -13,7 +13,7 @@ import { UpdateCheckStatus, type UpdateStatus } from "../../BasePlatform";
 import dis from "../../dispatcher/dispatcher";
 import { Action } from "../../dispatcher/actions";
 import { type CheckUpdatesPayload } from "../../dispatcher/payloads/CheckUpdatesPayload";
-import { showToast as showUpdateToast, hideToast as hideUpdateToast } from "../../toasts/UpdateToast";
+import { NexusUpdateStore } from "../../stores/NexusUpdateStore";
 
 const UPDATE_POLL_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -73,12 +73,11 @@ export default class TauriPlatform extends WebPlatform {
             if (update) {
                 const currentVersion = await this.getAppVersion();
                 logger.log(`TauriPlatform: update available: ${update.version} (current: ${currentVersion})`);
-                showUpdateToast(currentVersion, update.version);
+                NexusUpdateStore.instance.setUpdateAvailable(update.version);
                 return { status: UpdateCheckStatus.Ready };
             }
 
             logger.log("TauriPlatform: no update available");
-            hideUpdateToast();
             return { status: UpdateCheckStatus.NotAvailable };
         } catch (e) {
             logger.error("TauriPlatform: update check failed", e);

@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     MicOnSolidIcon,
     MicOffSolidIcon,
@@ -13,6 +13,7 @@ import {
     LeaveIcon,
     NotificationsSolidIcon,
     LockSolidIcon,
+    DownloadIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { useActiveCall } from "../../../../hooks/useActiveCall";
@@ -29,6 +30,8 @@ import AccessibleButton from "../../elements/AccessibleButton";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 import NexusCallStatusPanel from "./NexusCallStatusPanel";
+import { NexusUpdateStore, NexusUpdateStoreEvent } from "../../../../stores/NexusUpdateStore";
+import PlatformPeg from "../../../../PlatformPeg";
 import IconizedContextMenu, {
     IconizedContextMenuOption,
     IconizedContextMenuOptionList,
@@ -68,6 +71,26 @@ const NexusUserPanel: React.FC = () => {
         [],
     ));
     const userId = MatrixClientPeg.safeGet().getSafeUserId();
+
+    // Update availability
+    const updateAvailable = useEventEmitterState(
+        NexusUpdateStore.instance,
+        NexusUpdateStoreEvent.UpdateAvailable,
+        useCallback(() => NexusUpdateStore.instance.updateAvailable, []),
+    );
+    const [showUpdateTooltip, setShowUpdateTooltip] = useState(false);
+
+    // Auto-show tooltip for a few seconds when update becomes available
+    useEffect(() => {
+        if (!updateAvailable) return;
+        setShowUpdateTooltip(true);
+        const timer = setTimeout(() => setShowUpdateTooltip(false), 5000);
+        return () => clearTimeout(timer);
+    }, [updateAvailable]);
+
+    const onUpdateClick = useCallback(() => {
+        PlatformPeg.get()?.installUpdate();
+    }, []);
 
     // Context menu state
     const avatarRef = useRef<HTMLDivElement>(null);
@@ -173,6 +196,22 @@ const NexusUserPanel: React.FC = () => {
                     <span className="mx_NexusUserPanel_displayName">{displayName ?? userId}</span>
                 </div>
                 <div className="mx_NexusUserPanel_actions">
+                    {updateAvailable && (
+                        <div className="mx_NexusUserPanel_updateWrapper">
+                            <AccessibleButton
+                                className="mx_NexusUserPanel_button mx_NexusUserPanel_button--update"
+                                onClick={onUpdateClick}
+                                title="アップデートがあります"
+                            >
+                                <DownloadIcon width={20} height={20} />
+                            </AccessibleButton>
+                            {showUpdateTooltip && (
+                                <div className="mx_NexusUserPanel_updateTooltip">
+                                    アップデートがあります
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <AccessibleButton
                         className={`mx_NexusUserPanel_button ${effectiveMuted ? "mx_NexusUserPanel_button--muted" : ""}`}
                         onClick={onToggleMic}
