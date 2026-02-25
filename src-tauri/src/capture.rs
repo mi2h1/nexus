@@ -275,6 +275,194 @@ mod platform {
         true
     }
 
+    // ─── Thumbnail capture ───────────────────────────────────────────
+
+    const THUMB_MAX_W: u32 = 320;
+    const THUMB_MAX_H: u32 = 180;
+    const THUMB_JPEG_QUALITY: i32 = 70;
+
+    /// Compute thumbnail dimensions preserving aspect ratio.
+    fn thumb_size(w: u32, h: u32) -> (u32, u32) {
+        if w == 0 || h == 0 {
+            return (1, 1);
+        }
+        let scale = (THUMB_MAX_W as f64 / w as f64)
+            .min(THUMB_MAX_H as f64 / h as f64)
+            .min(1.0);
+        (
+            (w as f64 * scale).round().max(1.0) as u32,
+            (h as f64 * scale).round().max(1.0) as u32,
+        )
+    }
+
+    /// Convert BGRA pixel buffer to base64-encoded JPEG.
+    fn bgra_to_jpeg_base64(bgra: &[u8], w: u32, h: u32) -> String {
+        let pixel_count = (w * h) as usize;
+        let mut rgb = Vec::with_capacity(pixel_count * 3);
+        for i in 0..pixel_count {
+            let off = i * 4;
+            if off + 2 < bgra.len() {
+                rgb.push(bgra[off + 2]); // R
+                rgb.push(bgra[off + 1]); // G
+                rgb.push(bgra[off]);     // B
+            }
+        }
+        let image = turbojpeg::Image {
+            pixels: rgb.as_slice(),
+            width: w as usize,
+            pitch: w as usize * 3,
+            height: h as usize,
+            format: turbojpeg::PixelFormat::RGB,
+        };
+        match turbojpeg::compress(image, THUMB_JPEG_QUALITY, turbojpeg::Subsamp::Sub2x2) {
+            Ok(jpeg) => base64::engine::general_purpose::STANDARD.encode(&*jpeg),
+            Err(_) => String::new(),
+        }
+    }
+
+    /// Read pixel data from an HBITMAP into a Vec<u8> (BGRA, top-down).
+    unsafe fn read_bitmap_pixels(
+        hdc: windows::Win32::Graphics::Gdi::HDC,
+        hbitmap: windows::Win32::Graphics::Gdi::HBITMAP,
+        w: u32,
+        h: u32,
+    ) -> Vec<u8> {
+        use windows::Win32::Graphics::Gdi::*;
+
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = w as i32;
+        bmi.bmiHeader.biHeight = -(h as i32); // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        // biCompression = 0 (BI_RGB) via zeroed()
+
+        let mut pixels = vec![0u8; (w * h * 4) as usize];
+        GetDIBits(
+            hdc,
+            hbitmap,
+            0,
+            h,
+            Some(pixels.as_mut_ptr() as *mut _),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        );
+        pixels
+    }
+
+    /// Capture a window thumbnail using PrintWindow.
+    fn capture_window_thumbnail(hwnd_val: isize) -> (String, u32, u32) {
+        use windows::Win32::Foundation::{HWND, RECT};
+        use windows::Win32::Graphics::Gdi::*;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowRect, IsIconic, PrintWindow, PRINT_WINDOW_FLAGS,
+        };
+
+        unsafe {
+            let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+
+            // Skip minimized windows
+            if IsIconic(hwnd).as_bool() {
+                return (String::new(), 0, 0);
+            }
+
+            let mut rect = RECT::default();
+            if GetWindowRect(hwnd, &mut rect).is_err() {
+                return (String::new(), 0, 0);
+            }
+            let w = (rect.right - rect.left).max(1) as u32;
+            let h = (rect.bottom - rect.top).max(1) as u32;
+            if w < 10 || h < 10 {
+                return (String::new(), w, h);
+            }
+
+            let (tw, th) = thumb_size(w, h);
+
+            let hdc_desktop = GetDC(None);
+            if hdc_desktop.is_invalid() {
+                return (String::new(), w, h);
+            }
+
+            // Full-size capture
+            let hdc_full = CreateCompatibleDC(Some(hdc_desktop));
+            let hbm_full = CreateCompatibleBitmap(hdc_desktop, w as i32, h as i32);
+            SelectObject(hdc_full.0, HGDIOBJ(hbm_full.0));
+
+            let _ = PrintWindow(hwnd, hdc_full.0, PRINT_WINDOW_FLAGS(2));
+
+            // Resize to thumbnail
+            let hdc_thumb = CreateCompatibleDC(Some(hdc_desktop));
+            let hbm_thumb = CreateCompatibleBitmap(hdc_desktop, tw as i32, th as i32);
+            SelectObject(hdc_thumb.0, HGDIOBJ(hbm_thumb.0));
+
+            SetStretchBltMode(hdc_thumb.0, HALFTONE);
+            let _ = StretchBlt(
+                hdc_thumb.0, 0, 0, tw as i32, th as i32,
+                hdc_full.0, 0, 0, w as i32, h as i32,
+                SRCCOPY,
+            );
+
+            let pixels = read_bitmap_pixels(hdc_thumb.0, hbm_thumb, tw, th);
+
+            // Cleanup
+            let _ = DeleteDC(hdc_thumb);
+            let _ = DeleteObject(HGDIOBJ(hbm_thumb.0));
+            let _ = DeleteDC(hdc_full);
+            let _ = DeleteObject(HGDIOBJ(hbm_full.0));
+            ReleaseDC(None, hdc_desktop);
+
+            (bgra_to_jpeg_base64(&pixels, tw, th), w, h)
+        }
+    }
+
+    /// Capture a monitor thumbnail using CreateDCW + BitBlt.
+    fn capture_monitor_thumbnail(device_name: &str) -> String {
+        use windows::Win32::Graphics::Gdi::*;
+        use windows::core::PCWSTR;
+
+        unsafe {
+            let device_wide: Vec<u16> =
+                device_name.encode_utf16().chain(std::iter::once(0)).collect();
+            let hdc_monitor = CreateDCW(
+                PCWSTR(std::ptr::null()),
+                PCWSTR(device_wide.as_ptr()),
+                PCWSTR(std::ptr::null()),
+                None,
+            );
+            if hdc_monitor.0.is_invalid() {
+                return String::new();
+            }
+
+            let w = GetDeviceCaps(hdc_monitor.0, HORZRES) as u32;
+            let h = GetDeviceCaps(hdc_monitor.0, VERTRES) as u32;
+            if w == 0 || h == 0 {
+                let _ = DeleteDC(hdc_monitor);
+                return String::new();
+            }
+
+            let (tw, th) = thumb_size(w, h);
+
+            let hdc_thumb = CreateCompatibleDC(Some(hdc_monitor.0));
+            let hbm_thumb = CreateCompatibleBitmap(hdc_monitor.0, tw as i32, th as i32);
+            SelectObject(hdc_thumb.0, HGDIOBJ(hbm_thumb.0));
+
+            SetStretchBltMode(hdc_thumb.0, HALFTONE);
+            let _ = StretchBlt(
+                hdc_thumb.0, 0, 0, tw as i32, th as i32,
+                hdc_monitor.0, 0, 0, w as i32, h as i32,
+                SRCCOPY,
+            );
+
+            let pixels = read_bitmap_pixels(hdc_thumb.0, hbm_thumb, tw, th);
+
+            let _ = DeleteDC(hdc_thumb);
+            let _ = DeleteObject(HGDIOBJ(hbm_thumb.0));
+            let _ = DeleteDC(hdc_monitor);
+
+            bgra_to_jpeg_base64(&pixels, tw, th)
+        }
+    }
+
     // ─── Enumerate targets ──────────────────────────────────────────
     #[tauri::command]
     pub async fn enumerate_capture_targets() -> Result<Vec<CaptureTarget>, String> {
@@ -304,14 +492,16 @@ mod platform {
                         continue;
                     }
 
+                    let (thumbnail, width, height) = capture_window_thumbnail(hwnd_val);
+
                     targets.push(CaptureTarget {
                         id: format!("window:{}", hwnd_val),
                         title,
                         target_type: "window".to_string(),
                         process_name,
-                        width: 0,
-                        height: 0,
-                        thumbnail: String::new(),
+                        width,
+                        height,
+                        thumbnail,
                     });
                 }
             }
@@ -324,6 +514,7 @@ mod platform {
                         .unwrap_or_else(|_| format!("ディスプレイ {}", i + 1));
                     let w = mon.width().unwrap_or(0);
                     let h = mon.height().unwrap_or(0);
+                    let thumbnail = capture_monitor_thumbnail(&name);
 
                     targets.push(CaptureTarget {
                         id: format!("monitor:{}", i),
@@ -332,7 +523,7 @@ mod platform {
                         process_name: String::new(),
                         width: w,
                         height: h,
-                        thumbnail: String::new(),
+                        thumbnail,
                     });
                 }
             }

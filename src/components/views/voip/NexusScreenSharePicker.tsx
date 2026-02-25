@@ -55,7 +55,7 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
     const [targets, setTargets] = useState<CaptureTarget[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<PickerTab>("monitor");
+    const [activeTab, setActiveTab] = useState<PickerTab>("window");
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [captureAudio, setCaptureAudio] = useState(true);
 
@@ -68,9 +68,6 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                 const result = await invoke<CaptureTarget[]>("enumerate_capture_targets");
                 if (!cancelled) {
                     setTargets(result);
-                    // Auto-select first monitor if available
-                    const firstMonitor = result.find((t) => t.target_type === "monitor");
-                    if (firstMonitor) setSelectedId(firstMonitor.id);
                     setLoading(false);
                 }
             } catch (e) {
@@ -148,6 +145,18 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                 <div className="nx_ScreenSharePicker_tabs">
                     <button
                         className={classNames("nx_ScreenSharePicker_tab", {
+                            "nx_ScreenSharePicker_tab--active": activeTab === "window",
+                        })}
+                        onClick={() => {
+                            setActiveTab("window");
+                            setSelectedId(null);
+                        }}
+                    >
+                        アプリ
+                        {!loading && <span className="nx_ScreenSharePicker_tabCount">{windows.length}</span>}
+                    </button>
+                    <button
+                        className={classNames("nx_ScreenSharePicker_tab", {
                             "nx_ScreenSharePicker_tab--active": activeTab === "monitor",
                         })}
                         onClick={() => {
@@ -156,20 +165,8 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                             setSelectedId(first ? first.id : null);
                         }}
                     >
-                        画面
+                        画面全体
                         {!loading && <span className="nx_ScreenSharePicker_tabCount">{monitors.length}</span>}
-                    </button>
-                    <button
-                        className={classNames("nx_ScreenSharePicker_tab", {
-                            "nx_ScreenSharePicker_tab--active": activeTab === "window",
-                        })}
-                        onClick={() => {
-                            setActiveTab("window");
-                            setSelectedId(null);
-                        }}
-                    >
-                        ウィンドウ
-                        {!loading && <span className="nx_ScreenSharePicker_tabCount">{windows.length}</span>}
                     </button>
                 </div>
 
