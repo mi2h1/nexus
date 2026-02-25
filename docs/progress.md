@@ -96,6 +96,8 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | 自前 LiveKit SFU (日本VPS) | 中 | **~1秒短縮** | ✅ 完了 | [vc-optimization.md](vc-optimization.md) |
 | パイプライン構築を connect() と並列化 | 低 | ~50-100ms | ✅ 完了 | `buildInputPipeline()` + `livekitRoom.connect()` 並列 |
 | OpenID トークンキャッシュ | 低 | ~100-200ms (再接続時) | ✅ 完了 | `getCachedOpenIdToken()` — expires_in の 80% でキャッシュ |
+| 起動時プリフェッチ | 低 | 初回接続の cold-start 排除 | ✅ 完了 | `prefetch()` — RNNoise WASM + OpenID トークンを login 後に先行取得 |
+| 切断即時化 | 低 | 切断 ~0ms（体感即座） | ✅ 完了 | `leaveRoomSession` + `livekitRoom.disconnect` を fire-and-forget |
 | LiveKit reconnect() | 低 | 再接続時大幅短縮 | 未着手 | Discord の Resume に相当 |
 | マイク権限の事前取得 | 低 | 初回 ~300ms | 未着手 | VC パネル表示時に先行 getUserMedia |
 
@@ -180,14 +182,20 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 
 ### 完了したタスク
 
-#### 2026-02-25 (VC 接続速度最適化)
+#### 2026-02-25 (VC 接続・切断高速化)
 - **パイプライン構築を connect() と並列化**: `buildInputPipeline()` メソッドを新設
   - 入力パイプライン構築（ノード作成 + RNNoise AudioWorklet 登録）を `livekitRoom.connect()` と `Promise` で並列実行
   - WebSocket + ICE/DTLS ハンドシェイク中にパイプラインが完成するため ~50-100ms 短縮
 - **OpenID トークンキャッシュ**: `getCachedOpenIdToken()` メソッドを新設
   - `getOpenIdToken()` の結果を `expires_in` の 80% でキャッシュ（静的変数、インスタンス間共有）
   - 再接続時に matrix.org へのラウンドトリップ (~100-200ms) を省略
-- **合計効果**: 再接続時 ~150-300ms（約30%）短縮。初回接続時も ~50-100ms 短縮
+- **起動時プリフェッチ**: `NexusVoiceConnection.prefetch()` を `MatrixChat.onClientStarted()` で呼出し
+  - RNNoise WASM + OpenID トークンをログイン完了時に fire-and-forget でプリフェッチ
+  - 初回 VC 接続の cold-start コスト（WASM DL + matrix.org RTT）を排除
+- **切断即時化**: `disconnect()` の `leaveRoomSession()` と `livekitRoom.disconnect()` を fire-and-forget に変更
+  - ローカルのオーディオ停止・ノード切断は同期で完了するため、UI は即座に Disconnected に遷移
+  - MatrixRTC 離脱と WebSocket close はバックグラウンドで処理（失敗時は membership 自然タイムアウト + `clean()` で掃除）
+- **合計効果**: 接続 ~600ms（初回も再接続も）、切断は体感即座
 
 #### 2026-02-27
 - **画面共有 PiP**: VC ルーム外で視聴中のリモート画面共有を PiP ウィンドウで表示

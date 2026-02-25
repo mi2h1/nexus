@@ -131,6 +131,19 @@ Phase 3+4 (並列):
 - 静的変数で NexusVoiceConnection インスタンス間共有
 - **再接続時に ~100-200ms 短縮**（matrix.org へのラウンドトリップ省略）
 
+#### E. 起動時プリフェッチ ✅
+
+- `NexusVoiceConnection.prefetch(client)` を `MatrixChat.onClientStarted()` で fire-and-forget 呼出し
+- RNNoise WASM + OpenID トークンをログイン完了時にバックグラウンド取得
+- **初回 VC 接続でもキャッシュ済みの恩恵を受けられる**
+
+#### F. 切断即時化 ✅
+
+- `disconnect()` の `leaveRoomSession()` を fire-and-forget に変更（matrix.org への state event PUT を待たない）
+- `cleanupLivekit()` 内の `livekitRoom.disconnect()` も fire-and-forget（WebSocket close handshake を待たない）
+- ローカルのオーディオ停止・ノード切断は全て同期で完了するため UI は即座に Disconnected
+- MatrixRTC membership は自然タイムアウト or 次回 `clean()` で掃除
+
 ### 将来の検討
 
 #### E. LiveKit reconnect() の活用
@@ -149,7 +162,8 @@ Phase 3+4 (並列):
 |---------|------|------|
 | ✅ **Phase 2.5** | 並列化 + WASM プリロード | ~500ms 短縮 |
 | ✅ **自前 SFU** | 自前 LiveKit SFU (日本VPS) | **~1000-1200ms 短縮** |
-| ✅ **接続最適化** | パイプライン並列化 + OpenID キャッシュ | ~150-300ms 短縮（再接続時） |
+| ✅ **接続最適化** | パイプライン並列化 + OpenID キャッシュ + 起動時プリフェッチ | ~150-300ms 短縮 |
+| ✅ **切断即時化** | leaveRoomSession + livekitRoom.disconnect を fire-and-forget | 切断 ~0ms |
 | **中期** | reconnect() | 再接続時改善 |
 | **Tauri 2** | Rust UDP 高速パス + WebRTC フォールバック | 根本改善 |
 | **長期** | WebTransport/MoQ 移行 | ブラウザ版も改善 |

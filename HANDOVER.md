@@ -4,10 +4,12 @@
 
 ### 直近の作業（2026-02-25）
 
-**VC 接続速度の最適化** (`a2b8266e42`)
-- **パイプライン構築を connect() と並列化**: `buildInputPipeline()` メソッドを新設し、`livekitRoom.connect()` と並列実行。WebSocket + ICE/DTLS ハンドシェイク中にパイプライン構築が完了する（~50-100ms 短縮）
-- **OpenID トークンキャッシュ**: `getCachedOpenIdToken()` で `getOpenIdToken()` の結果を `expires_in` の 80% でキャッシュ。再接続時に matrix.org ラウンドトリップを省略（~100-200ms 短縮）
-- 再接続時 ~150-300ms（約30%）の短縮を期待
+**VC 接続・切断の高速化**
+- **パイプライン並列化** (`a2b8266`): `buildInputPipeline()` を `livekitRoom.connect()` と並列実行（~50-100ms 短縮）
+- **OpenID キャッシュ** (`a2b8266`): `getCachedOpenIdToken()` で再接続時の matrix.org RTT 省略（~100-200ms 短縮）
+- **起動時プリフェッチ** (`0845fde`): `prefetch()` でログイン後に RNNoise WASM + OpenID トークンを先行取得。初回接続の cold-start 排除
+- **切断即時化** (`39b2570`): `leaveRoomSession()` + `livekitRoom.disconnect()` を fire-and-forget。ローカル処理のみ同期で即 Disconnected
+- **結果**: 接続 ~600ms（初回・再接続とも）、切断は体感即座
 
 **過去: 自前 LiveKit SFU セットアップ完了**
 - VPS（lche.xvps.jp）に Docker で LiveKit SFU を構築
