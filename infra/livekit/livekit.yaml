@@ -11,6 +11,14 @@ rtc:
   # Announce the public IP so ICE candidates are correct
   node_ip: 162.43.31.143
   use_external_ip: false
+  # 帯域に応じた自動品質調整
+  congestion_control:
+    enabled: true
+    allow_pause: true
+
+# Opus RED: パケットロス時に直前パケットのコピーで補完（音声途切れ大幅改善）
+audio:
+  active_red_encoding: true
 
 # TLS — use Let's Encrypt cert
 turn:
@@ -32,3 +40,8 @@ room:
   auto_create: true
   empty_timeout: 300    # 5 min: close room when empty
   max_participants: 12
+  # 不要なコーデックを除外して SDP サイズ削減 → ネゴシエーション高速化
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: audio/red
+    - mime: video/vp8
