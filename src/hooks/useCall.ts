@@ -13,6 +13,7 @@ import { type Call, ConnectionState, CallEvent } from "../models/Call";
 import type { NexusVoiceConnection } from "../models/NexusVoiceConnection";
 import { useTypedEventEmitterState, useEventEmitter } from "./useEventEmitter";
 import { CallStore, CallStoreEvent } from "../stores/CallStore";
+import { MatrixClientPeg } from "../MatrixClientPeg";
 
 export const useCall = (roomId: string): Call | NexusVoiceConnection | null => {
     const [call, setCall] = useState(() => CallStore.instance.getCall(roomId));
@@ -46,11 +47,12 @@ export const useConnectionState = (call: Call | NexusVoiceConnection | null): Co
         useCallback((state) => state ?? call?.connectionState ?? ConnectionState.Disconnected, [call]),
     );
 
-const useParticipants = (call: Call | NexusVoiceConnection | null): Map<RoomMember, Set<string>> => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const useParticipants = (call: Call | NexusVoiceConnection | null): Map<any, Set<string>> => {
     return useTypedEventEmitterState(
         call ?? undefined,
         CallEvent.Participants,
-        useCallback((state) => state ?? call?.participants ?? [], [call]),
+        useCallback((state) => state ?? call?.participants ?? new Map(), [call]),
     );
 };
 
@@ -67,10 +69,20 @@ export const useParticipatingMembers = (call: Call | NexusVoiceConnection): Room
 
     return useMemo(() => {
         const members: RoomMember[] = [];
-        for (const [member, devices] of participants) {
-            // Repeat the member for as many devices as they're using
-            for (let i = 0; i < devices.size; i++) members.push(member);
+        const room = MatrixClientPeg.get()?.getRoom(call.roomId);
+
+        for (const [key, devices] of participants) {
+            // Key is RoomMember (from Call) or userId string (from NexusVoiceConnection)
+            let member: RoomMember | null;
+            if (typeof key === "string") {
+                member = room?.getMember(key) ?? null;
+            } else {
+                member = key;
+            }
+            if (member) {
+                for (let i = 0; i < devices.size; i++) members.push(member);
+            }
         }
         return members;
-    }, [participants]);
+    }, [participants, call.roomId]);
 };

@@ -193,8 +193,8 @@ function VoiceChannelItem({
             if (state === ConnectionState.Connected) {
                 // Keep spinner until local user appears in participant list
                 let selfInList = false;
-                for (const [member] of conn.participants) {
-                    if (member.userId === myUserId) {
+                for (const [userId] of conn.participants) {
+                    if (userId === myUserId) {
                         selfInList = true;
                         break;
                     }

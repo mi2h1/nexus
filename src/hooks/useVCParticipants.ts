@@ -7,14 +7,19 @@ Please see LICENSE files in the repository root for full details.
 
 import { useState, useEffect } from "react";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
-import { type RoomMember } from "matrix-js-sdk/src/matrix";
+import { type RoomMember, RoomStateEvent } from "matrix-js-sdk/src/matrix";
 
 import { useMatrixClientContext } from "../contexts/MatrixClientContext";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../stores/NexusVoiceStore";
 import { CallEvent, ConnectionState } from "../models/Call";
 
+export interface VCParticipant {
+    userId: string;
+    member: RoomMember | null;
+}
+
 interface VCParticipantsResult {
-    members: RoomMember[];
+    members: VCParticipant[];
     connected: boolean;
     /** User IDs currently connecting or disconnecting (shown as grayed-out spinner) */
     transitioningIds: Set<string>;
@@ -27,10 +32,13 @@ interface VCParticipantsResult {
  * When connected, reads from NexusVoiceConnection.participants which merges
  * LiveKit (fast path) and MatrixRTC (authoritative) data.
  * When not connected, falls back to session.memberships directly.
+ *
+ * Also listens for room state changes so that RoomMember objects are resolved
+ * as soon as the initial Matrix /sync completes.
  */
 export function useVCParticipants(roomId: string): VCParticipantsResult {
     const client = useMatrixClientContext();
-    const [members, setMembers] = useState<RoomMember[]>([]);
+    const [members, setMembers] = useState<VCParticipant[]>([]);
     const [connected, setConnected] = useState(false);
     const [transitioningIds, setTransitioningIds] = useState<Set<string>>(new Set());
 
@@ -53,21 +61,28 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
 
             setTransitioningIds(isTransitioning && myUserId ? new Set([myUserId]) : new Set());
 
-            // 接続中: NexusVoiceConnection.participants を使う（LiveKit + MatrixRTC マージ済み）
+            // 接続中: NexusVoiceConnection.participants を使う（userId → devices マップ）
             if (conn && isConnected) {
-                const participantMembers = [...conn.participants.keys()];
-                // Ensure self stays in list even if MatrixRTC membership hasn't arrived yet
-                // (prevents flicker when transitioning from Connecting → Connected)
-                if (myUserId && !participantMembers.some((m) => m.userId === myUserId)) {
-                    const myMember = room.getMember(myUserId);
-                    if (myMember) participantMembers.push(myMember);
+                const participantList: VCParticipant[] = [];
+                for (const userId of conn.participants.keys()) {
+                    participantList.push({
+                        userId,
+                        member: room.getMember(userId),
+                    });
                 }
-                setMembers(participantMembers);
+                // Ensure self stays in list even if MatrixRTC membership hasn't arrived yet
+                if (myUserId && !participantList.some((p) => p.userId === myUserId)) {
+                    participantList.push({
+                        userId: myUserId,
+                        member: room.getMember(myUserId),
+                    });
+                }
+                setMembers(participantList);
                 return;
             }
 
             // 未接続 or 遷移中: session.memberships から読む
-            const participantMembers: RoomMember[] = [];
+            const participantList: VCParticipant[] = [];
             const seen = new Set<string>();
 
             for (const membership of session.memberships) {
@@ -76,21 +91,29 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
                 // 未接続（かつ遷移中でもない）なら自分は除外
                 if (sender === myUserId && !isTransitioning) continue;
                 seen.add(sender);
-                const member = room.getMember(sender);
-                if (member) participantMembers.push(member);
+                participantList.push({
+                    userId: sender,
+                    member: room.getMember(sender),
+                });
             }
 
             // 接続中（Connecting）で自分がまだ memberships に出ていない場合も追加
             if (isTransitioning && myUserId && !seen.has(myUserId)) {
-                const myMember = room.getMember(myUserId);
-                if (myMember) participantMembers.push(myMember);
+                participantList.push({
+                    userId: myUserId,
+                    member: room.getMember(myUserId),
+                });
             }
 
-            setMembers(participantMembers);
+            setMembers(participantList);
         };
 
         updateMembers();
         session.on(MatrixRTCSessionEvent.MembershipsChanged, updateMembers);
+
+        // Room state listener: re-resolve RoomMember when member data arrives from /sync
+        const roomState = room.currentState;
+        roomState.on(RoomStateEvent.Members, updateMembers);
 
         // 接続中は CallEvent.Participants と ConnectionState も購読
         let currentConn = NexusVoiceStore.instance.getConnection(roomId) ?? null;
@@ -120,6 +143,7 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
 
         return () => {
             session.off(MatrixRTCSessionEvent.MembershipsChanged, updateMembers);
+            roomState.off(RoomStateEvent.Members, updateMembers);
             NexusVoiceStore.instance.off(NexusVoiceStoreEvent.ActiveConnection, onConnChange);
             currentConn?.off(CallEvent.Participants, onParticipants);
             currentConn?.off(CallEvent.ConnectionState, onConnectionState);

@@ -33,7 +33,12 @@ const SPEAKER_DEBOUNCE_MS = 2000;
  */
 export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element | null {
     const client = useMatrixClientContext();
-    const { members, connected } = useVCParticipants(roomId);
+    const { members: rawParticipants, connected } = useVCParticipants(roomId);
+    // Filter to resolved RoomMembers for layout components
+    const members = useMemo(
+        () => rawParticipants.filter((p) => p.member !== null).map((p) => p.member!),
+        [rawParticipants],
+    );
     const screenShares = useNexusScreenShares(roomId);
     const activeSpeakers = useNexusActiveSpeakers();
     const participantStates = useNexusParticipantStates();

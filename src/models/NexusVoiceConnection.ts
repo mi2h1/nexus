@@ -115,7 +115,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public readonly callType = CallType.Voice;
 
     private _connectionState = ConnectionState.Disconnected;
-    private _participants = new Map<RoomMember, Set<string>>();
+    private _participants = new Map<string, Set<string>>();
     private _latencyMs: number | null = null;
     private _isMicMuted = false;
     /** Suppress SE in onMembershipsChanged during self join/leave */
@@ -217,11 +217,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         );
     }
 
-    public get participants(): Map<RoomMember, Set<string>> {
+    public get participants(): Map<string, Set<string>> {
         return this._participants;
     }
 
-    private set participants(value: Map<RoomMember, Set<string>>) {
+    private set participants(value: Map<string, Set<string>>) {
         const prevValue = this._participants;
         this._participants = value;
         this.emit(CallEvent.Participants, value, prevValue);
@@ -1686,24 +1686,28 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * Identity is usually the Matrix user ID, but may include a device suffix.
      */
     private resolveIdentityToUserId(identity: string): string | null {
-        // Direct match: identity is exactly a Matrix user ID
+        // Fast path: room member lookup (works when sync is complete)
         const directMember = this.room.getMember(identity);
         if (directMember) return directMember.userId;
 
-        // Fallback: identity may be "userId:deviceId" — try stripping suffix.
-        // Matrix user IDs are "@localpart:domain", so we look for @...:...:...
+        // Parse userId from identity — may be "@user:server" or "@user:server:device"
         const atIdx = identity.indexOf("@");
+        if (atIdx < 0) return null;
         const firstColon = identity.indexOf(":", atIdx + 1);
-        if (firstColon > 0) {
-            const secondColon = identity.indexOf(":", firstColon + 1);
-            if (secondColon > 0) {
-                const userId = identity.substring(0, secondColon);
-                const member = this.room.getMember(userId);
-                if (member) return member.userId;
-            }
-        }
+        if (firstColon < 0) return null;
 
-        return null;
+        const secondColon = identity.indexOf(":", firstColon + 1);
+        const userId = secondColon > 0 ? identity.substring(0, secondColon) : identity;
+
+        // Verify format: @localpart:server
+        if (!userId.startsWith("@") || !userId.includes(":")) return null;
+
+        // Try room member lookup with parsed userId
+        const member = this.room.getMember(userId);
+        if (member) return member.userId;
+
+        // Return parsed userId even without RoomMember (sync may not have completed)
+        return userId;
     }
 
     // ─── Private: Volume persistence ─────────────────────────
@@ -1950,7 +1954,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     private updateParticipants(): void {
-        const participants = new Map<RoomMember, Set<string>>();
+        const participants = new Map<string, Set<string>>();
 
         if (this.livekitRoom && this.connected) {
             // ── Connected mode: LiveKit is the source of truth ──
@@ -1969,34 +1973,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             for (const m of this.session.memberships) {
                 if (!m.sender) continue;
                 if (!livekitUserIds.has(m.sender)) continue; // Not in LiveKit → stale
-                const member = this.room.getMember(m.sender);
-                if (member) {
-                    if (participants.has(member)) {
-                        participants.get(member)!.add(m.deviceId);
-                    } else {
-                        participants.set(member, new Set([m.deviceId]));
-                    }
+                if (participants.has(m.sender)) {
+                    participants.get(m.sender)!.add(m.deviceId);
+                } else {
+                    participants.set(m.sender, new Set([m.deviceId]));
                 }
             }
 
             // 2. LiveKit participants not yet in MatrixRTC (fast path)
-            const seen = new Set([...participants.keys()].map((m) => m.userId));
             for (const rp of this.livekitRoom.remoteParticipants.values()) {
                 const userId = this.resolveIdentityToUserId(rp.identity);
-                if (!userId || seen.has(userId)) continue;
-                const member = this.room.getMember(userId);
-                if (member) {
-                    participants.set(member, new Set(["livekit"]));
-                }
+                if (!userId || participants.has(userId)) continue;
+                participants.set(userId, new Set(["livekit"]));
             }
 
             // 3. Add self
             const myUserId = this.client.getUserId();
-            if (myUserId && !seen.has(myUserId)) {
-                const myMember = this.room.getMember(myUserId);
-                if (myMember) {
-                    participants.set(myMember, new Set([this.client.getDeviceId()!]));
-                }
+            if (myUserId && !participants.has(myUserId)) {
+                participants.set(myUserId, new Set([this.client.getDeviceId()!]));
             }
         } else {
             // ── Pre-connection mode: MatrixRTC memberships only ──
@@ -2005,13 +1999,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // once connected.
             for (const m of this.session.memberships) {
                 if (!m.sender) continue;
-                const member = this.room.getMember(m.sender);
-                if (member) {
-                    if (participants.has(member)) {
-                        participants.get(member)!.add(m.deviceId);
-                    } else {
-                        participants.set(member, new Set([m.deviceId]));
-                    }
+                if (participants.has(m.sender)) {
+                    participants.get(m.sender)!.add(m.deviceId);
+                } else {
+                    participants.set(m.sender, new Set([m.deviceId]));
                 }
             }
         }

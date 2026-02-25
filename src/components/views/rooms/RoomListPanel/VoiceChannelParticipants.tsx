@@ -13,8 +13,9 @@ import { MicOffSolidIcon } from "@vector-im/compound-design-tokens/assets/web/ic
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { useNexusActiveSpeakers } from "../../../../hooks/useNexusActiveSpeakers";
 import { useNexusParticipantStates } from "../../../../hooks/useNexusParticipantStates";
-import { useVCParticipants } from "../../../../hooks/useVCParticipants";
+import { useVCParticipants, type VCParticipant } from "../../../../hooks/useVCParticipants";
 import MemberAvatar from "../../avatars/MemberAvatar";
+import BaseAvatar from "../../avatars/BaseAvatar";
 import InlineSpinner from "../../elements/InlineSpinner";
 import { NexusParticipantContextMenu } from "../../voip/NexusParticipantContextMenu";
 
@@ -43,13 +44,13 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
 
     return (
         <div className="mx_VoiceChannelParticipants">
-            {members.map((member) => (
+            {members.map((participant) => (
                 <VoiceChannelParticipantItem
-                    key={member.userId}
-                    member={member}
-                    isSpeaking={activeSpeakers.has(member.userId)}
-                    isTransitioning={transitioningIds.has(member.userId)}
-                    participantState={participantStates.get(member.userId)}
+                    key={participant.userId}
+                    participant={participant}
+                    isSpeaking={activeSpeakers.has(participant.userId)}
+                    isTransitioning={transitioningIds.has(participant.userId)}
+                    participantState={participantStates.get(participant.userId)}
                     myUserId={myUserId}
                 />
             ))}
@@ -58,28 +59,30 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
 }
 
 function VoiceChannelParticipantItem({
-    member,
+    participant,
     isSpeaking,
     isTransitioning,
     participantState,
     myUserId,
 }: {
-    member: RoomMember;
+    participant: VCParticipant;
     isSpeaking: boolean;
     isTransitioning: boolean;
     participantState?: { isMuted: boolean; isScreenSharing: boolean };
     myUserId: string | null;
 }): JSX.Element {
+    const { userId, member } = participant;
     const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
 
     const onContextMenu = useCallback(
         (e: React.MouseEvent): void => {
-            if (myUserId && member.userId === myUserId) return;
+            if (myUserId && userId === myUserId) return;
             if (isTransitioning) return;
+            if (!member) return; // Can't show context menu without RoomMember
             e.preventDefault();
             setMenuPos({ left: e.clientX, top: e.clientY });
         },
-        [myUserId, member.userId, isTransitioning],
+        [myUserId, userId, isTransitioning, member],
     );
 
     const onMenuFinished = useCallback((): void => {
@@ -94,16 +97,20 @@ function VoiceChannelParticipantItem({
         "mx_VoiceChannelParticipants_avatar--speaking": isSpeaking && !isTransitioning,
     });
 
+    const displayName = member?.name ?? userId;
+
     return (
         <div className={itemClass} onContextMenu={onContextMenu}>
             <div className={avatarClass}>
                 {isTransitioning ? (
                     <InlineSpinner size={20} />
-                ) : (
+                ) : member ? (
                     <MemberAvatar member={member} size="20px" hideTitle />
+                ) : (
+                    <BaseAvatar name={userId} size="20px" />
                 )}
             </div>
-            <span className="mx_VoiceChannelParticipants_name">{member.name}</span>
+            <span className="mx_VoiceChannelParticipants_name">{displayName}</span>
             {!isTransitioning && participantState?.isMuted && (
                 <MicOffSolidIcon
                     className="mx_VoiceChannelParticipants_muteIcon"
@@ -114,7 +121,7 @@ function VoiceChannelParticipantItem({
             {!isTransitioning && participantState?.isScreenSharing && (
                 <span className="mx_VoiceChannelParticipants_sharingBadge">配信中</span>
             )}
-            {menuPos && (
+            {menuPos && member && (
                 <NexusParticipantContextMenu
                     member={member}
                     left={menuPos.left}
