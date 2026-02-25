@@ -952,35 +952,30 @@ mod platform {
                 Some(&mut closest_match),
             );
 
-            let (use_format_ptr, use_sample_rate, use_channels, use_bits) = match is_supported_hr {
-                Ok(()) => {
+            // IsFormatSupported returns HRESULT directly:
+            // S_OK (0) = supported, S_FALSE (1) = closest match returned
+            let (use_format_ptr, use_sample_rate, use_channels, use_bits) =
+                if is_supported_hr.0 == 0 {
+                    // S_OK
                     println!("[WASAPI] Device format supported by process loopback client");
                     (device_fmt_ptr, sample_rate, channels, bits)
-                }
-                Err(ref e) if e.code().0 == 1 => {
-                    // S_FALSE: closest match returned
-                    if !closest_match.is_null() {
-                        let sr = (*closest_match).nSamplesPerSec;
-                        let ch = (*closest_match).nChannels as usize;
-                        let b = (*closest_match).wBitsPerSample;
-                        println!(
-                            "[WASAPI] Device format not supported, closest match: {}Hz {}ch {}bit",
-                            sr, ch, b
-                        );
-                        (closest_match as *const WAVEFORMATEX, sr, ch, b)
-                    } else {
-                        println!("[WASAPI] S_FALSE but no closest match, using device format");
-                        (device_fmt_ptr, sample_rate, channels, bits)
-                    }
-                }
-                Err(ref e) => {
+                } else if is_supported_hr.0 == 1 && !closest_match.is_null() {
+                    // S_FALSE with closest match
+                    let sr = (*closest_match).nSamplesPerSec;
+                    let ch = (*closest_match).nChannels as usize;
+                    let b = (*closest_match).wBitsPerSample;
                     println!(
-                        "[WASAPI] IsFormatSupported failed: {}, trying device format anyway",
-                        e
+                        "[WASAPI] Device format not supported, closest match: {}Hz {}ch {}bit",
+                        sr, ch, b
+                    );
+                    (closest_match as *const WAVEFORMATEX, sr, ch, b)
+                } else {
+                    println!(
+                        "[WASAPI] IsFormatSupported returned 0x{:08X}, trying device format anyway",
+                        is_supported_hr.0 as u32
                     );
                     (device_fmt_ptr, sample_rate, channels, bits)
-                }
-            };
+                };
 
             let _ = app.emit(
                 "wasapi-info",
