@@ -12,7 +12,7 @@
 - **結果**: 接続 ~600ms（初回・再接続とも）、切断は体感即座
 
 **過去: 自前 LiveKit SFU セットアップ完了**
-- VPS（lche.xvps.jp）に Docker で LiveKit SFU を構築
+- VPS（lche2.xvps.jp）に Docker で LiveKit SFU を構築
 - 3コンテナ: livekit-server + lk-jwt-service + nginx（TLS終端）
 - ポート: 7880(WSS), 7881(TCP TURN), 7882(UDP WebRTC), 7891(HTTPS JWT)
 - ブラウザ版（Firefox同士）で自前SFU経由の音声通話動作確認済み
@@ -43,14 +43,14 @@ GitHub Actions → GitHub Pages (Web版)
 GitHub Actions → Tauri 2 ビルド → Windows/Mac ネイティブアプリ
 
 Matrix サーバー: matrix.org（公開サーバー利用）
-SFU: 自前 LiveKit (lche.xvps.jp) ← 2026-02-25 構築
+SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
   フォールバック: Element の LiveKit Cloud (CORS プロキシ経由)
 ```
 
-### VPS (lche.xvps.jp)
+### VPS (lche2.xvps.jp)
 - AMD EPYC 3コア / 3.8GB RAM / 28GB ディスク
 - Docker: LiveKit SFU（infra/livekit/docker-compose.yml）
-- SSL: Let's Encrypt（/etc/ssl/lche/）
+- SSL: Let's Encrypt（/etc/ssl/lche2/）
 - 開発環境: Claude Code でコード編集 → git push
 
 ---
@@ -64,7 +64,7 @@ SFU: 自前 LiveKit (lche.xvps.jp) ← 2026-02-25 構築
 | matrix-js-sdk | Matrix プロトコル + MatrixRTC シグナリング |
 | livekit-client | VC・画面共有（SFU 直接接続） |
 | Tauri 2 | ネイティブデスクトップアプリ（src-tauri/） |
-| LiveKit SFU | 自前ホスト（lche.xvps.jp, Docker） |
+| LiveKit SFU | 自前ホスト（lche2.xvps.jp, Docker） |
 | lk-jwt-service | Element製 JWT ブリッジ（OpenID → LiveKit JWT） |
 | Cloudflare Workers | CORS プロキシ（フォールバック用） |
 | pnpm 10.x | パッケージマネージャ |
@@ -125,10 +125,10 @@ Phase 0: AudioContext 生成（同期、ユーザージェスチャー内）
 Phase 1: Promise.all([getJwt(), createLocalAudioTrack(), preloadRnnoiseWasm()])
   └─ getJwt():
      ├─ getCachedOpenIdToken() — キャッシュヒット時は matrix.org スキップ
-     ├─ 優先: 自前 JWT サービス (https://lche.xvps.jp:7891/sfu/get)
+     ├─ 優先: 自前 JWT サービス (https://lche2.xvps.jp:7891/sfu/get)
      └─ フォールバック: Element の JWT via CORS プロキシ
 Phase 3+4: 並列実行
-  ├─ livekitRoom.connect(url, jwt) — wss://lche.xvps.jp:7880
+  ├─ livekitRoom.connect(url, jwt) — wss://lche2.xvps.jp:7880
   └─ buildInputPipeline() — AudioNode + RNNoise + MediaStreamDestination
 Phase 5: publishTrack(processedTrack)
 ```

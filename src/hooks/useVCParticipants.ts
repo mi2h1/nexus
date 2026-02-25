@@ -110,11 +110,20 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
         };
         NexusVoiceStore.instance.on(NexusVoiceStoreEvent.ActiveConnection, onConnChange);
 
+        // 未接続時 30s ポーリング: サーバーが sticky event を TTL 削除 → sync 反映の
+        // タイミング遅延やイベント欠落に対する安全策。接続中は LiveKit イベントで
+        // 即時更新されるのでポーリング不要。
+        const pollInterval = window.setInterval(() => {
+            const conn = NexusVoiceStore.instance.getConnection(roomId);
+            if (!conn?.connected) updateMembers();
+        }, 30_000);
+
         return () => {
             session.off(MatrixRTCSessionEvent.MembershipsChanged, updateMembers);
             NexusVoiceStore.instance.off(NexusVoiceStoreEvent.ActiveConnection, onConnChange);
             currentConn?.off(CallEvent.Participants, onParticipants);
             currentConn?.off(CallEvent.ConnectionState, onConnectionState);
+            clearInterval(pollInterval);
         };
     }, [client, roomId]);
 

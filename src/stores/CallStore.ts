@@ -350,12 +350,13 @@ export class CallStore extends AsyncStoreWithClient<EmptyObject> {
         if (!myUserId || !myDeviceId) return;
 
         for (const room of this.matrixClient.getRooms()) {
-            if (!room.isCallRoom()) continue; // Only check VC rooms
+            const session = this.matrixClient.matrixRTC.getRoomSession(room);
+            // Skip rooms with no memberships to avoid unnecessary work
+            if (session.memberships.length === 0) continue;
 
             const conn = this.voiceConnections.get(room.roomId);
             if (conn?.connected) continue; // Actually connected — not stale
 
-            const session = this.matrixClient.matrixRTC.getRoomSession(room);
             const myMembership = session.memberships.find(
                 (m) => m.sender === myUserId && m.deviceId === myDeviceId,
             );

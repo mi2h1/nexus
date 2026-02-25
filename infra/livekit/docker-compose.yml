@@ -8,7 +8,7 @@ services:
       - "7881:7881"       # TCP TURN fallback
       - "7882:7882/udp"   # WebRTC media (UDP)
     volumes:
-      - /etc/ssl/lche:/etc/ssl/lche:ro
+      - /etc/ssl/lche2:/etc/ssl/lche2:ro
       - ./livekit.yaml:/etc/livekit.yaml:ro
     command: --config /etc/livekit.yaml
     logging:
@@ -23,7 +23,7 @@ services:
     restart: always
     environment:
       # Public URL — returned to clients in JWT response so they can connect
-      LIVEKIT_URL: "wss://lche.xvps.jp:7880"
+      LIVEKIT_URL: "wss://lche2.xvps.jp:7880"
       # API credentials — must match livekit.yaml keys
       LIVEKIT_KEY: "nexus-api"
       LIVEKIT_SECRET: "0930254ce08f85941dd721f2eea601d1941d2353810367fdd94f758c78b5fd11"
@@ -46,7 +46,7 @@ services:
       - "7880:7880"   # WSS → LiveKit WebSocket
       - "7891:7891"   # HTTPS → JWT service
     volumes:
-      - /etc/ssl/lche:/etc/ssl/lche:ro
+      - /etc/ssl/lche2:/etc/ssl/lche2:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - livekit

@@ -201,7 +201,7 @@ VC 参加ボタン押下 → 音声通信確立までの時間を短縮する。
 - CPU: AMD EPYC-Milan 3コア
 - メモリ: 3.8GB（空き ~2GB）
 - ディスク: 28GB（残り 11GB）
-- IP: 210.131.219.93（日本）
+- IP: 162.43.31.143（日本）— lche2.xvps.jp
 - OS: Ubuntu 25.04
 - Docker 稼働中（cfrp-market 5コンテナ）
 

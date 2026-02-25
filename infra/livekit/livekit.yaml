@@ -1,5 +1,5 @@
 # LiveKit SFU configuration for Nexus
-# Domain: lche.xvps.jp
+# Domain: lche2.xvps.jp
 
 port: 7880
 rtc:
@@ -9,18 +9,14 @@ rtc:
   # Use TCP fallback if UDP is blocked
   tcp_port: 7881
   # Announce the public IP so ICE candidates are correct
-  node_ip: 210.131.219.93
+  node_ip: 162.43.31.143
   use_external_ip: false
 
 # TLS — use Let's Encrypt cert
 turn:
-  enabled: true
-  domain: lche.xvps.jp
-  tls_port: 5349
-  udp_port: 3478
-  external_tls: true
-  cert_file: /etc/ssl/lche/fullchain.pem
-  key_file: /etc/ssl/lche/privkey.pem
+  enabled: false
+  # TURN ports (5349/3478) are not open on VPS firewall.
+  # Disabled to prevent ICE agent from wasting time on unreachable TURN candidates.
 
 # API keys — used by lk-jwt-service to sign tokens
 keys:
@@ -33,7 +29,6 @@ logging:
 
 # Room settings
 room:
-  # Rooms are created by lk-jwt-service, not by clients directly
-  auto_create: false
+  auto_create: true
   empty_timeout: 300    # 5 min: close room when empty
   max_participants: 12

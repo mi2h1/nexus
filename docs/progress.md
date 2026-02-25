@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-25
+> 最終更新: 2026-02-26
 
 ## リポジトリ情報
 
@@ -181,6 +181,16 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-26 (VC 参加者リスト精度改善)
+- **CallStore ghost cleanup の isCallRoom() フィルタ修正**: `onMembershipsChangedForCleanup` が Nexus の VC ルームをスキップしていたバグを修正
+  - 原因: `room.isCallRoom()` は Element Call 専用ルームのみ `true` だが、Nexus は通常の Matrix ルームを VC に使うため全ルームがフィルタされていた
+  - 修正: `isCallRoom()` チェックを `session.memberships.length === 0` に変更（membership がないルームをスキップし、全ルームスキャンのコストを回避）
+  - 効果: unclean disconnect（ブラウザクラッシュ等）後の自分の ghost membership が正しくクリーンアップされるように
+- **未接続時 30s ポーリング追加** (`useVCParticipants`): サーバーの sticky event TTL 削除タイミング遅延に対する安全策
+  - `setInterval(30s)` で `session.memberships` を再読み（`MembershipsChanged` イベント欠落をカバー）
+  - 接続中は LiveKit イベントで即時更新されるためポーリングをスキップ
+  - cleanup で `clearInterval` を確実に実行
 
 #### 2026-02-25 (VC 接続・切断高速化)
 - **パイプライン構築を connect() と並列化**: `buildInputPipeline()` メソッドを新設

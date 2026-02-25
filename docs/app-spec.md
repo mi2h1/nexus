@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-27
+> 最終更新: 2026-02-26
 
 ## 概要
 
@@ -235,6 +235,42 @@ VC 中にマイクミュートして切断した場合も、ミュート状態�
 - **`leaveVoiceChannel`**: `disconnect()` 完了まで await（Disconnecting 中は connection を保持）
 - **`joinVoiceChannel`**: Connecting/Disconnecting 中は早期 return で再参加をブロック
 - **Connected 直後の名前消え防止**: `conn.participants` に自分がまだいない場合も明示的に追加
+
+### VC 参加者リストの精度保証
+
+VC 参加者リスト（チャンネルサイドバー、参加者グリッド）は、接続状態に応じて 2 つのデータソースを使い分ける:
+
+| 状態 | データソース | 更新契機 |
+|------|-------------|---------|
+| 接続中 | `NexusVoiceConnection.participants`（LiveKit + MatrixRTC マージ） | LiveKit `ParticipantConnected/Disconnected` イベント（即時） |
+| 未接続 | `session.memberships`（MatrixRTC sticky event） | `MembershipsChanged` イベント + 30s ポーリング |
+
+#### Ghost（幽霊参加者）対策
+
+MatrixRTC の `m.call.member` (MSC4143) は sticky state event であり、以下の理由で ghost が発生する:
+- ブラウザクラッシュ等の unclean disconnect で `leaveRoomSession()` が呼ばれない
+- サーバー（matrix.org）の TTL 削除（60分）が遅延する場合がある
+- `isExpired()` がクライアント側では常に `false`
+
+対策は 3 層:
+
+1. **起動時クリーンアップ** (`CallStore.cleanupStaleMatrixRTCMemberships`): ログイン後に全ルームをスキャンし、自分のデバイスの stale membership を `leaveRoomSession()` で削除
+2. **イベント駆動クリーンアップ** (`CallStore.onMembershipsChangedForCleanup`): `MembershipsChanged` イベント発火時に、membership があるルームで自分が未接続なら stale と判定して削除
+3. **30s ポーリング** (`useVCParticipants`): 未接続時に 30 秒ごとに `session.memberships` を再読みし、サーバーの TTL 削除反映遅延をカバー
+
+#### Discord との比較
+
+| 観点 | Discord | Nexus (現状) |
+|------|---------|-------------|
+| 参加状態の管理 | Gateway `VOICE_STATE_UPDATE`（サーバー集中管理、インメモリ） | MatrixRTC `m.call.member` sticky state event（分散、永続化） |
+| クラッシュ検出 | WebSocket 切断を即座に検出（heartbeat OP 1） | 検出不可。サーバー TTL（60分）待ちまたはクライアント再起動時クリーンアップ |
+| 参加通知遅延 | ~200-500ms（Gateway push） | ~1-5s（Matrix sync + state event 反映） |
+| 離脱通知遅延 | ~100-300ms（WebSocket close → state 即削除） | 正常: ~2s / クラッシュ: 最大60分（TTL 依存） |
+| Ghost 耐性 | 極めて高い（heartbeat + ephemeral state） | 中程度（3層対策で軽減するが、他人の ghost は TTL 依存） |
+
+**根本的な差**: Discord は voice state をサーバーメモリ上のエフェメラルデータとして管理し、WebSocket 切断で即座に消える。MatrixRTC は分散プロトコルのため state event が永続化されており、クライアント主導の削除が必要。
+
+**Nexus で対処不可能な点**: 他人のクラッシュ後の ghost は、そのユーザーのクライアント（または matrix.org の TTL）が membership を削除するまで残る。Discord のようなサーバー主導の即時削除は Matrix プロトコルの設計上不可能。
 
 ## 無効化した機能
 

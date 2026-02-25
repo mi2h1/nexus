@@ -91,7 +91,7 @@ export function playVcSound(src: string): void {
  * When set, bypasses both the CORS proxy and matrix.org's transport URL.
  * Set to empty string to fall back to the matrix.org transport + CORS proxy.
  */
-const NEXUS_JWT_SERVICE_URL = "https://lche.xvps.jp:7891";
+const NEXUS_JWT_SERVICE_URL = "https://lche2.xvps.jp:7891";
 
 /**
  * Cloudflare Workers CORS proxy URL for LiveKit JWT endpoint.
