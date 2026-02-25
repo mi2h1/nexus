@@ -954,8 +954,11 @@ mod platform {
                 ),
             );
 
-            // Event-driven shared mode, no AUTOCONVERTPCM (native format matches).
-            let init_flags: u32 = 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+            // Event-driven shared mode with AUTOCONVERTPCM so Windows handles
+            // format conversion (e.g. process outputs stereo but device is 7.1ch).
+            let init_flags: u32 = 0x00040000  // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+                                | 0x80000000  // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+                                | 0x08000000; // AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
             client
                 .Initialize(
                     AUDCLNT_SHAREMODE_SHARED,
