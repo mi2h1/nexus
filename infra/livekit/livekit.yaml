@@ -45,3 +45,4 @@ room:
     - mime: audio/opus
     - mime: audio/red
     - mime: video/vp8
+    - mime: video/h264
