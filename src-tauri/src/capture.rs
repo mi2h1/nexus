@@ -209,6 +209,72 @@ mod platform {
         }
     }
 
+    // ─── Window visibility filter ────────────────────────────────────
+    //
+    // Filters out invisible / background windows using Win32 APIs:
+    //  - DwmGetWindowAttribute(DWMWA_CLOAKED): detects hidden UWP windows
+    //    (e.g. SystemSettings.exe, TextInputHost.exe when not in foreground)
+    //  - IsWindowVisible: basic visibility check
+    //  - WS_EX_TOOLWINDOW without WS_EX_APPWINDOW: tooltip-style windows
+
+    /// Known background system processes that should never appear in the picker.
+    const BACKGROUND_PROCESSES: &[&str] = &[
+        "textinputhost.exe",
+        "searchhost.exe",
+        "shellexperiencehost.exe",
+        "startmenuexperiencehost.exe",
+        "lockapp.exe",
+        "widgets.exe",
+        "gamebar.exe",
+        "gamebarftserver.exe",
+        "msteams.exe",       // background Teams process
+    ];
+
+    /// Returns true if the window should be shown in the capture picker.
+    fn is_capturable_window(hwnd_val: isize, process_name: &str) -> bool {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongW, IsWindowVisible, GWL_EXSTYLE,
+            WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        };
+
+        // Blocklist of known background system processes
+        let pname_lower = process_name.to_lowercase();
+        if BACKGROUND_PROCESSES.iter().any(|&p| pname_lower == p) {
+            return false;
+        }
+
+        unsafe {
+            let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+
+            // Must be visible
+            if !IsWindowVisible(hwnd).as_bool() {
+                return false;
+            }
+
+            // Check if cloaked (hidden UWP windows)
+            let mut cloaked: u32 = 0;
+            let hr = DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_CLOAKED,
+                &mut cloaked as *mut _ as *mut std::ffi::c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+            if hr.is_ok() && cloaked != 0 {
+                return false;
+            }
+
+            // Tool windows without APPWINDOW are not user-facing
+            let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+            if (ex_style & WS_EX_TOOLWINDOW.0 != 0) && (ex_style & WS_EX_APPWINDOW.0 == 0) {
+                return false;
+            }
+        }
+
+        true
+    }
+
     // ─── Enumerate targets ──────────────────────────────────────────
     #[tauri::command]
     pub async fn enumerate_capture_targets() -> Result<Vec<CaptureTarget>, String> {
@@ -232,6 +298,12 @@ mod platform {
                     }
 
                     let hwnd_val = win.as_raw_hwnd() as isize;
+
+                    // Skip invisible / background windows
+                    if !is_capturable_window(hwnd_val, &process_name) {
+                        continue;
+                    }
+
                     targets.push(CaptureTarget {
                         id: format!("window:{}", hwnd_val),
                         title,
