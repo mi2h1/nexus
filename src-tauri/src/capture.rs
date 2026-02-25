@@ -985,7 +985,9 @@ mod platform {
                 ),
             );
 
-            let init_flags: u32 = 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+            // LOOPBACK flag is required per Microsoft ApplicationLoopback sample
+            let init_flags: u32 = 0x00020000  // AUDCLNT_STREAMFLAGS_LOOPBACK
+                                | 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
             let init_result = client.Initialize(
                 AUDCLNT_SHAREMODE_SHARED,
                 init_flags,
