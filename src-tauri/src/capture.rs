@@ -938,30 +938,74 @@ mod platform {
                 mode_name, pid
             );
 
-            // Step 3: Initialize with the device's native format
-            // (same WAVEFORMATEXTENSIBLE that works for EXCLUDE mode).
-            let format_ptr = device_format.as_waveformatex_ref()
+            // Step 3: Find a format the process loopback client accepts.
+            // Try IsFormatSupported first to get a closest-match format,
+            // then fall back to trying common formats.
+            let device_fmt_ptr = device_format.as_waveformatex_ref()
                 as *const _ as *const WAVEFORMATEX;
+
+            // Check if device format is supported; get closest match if not
+            let mut closest_match: *mut WAVEFORMATEX = std::ptr::null_mut();
+            let is_supported_hr = client.IsFormatSupported(
+                AUDCLNT_SHAREMODE_SHARED,
+                device_fmt_ptr,
+                Some(&mut closest_match),
+            );
+
+            let (use_format_ptr, use_sample_rate, use_channels, use_bits) = match is_supported_hr {
+                Ok(()) => {
+                    println!("[WASAPI] Device format supported by process loopback client");
+                    (device_fmt_ptr, sample_rate, channels, bits)
+                }
+                Err(ref e) if e.code().0 == 1 => {
+                    // S_FALSE: closest match returned
+                    if !closest_match.is_null() {
+                        let sr = (*closest_match).nSamplesPerSec;
+                        let ch = (*closest_match).nChannels as usize;
+                        let b = (*closest_match).wBitsPerSample;
+                        println!(
+                            "[WASAPI] Device format not supported, closest match: {}Hz {}ch {}bit",
+                            sr, ch, b
+                        );
+                        (closest_match as *const WAVEFORMATEX, sr, ch, b)
+                    } else {
+                        println!("[WASAPI] S_FALSE but no closest match, using device format");
+                        (device_fmt_ptr, sample_rate, channels, bits)
+                    }
+                }
+                Err(ref e) => {
+                    println!(
+                        "[WASAPI] IsFormatSupported failed: {}, trying device format anyway",
+                        e
+                    );
+                    (device_fmt_ptr, sample_rate, channels, bits)
+                }
+            };
 
             let _ = app.emit(
                 "wasapi-info",
                 format!(
                     "WASAPI (process-{}, PID={}): {}Hz {}ch {}bit",
-                    mode_name.to_lowercase(), pid, sample_rate, channels, bits
+                    mode_name.to_lowercase(), pid, use_sample_rate, use_channels, use_bits
                 ),
             );
 
             let init_flags: u32 = 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
-            client
-                .Initialize(
-                    AUDCLNT_SHAREMODE_SHARED,
-                    init_flags,
-                    0,
-                    0,
-                    format_ptr,
-                    None,
-                )
-                .map_err(|e| format!("Initialize: {}", e))?;
+            let init_result = client.Initialize(
+                AUDCLNT_SHAREMODE_SHARED,
+                init_flags,
+                0,
+                0,
+                use_format_ptr,
+                None,
+            );
+
+            // Free closest_match if it was allocated
+            if !closest_match.is_null() {
+                CoTaskMemFree(Some(closest_match as *const _ as *const std::ffi::c_void));
+            }
+
+            init_result.map_err(|e| format!("Initialize: {}", e))?;
 
             // Get capture client and set up event handle
             let capture_client: IAudioCaptureClient = client
@@ -974,10 +1018,10 @@ mod platform {
                 .SetEventHandle(event_handle)
                 .map_err(|e| format!("SetEventHandle: {}", e))?;
 
-            // Use the device format parameters for the capture loop
-            let cap_channels = channels;
-            let cap_bytes_per_sample = bytes_per_sample;
-            let cap_sample_rate = sample_rate;
+            // Use the actual initialized format for the capture loop
+            let cap_channels = use_channels;
+            let cap_bytes_per_sample = (use_bits / 8) as usize;
+            let cap_sample_rate = use_sample_rate;
 
             // Start the stream
             client.Start().map_err(|e| format!("Start: {}", e))?;
