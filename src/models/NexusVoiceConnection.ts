@@ -154,9 +154,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // Web Audio API GainNodes, enabling volume amplification beyond 1.0.
     private outputAudioContext: AudioContext | null = null;
     private outputMasterGain: GainNode | null = null;
-    private outputMediaSources = new Map<string, MediaElementAudioSourceNode>();
+    private outputMediaSources = new Map<string, AudioNode>();
     private outputParticipantGains = new Map<string, GainNode>();
-    private ssMediaSources = new Map<string, MediaElementAudioSourceNode>();
+    private ssMediaSources = new Map<string, AudioNode>();
     private ssParticipantGains = new Map<string, GainNode>();
     private watchingScreenShares = new Set<string>(); // opt-in watching state
     private analyserNode: AnalyserNode | null = null;
@@ -263,16 +263,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // ── Phase 0: Create AudioContext in user gesture context ──
             // MUST be created BEFORE any await — Chrome's autoplay policy
             // requires AudioContext creation within a user gesture.
-            // NOTE: AudioContext is used ONLY for the input (mic) pipeline.
-            // Remote audio output uses per-participant <audio> elements
-            // because Chrome does not route remote WebRTC audio through
-            // MediaStreamAudioSourceNode at all.
+            // NOTE: This AudioContext is used ONLY for the input (mic) pipeline.
+            // Remote audio output uses a separate outputAudioContext (Tauri)
+            // or plain <audio> elements (browser).
             this.audioContext = new AudioContext();
             this._masterOutputVolume = 0; // starts muted until unmutePipelines()
 
             // Tauri: create output AudioContext for >100% volume amplification.
-            // createMediaElementSource(<audio>) works (unlike createMediaStreamSource
-            // which is broken for WebRTC audio in Chrome).
+            // Uses createMediaStreamSource to feed WebRTC audio directly into
+            // the Web Audio graph (same approach as livekit-client webAudioMix).
             if (isTauri()) {
                 this.outputAudioContext = new AudioContext();
                 this.outputMasterGain = this.outputAudioContext.createGain();
@@ -1550,17 +1549,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 if (ssSavedVol !== null) this.screenShareVolumes.set(participant.identity, ssSavedVol);
                 const watching = this.watchingScreenShares.has(participant.identity);
 
-                // Tauri: route through Web Audio for >100% volume
+                // Tauri: route through Web Audio for >100% volume.
+                // Use createMediaStreamSource (same approach as participant audio).
                 if (this.outputAudioContext && this.outputMasterGain) {
-                    // IMPORTANT: createMediaElementSource BEFORE play() so audio
-                    // is routed through Web Audio API from the start.
-                    const source = this.outputAudioContext.createMediaElementSource(audio);
+                    const source = this.outputAudioContext.createMediaStreamSource(
+                        audio.srcObject as MediaStream,
+                    );
                     const gain = this.outputAudioContext.createGain();
                     gain.gain.value = watching ? ssInitialVol : 0;
                     source.connect(gain).connect(this.outputMasterGain);
                     this.ssMediaSources.set(participant.identity, source);
                     this.ssParticipantGains.set(participant.identity, gain);
-                    // Only play when actively watching — prevents audio leak
+                    // Suppress element's system output; play to keep stream alive
+                    audio.volume = 0;
                     if (watching) {
                         audio.play().catch(() => {});
                     }
@@ -1595,17 +1596,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const initialVol = savedVol ?? this.participantVolumes.get(participant.identity) ?? 1;
             if (savedVol !== null) this.participantVolumes.set(participant.identity, savedVol);
 
-            // Tauri: route through Web Audio for >100% volume
+            // Tauri: route through Web Audio for >100% volume.
+            // Use createMediaStreamSource (like livekit-client's webAudioMix)
+            // instead of createMediaElementSource — the latter does not
+            // reliably redirect audio in WebView2, causing audio to bypass
+            // the GainNode chain entirely.
             if (this.outputAudioContext && this.outputMasterGain) {
-                // IMPORTANT: createMediaElementSource BEFORE play() so audio
-                // is routed through Web Audio API from the start.
-                audio.volume = 1; // let GainNode control volume
-                const source = this.outputAudioContext.createMediaElementSource(audio);
+                const source = this.outputAudioContext.createMediaStreamSource(
+                    audio.srcObject as MediaStream,
+                );
                 const gain = this.outputAudioContext.createGain();
                 gain.gain.value = initialVol;
                 source.connect(gain).connect(this.outputMasterGain);
                 this.outputMediaSources.set(participant.identity, source);
                 this.outputParticipantGains.set(participant.identity, gain);
+                // Suppress audio element's system output — all audio goes
+                // through the Web Audio graph. Element must still play() to
+                // keep the MediaStream alive.
+                audio.volume = 0;
                 audio.play().catch(() => {});
             } else {
                 // Browser: audio.volume capped at 1.0
