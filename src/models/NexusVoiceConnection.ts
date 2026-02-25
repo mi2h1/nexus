@@ -341,11 +341,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // Allow membership SE after a short delay (self membership event may still arrive)
             setTimeout(() => { this._suppressMembershipSounds = false; }, 2000);
 
-            // 6. Start latency polling & speaker detection
+            // 6. Broadcast our initial mute state so existing participants see it
+            this.broadcastMuteState(this._isMicMuted);
+
+            // 7. Start latency polling & speaker detection
             this.startStatsPolling();
             this.startSpeakerPolling();
 
-            // 7. Re-check participants after a short delay.
+            // 8. Re-check participants after a short delay.
             // After a browser refresh, the initial sync may not have completed
             // when joinRoomSession() was called, so memberships might be empty.
             // Retry a few times to catch late-arriving membership data.
@@ -1866,6 +1869,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     private onParticipantConnected = (): void => {
         this.updateParticipants();
+        // Re-broadcast our mute state so the new joiner picks it up.
+        // Slight delay to ensure their data channel is ready.
+        setTimeout(() => this.broadcastMuteState(this._isMicMuted), 500);
     };
 
     private onParticipantDisconnected = (participant: Participant): void => {
