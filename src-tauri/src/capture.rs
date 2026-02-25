@@ -1005,9 +1005,14 @@ mod platform {
                 }
             }
 
-            // Stop
+            // Stop — explicit drop order matters for COM cleanup.
+            // Stop the stream, then release COM objects BEFORE CoUninitialize.
             let _ = client.Stop();
             let _ = CloseHandle(event_handle);
+            drop(capture_client);
+            drop(client);
+            drop(operation);
+            CoUninitialize();
 
             println!("[WASAPI] Process-excluded loopback capture stopped");
             Ok(())

@@ -1083,7 +1083,7 @@ export class UnwrappedEventTile extends React.Component<EventTileProps, IState> 
             avatarSize = "20px";
             needsSenderProfile = true;
         } else {
-            avatarSize = "30px";
+            avatarSize = "40px";
             needsSenderProfile = true;
         }
 
@@ -1466,7 +1466,10 @@ export class UnwrappedEventTile extends React.Component<EventTileProps, IState> 
                     },
                     <>
                         {ircTimestamp}
-                        {sender}
+                        <div className="mx_EventTile_senderRow">
+                            {sender}
+                            {groupTimestamp}
+                        </div>
                         {ircPadlock}
                         {avatar}
                         <div
@@ -1476,7 +1479,6 @@ export class UnwrappedEventTile extends React.Component<EventTileProps, IState> 
                             onContextMenu={this.onContextMenu}
                         >
                             {this.renderContextMenu()}
-                            {groupTimestamp}
                             {groupPadlock}
                             {replyChain}
                             {renderTile(this.context.timelineRenderingType, {

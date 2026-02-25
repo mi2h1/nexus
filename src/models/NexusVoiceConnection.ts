@@ -524,9 +524,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 });
             }
 
-            // Create audio pipeline if requested
-            if (captureAudio) {
-                this.nativeAudioCapture = new NativeAudioCaptureStream(48000, 2);
+            // Create audio pipeline if requested.
+            // Re-use outputAudioContext (created during user gesture in connect())
+            // to guarantee the context is in "running" state — a freshly created
+            // AudioContext here would likely be suspended by WebView2's autoplay policy.
+            if (captureAudio && this.outputAudioContext) {
+                this.nativeAudioCapture = new NativeAudioCaptureStream(this.outputAudioContext, 48000, 2);
                 await this.nativeAudioCapture.start();
 
                 const audioTrack = this.nativeAudioCapture.getAudioTrack();
@@ -724,6 +727,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private async cleanupNativeCapture(): Promise<void> {
         this._isNativeCapture = false;
 
+        // Stop Rust-side WASAPI / WGC capture FIRST so that the OS audio
+        // session is properly released before we tear down JS-side nodes.
+        try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("stop_capture");
+        } catch (e) {
+            logger.warn("Failed to stop native capture", e);
+        }
+
         if (this.nativeVideoCapture) {
             this.nativeVideoCapture.stop();
             this.nativeVideoCapture = null;
@@ -731,14 +743,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.nativeAudioCapture) {
             this.nativeAudioCapture.stop();
             this.nativeAudioCapture = null;
-        }
-
-        // Stop the Rust-side capture
-        try {
-            const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("stop_capture");
-        } catch (e) {
-            logger.warn("Failed to stop native capture", e);
         }
     }
 
@@ -1423,17 +1427,25 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.localScreenAudioTrack.stop();
             this.localScreenAudioTrack = null;
         }
-        // Clean up native capture
+        // Clean up native capture — stop Rust side first, then JS nodes.
         if (this._isNativeCapture) {
             this._isNativeCapture = false;
-            this.nativeVideoCapture?.stop();
-            this.nativeVideoCapture = null;
-            this.nativeAudioCapture?.stop();
-            this.nativeAudioCapture = null;
-            // Fire-and-forget stop_capture — we're disconnecting anyway
+            // Fire-and-forget stop_capture — WASAPI session must be released
+            // before JS-side nodes are torn down to avoid orphaned audio taps.
             import("@tauri-apps/api/core").then(({ invoke }) => {
                 invoke("stop_capture").catch(() => {});
-            }).catch(() => {});
+            }).then(() => {
+                this.nativeVideoCapture?.stop();
+                this.nativeVideoCapture = null;
+                this.nativeAudioCapture?.stop();
+                this.nativeAudioCapture = null;
+            }).catch(() => {
+                // Fallback: clean up JS side even if stop_capture failed
+                this.nativeVideoCapture?.stop();
+                this.nativeVideoCapture = null;
+                this.nativeAudioCapture?.stop();
+                this.nativeAudioCapture = null;
+            });
         }
         this._isScreenSharing = false;
         this._screenShares = [];

@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-$left-gutter: 64px;
+$left-gutter: 74px;
 
 .mx_EventTile {
     --EventTile_content-margin-inline-end: 34px;
@@ -470,10 +470,22 @@ $left-gutter: 64px;
             }
         }
 
-        .mx_MessageTimestamp {
-            position: absolute;
-            left: 0;
-            text-align: center;
+        .mx_EventTile_senderRow {
+            display: flex;
+            align-items: baseline;
+            gap: var(--cpd-space-2x);
+            margin-left: $left-gutter;
+        }
+
+        .mx_EventTile_senderRow > .mx_DisambiguatedProfile {
+            line-height: $font-20px;
+            max-width: unset;
+            margin-left: 0;
+        }
+
+        .mx_EventTile_senderRow .mx_MessageTimestamp {
+            position: static;
+            text-align: left;
         }
 
         .mx_ThreadSummary,

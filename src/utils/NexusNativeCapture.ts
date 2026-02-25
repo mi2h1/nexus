@@ -121,6 +121,11 @@ export class NativeVideoCaptureStream {
  *
  * We use ScriptProcessorNode instead of MediaStreamTrackGenerator because
  * the latter is not widely available in WebView2/Chromium yet.
+ *
+ * Accepts an **external** AudioContext (created during a user gesture in
+ * NexusVoiceConnection.connect()) so that the context is guaranteed to be
+ * in "running" state.  The caller owns the AudioContext lifecycle — this
+ * class only creates disposable nodes on it.
  */
 export class NativeAudioCaptureStream {
     private audioContext: AudioContext;
@@ -138,12 +143,10 @@ export class NativeAudioCaptureStream {
     /** Number of unread samples available in the ring buffer. */
     private available = 0;
 
-    constructor(sampleRate = 48000, channels = 2) {
+    constructor(audioContext: AudioContext, sampleRate = 48000, channels = 2) {
         this.channelCount = channels;
-        // Don't force sampleRate — let AudioContext use the device's native rate.
-        // The ScriptProcessorNode will resample automatically if needed.
-        this.audioContext = new AudioContext();
-        // Ring buffer: 2 seconds of audio (interleaved) at the device sample rate.
+        this.audioContext = audioContext;
+        // Ring buffer: 2 seconds of audio (interleaved) at the context's sample rate.
         // Use a generous buffer to handle jitter between WASAPI and ScriptProcessorNode.
         const actualRate = this.audioContext.sampleRate;
         logger.info(`Audio capture: AudioContext sampleRate=${actualRate}, WASAPI=${sampleRate}`);
@@ -177,11 +180,6 @@ export class NativeAudioCaptureStream {
             this.writeAudioData(event.payload);
         });
         this.unlisten = unlisten;
-
-        // Resume AudioContext (may be suspended by autoplay policy)
-        if (this.audioContext.state === "suspended") {
-            await this.audioContext.resume();
-        }
         logger.info(`Audio capture AudioContext state: ${this.audioContext.state}`);
     }
 
@@ -237,7 +235,7 @@ export class NativeAudioCaptureStream {
         this.silentSource.disconnect();
         this.scriptProcessor.disconnect();
         this.destination.disconnect();
-        this.audioContext.close().catch(() => {});
+        // AudioContext is externally owned — do NOT close it here.
         for (const track of this.destination.stream.getTracks()) {
             track.stop();
         }
