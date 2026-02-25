@@ -443,8 +443,16 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         const pub = this.livekitRoom?.localParticipant.getTrackPublication(Track.Source.Microphone);
         if (pub?.track) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (pub.track as any).setTrackMuted(muted);
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (pub.track as any).setTrackMuted(muted);
+            } catch (e) {
+                logger.warn("setTrackMuted failed, falling back to direct property set", e);
+                // Fallback: set properties directly without triggering event chain
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (pub.track as any).isMuted = muted;
+                pub.track.mediaStreamTrack.enabled = !muted;
+            }
         }
         this._isMicMuted = muted;
         this._voiceGateOpen = true;
