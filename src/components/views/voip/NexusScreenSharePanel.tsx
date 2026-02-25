@@ -68,11 +68,10 @@ interface NexusScreenSharePanelProps {
  * "Go Live" panel — quality preset selector for screen sharing.
  * Shown above the screen share button in the VC control bar.
  *
- * - Not sharing → select preset + "共有を開始"
- * - Sharing → "共有を停止"
- *
- * In Tauri mode, clicking "共有を開始" opens the native capture picker
- * (NexusScreenSharePicker) instead of the browser's getDisplayMedia.
+ * - Tauri + not sharing → show native picker directly (presets integrated)
+ * - Tauri + sharing → show native picker in "switch" mode
+ * - Browser + not sharing → preset panel + "共有を開始"
+ * - Browser + sharing → "共有を停止"
  */
 export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     isScreenSharing,
@@ -83,28 +82,20 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     const panelRef = useRef<HTMLDivElement>(null);
     const currentKey = (SettingsStore.getValue("nexus_screen_share_quality") ?? "standard") as ScreenShareQuality;
     const [selected, setSelected] = useState<ScreenShareQuality>(currentKey);
-    const [showNativePicker, setShowNativePicker] = useState(false);
 
     useClickOutside(panelRef, onFinished);
     useEscapeKey(onFinished);
 
     const onStartShare = useCallback(() => {
         SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selected);
-
-        if (isTauri()) {
-            // Show native picker overlay (replaces this panel)
-            setShowNativePicker(true);
-        } else {
-            // Browser: close panel FIRST, then start screen share.
-            onFinished();
-            const conn = NexusVoiceStore.instance.getActiveConnection();
-            conn?.startScreenShare().catch((e) => logger.warn("Failed to start screen share", e));
-        }
+        // Browser only — close panel, then start screen share
+        onFinished();
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        conn?.startScreenShare().catch((e) => logger.warn("Failed to start screen share", e));
     }, [selected, onFinished]);
 
     const onNativePickerSelect = useCallback(
         (targetId: string, fps: number, captureAudio: boolean) => {
-            setShowNativePicker(false);
             onFinished();
             const conn = NexusVoiceStore.instance.getActiveConnection();
             conn?.startNativeScreenShare(targetId, fps, captureAudio).catch((e) =>
@@ -113,10 +104,6 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
         },
         [onFinished],
     );
-
-    const onNativePickerCancel = useCallback(() => {
-        setShowNativePicker(false);
-    }, []);
 
     const onStopShare = useCallback(() => {
         onFinished();
@@ -137,30 +124,27 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
 
     // Tauri + currently sharing → show picker in switch mode
     if (isScreenSharing && isTauri()) {
-        const preset = SCREEN_SHARE_PRESETS[selected];
         return (
             <NexusScreenSharePicker
                 onSelect={(targetId) => onSwitchTarget(targetId)}
                 onCancel={onFinished}
                 onStop={onStopShare}
-                defaultFps={preset.fps}
                 mode="switch"
             />
         );
     }
 
-    // If native picker is shown, render that instead
-    if (showNativePicker) {
-        const preset = SCREEN_SHARE_PRESETS[selected];
+    // Tauri + not sharing → show picker directly (presets are integrated)
+    if (!isScreenSharing && isTauri()) {
         return (
             <NexusScreenSharePicker
                 onSelect={onNativePickerSelect}
-                onCancel={onNativePickerCancel}
-                defaultFps={preset.fps}
+                onCancel={onFinished}
             />
         );
     }
 
+    // Browser → preset panel
     return ReactDOM.createPortal(
         <div
             className="nx_ScreenSharePanel"
@@ -197,7 +181,7 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
                 })}
             </div>
 
-            {!isScreenSharing && !isTauri() && (
+            {!isScreenSharing && (
                 <div className="nx_ScreenSharePanel_notice">
                     ブラウザ版では音声は共有されません
                 </div>

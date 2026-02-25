@@ -196,6 +196,48 @@ button.nx_ScreenSharePicker_item--selected {
     color: var(--cpd-color-text-secondary);
 }
 
+/* ─── Quality presets (start mode) ─────────────────────────────────── */
+.nx_ScreenSharePicker_presets {
+    display: flex;
+    gap: 8px;
+    padding: 12px 24px;
+    border-top: 1px solid var(--cpd-color-border-interactive-secondary);
+}
+
+button.nx_ScreenSharePicker_preset {
+    flex: 1;
+    appearance: none;
+    border: 2px solid var(--cpd-color-border-interactive-secondary);
+    background: var(--cpd-color-bg-subtle-primary);
+    border-radius: 8px;
+    padding: 8px 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+
+    &:hover {
+        border-color: var(--cpd-color-border-interactive-hovered);
+    }
+}
+
+button.nx_ScreenSharePicker_preset--selected {
+    border-color: var(--cpd-color-bg-success-primary);
+    background-color: color-mix(in srgb, var(--cpd-color-bg-success-primary) 12%, transparent);
+}
+
+.nx_ScreenSharePicker_presetLabel {
+    font: var(--cpd-font-body-sm-semibold);
+    color: var(--cpd-color-text-primary);
+}
+
+.nx_ScreenSharePicker_presetDesc {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-secondary);
+}
+
 /* ─── Footer ───────────────────────────────────────────────────────── */
 .nx_ScreenSharePicker_footer {
     display: flex;
@@ -252,5 +294,10 @@ button.nx_ScreenSharePicker_button--cancel {
 
 button.nx_ScreenSharePicker_button--primary {
     background-color: var(--cpd-color-bg-success-primary, #1a8917);
+    color: #fff;
+}
+
+button.nx_ScreenSharePicker_button--danger {
+    background-color: var(--cpd-color-bg-critical-primary, #d63031);
     color: #fff;
 }

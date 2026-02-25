@@ -10,7 +10,16 @@ import ReactDOM from "react-dom";
 import classNames from "classnames";
 import { logger as rootLogger } from "matrix-js-sdk/src/logger";
 
+import SettingsStore from "../../../settings/SettingsStore";
+import { SettingLevel } from "../../../settings/SettingLevel";
+import {
+    SCREEN_SHARE_PRESETS,
+    type ScreenShareQuality,
+} from "../../../models/NexusVoiceConnection";
+
 const logger = rootLogger.getChild("NexusScreenSharePicker");
+
+const PRESET_KEYS: ScreenShareQuality[] = ["low", "standard", "high", "ultra"];
 
 /** Matches the Rust CaptureTarget struct from capture.rs */
 interface CaptureTarget {
@@ -27,12 +36,10 @@ interface CaptureTarget {
 type PickerTab = "window" | "monitor";
 
 interface NexusScreenSharePickerProps {
-    /** Called when user selects a target and clicks "共有を開始" / "変更" */
+    /** Called when user selects a target and confirms */
     onSelect: (targetId: string, fps: number, captureAudio: boolean) => void;
     /** Called when user cancels */
     onCancel: () => void;
-    /** Default FPS from screen share quality preset */
-    defaultFps: number;
     /** "start" = new share, "switch" = change target during active share */
     mode?: "start" | "switch";
     /** Called when user clicks "共有を停止" (switch mode only) */
@@ -41,13 +48,14 @@ interface NexusScreenSharePickerProps {
 
 /**
  * Discord-style screen share picker for Tauri native capture.
- * Shows a modal with tabs for "画面" (monitors) and "ウィンドウ" (windows),
+ * Shows a modal with tabs for "アプリ" (windows) and "画面全体" (monitors),
  * each displaying selectable thumbnails.
+ *
+ * In "start" mode, also shows quality presets and audio toggle.
  */
 export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker({
     onSelect,
     onCancel,
-    defaultFps,
     mode = "start",
     onStop,
 }: NexusScreenSharePickerProps): JSX.Element {
@@ -58,6 +66,12 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
     const [activeTab, setActiveTab] = useState<PickerTab>("window");
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [captureAudio, setCaptureAudio] = useState(true);
+
+    // Quality preset state (read from settings, saved on confirm)
+    const currentPresetKey = (SettingsStore.getValue("nexus_screen_share_quality") ?? "standard") as ScreenShareQuality;
+    const [selectedPreset, setSelectedPreset] = useState<ScreenShareQuality>(currentPresetKey);
+
+    const isSwitch = mode === "switch";
 
     // Fetch targets on mount
     useEffect(() => {
@@ -120,16 +134,23 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
         [onCancel],
     );
 
-    const onStart = useCallback(() => {
-        if (!selectedId) return;
-        onSelect(selectedId, defaultFps, captureAudio);
-    }, [selectedId, defaultFps, captureAudio, onSelect]);
+    /** Confirm selection — saves preset (start mode) and calls onSelect. */
+    const onConfirm = useCallback(
+        (overrideTargetId?: string) => {
+            const id = overrideTargetId ?? selectedId;
+            if (!id) return;
+            const preset = SCREEN_SHARE_PRESETS[selectedPreset];
+            if (!isSwitch) {
+                SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selectedPreset);
+            }
+            onSelect(id, preset.fps, captureAudio);
+        },
+        [selectedId, selectedPreset, captureAudio, onSelect, isSwitch],
+    );
 
     const windows = targets.filter((t) => t.target_type === "window");
     const monitors = targets.filter((t) => t.target_type === "monitor");
     const visibleTargets = activeTab === "window" ? windows : monitors;
-
-    const isSwitch = mode === "switch";
 
     return ReactDOM.createPortal(
         <div className="nx_ScreenSharePicker_overlay" ref={overlayRef} onClick={onOverlayClick}>
@@ -200,7 +221,7 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                                     onClick={() => setSelectedId(target.id)}
                                     onDoubleClick={() => {
                                         setSelectedId(target.id);
-                                        onSelect(target.id, defaultFps, captureAudio);
+                                        onConfirm(target.id);
                                     }}
                                 >
                                     <div className="nx_ScreenSharePicker_thumbnail">
@@ -240,41 +261,82 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                     )}
                 </div>
 
+                {/* Quality presets — start mode only */}
+                {!isSwitch && (
+                    <div className="nx_ScreenSharePicker_presets">
+                        {PRESET_KEYS.map((key) => {
+                            const preset = SCREEN_SHARE_PRESETS[key];
+                            return (
+                                <button
+                                    key={key}
+                                    className={classNames("nx_ScreenSharePicker_preset", {
+                                        "nx_ScreenSharePicker_preset--selected": selectedPreset === key,
+                                    })}
+                                    onClick={() => setSelectedPreset(key)}
+                                >
+                                    <span className="nx_ScreenSharePicker_presetLabel">{preset.label}</span>
+                                    <span className="nx_ScreenSharePicker_presetDesc">{preset.description}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
                 {/* Footer */}
                 <div className="nx_ScreenSharePicker_footer">
-                    {!isSwitch && (
-                        <label className="nx_ScreenSharePicker_audioToggle">
-                            <input
-                                type="checkbox"
-                                checked={captureAudio}
-                                onChange={(e) => setCaptureAudio(e.target.checked)}
-                            />
-                            <span>音声も共有する</span>
-                        </label>
-                    )}
-                    <div className="nx_ScreenSharePicker_actions">
-                        {isSwitch && onStop && (
+                    {isSwitch ? (
+                        <>
+                            <div className="nx_ScreenSharePicker_actions">
+                                {onStop && (
+                                    <button
+                                        className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--danger"
+                                        onClick={onStop}
+                                    >
+                                        共有を停止
+                                    </button>
+                                )}
+                                <button
+                                    className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--primary"
+                                    onClick={() => onConfirm()}
+                                    disabled={!selectedId}
+                                >
+                                    変更
+                                </button>
+                            </div>
                             <button
-                                className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--danger"
-                                onClick={onStop}
+                                className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--cancel"
+                                onClick={onCancel}
                             >
-                                共有を停止
+                                キャンセル
                             </button>
-                        )}
-                        <button
-                            className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--cancel"
-                            onClick={onCancel}
-                        >
-                            キャンセル
-                        </button>
-                        <button
-                            className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--primary"
-                            onClick={onStart}
-                            disabled={!selectedId}
-                        >
-                            {isSwitch ? "変更" : "共有を開始"}
-                        </button>
-                    </div>
+                        </>
+                    ) : (
+                        <>
+                            <label className="nx_ScreenSharePicker_audioToggle">
+                                <input
+                                    type="checkbox"
+                                    checked={captureAudio}
+                                    onChange={(e) => setCaptureAudio(e.target.checked)}
+                                />
+                                <span>音声も共有する</span>
+                            </label>
+                            <div className="nx_ScreenSharePicker_actions">
+                                <button
+                                    className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--cancel"
+                                    onClick={onCancel}
+                                >
+                                    キャンセル
+                                </button>
+                                <button
+                                    className="nx_ScreenSharePicker_button nx_ScreenSharePicker_button--primary"
+                                    onClick={() => onConfirm()}
+                                    disabled={!selectedId}
+                                >
+                                    共有を開始
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>,
