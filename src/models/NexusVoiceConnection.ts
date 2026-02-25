@@ -176,6 +176,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private static readonly VOICE_GATE_RAMP_SEC = 0.02;
     private participantRetryTimer: ReturnType<typeof setInterval> | null = null;
 
+    // ─── OpenID token cache ────────────────────────────────────
+    // Shared across instances — avoids redundant matrix.org round-trips on reconnect.
+    private static openIdTokenCache: { token: any; expiresAt: number } | null = null;
+
     // ─── Volume persistence keys ──────────────────────────────
     private static readonly PARTICIPANT_VOLUMES_KEY = "nexus_participant_volumes";
     private static readonly SCREENSHARE_VOLUMES_KEY = "nexus_screenshare_volumes";
@@ -290,7 +294,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             ]);
             this.localAudioTrack = audioTrack;
 
-            // ── Phase 3: Connect to LiveKit (requires JWT) ───────────
+            // ── Phase 3+4: Connect to LiveKit & build pipeline in parallel ──
+            // Pipeline construction only needs audioContext + audioTrack (both
+            // ready), so it runs concurrently with the WebSocket + ICE/DTLS
+            // handshake to shave ~50-100ms off the total connection time.
             this.livekitRoom = new LivekitRoom();
             this.livekitRoom.on(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
             this.livekitRoom.on(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
@@ -300,53 +307,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             this.livekitRoom.on(LivekitRoomEvent.DataReceived, this.onDataReceived);
+
+            const pipelinePromise = this.buildInputPipeline(audioTrack, ncEnabled);
             await this.livekitRoom.connect(url, jwt);
+            const processedTrack = await pipelinePromise;
 
-            // ── Phase 4: Build input pipeline ────────────────────────
-            // Audio pipeline:
-            //   source → [RNNoise] → HPF → compressor → analyser + inputGain → dest
-
-            this.sourceNode = this.audioContext.createMediaStreamSource(
-                new MediaStream([this.localAudioTrack.mediaStreamTrack]),
-            );
-
-            // High-pass filter — removes low-frequency noise (AC hum, rumble, pops)
-            this.highPassFilter = this.audioContext.createBiquadFilter();
-            this.highPassFilter.type = "highpass";
-            this.highPassFilter.frequency.value = 80;
-            this.highPassFilter.Q.value = 0.7;
-
-            // Compressor — evens out volume, prevents clipping on loud input
-            this.compressorNode = this.audioContext.createDynamicsCompressor();
-            this.compressorNode.threshold.value = -24;
-            this.compressorNode.knee.value = 12;
-            this.compressorNode.ratio.value = 4;
-            this.compressorNode.attack.value = 0.003;
-            this.compressorNode.release.value = 0.25;
-
-            // AnalyserNode — monitors input level
-            this.analyserNode = this.audioContext.createAnalyser();
-            this.analyserNode.fftSize = 256;
-
-            // Input GainNode — adjusts input volume before sending to LiveKit
-            // Start muted — unmutePipelines() restores the real volume.
-            this.inputGainNode = this.audioContext.createGain();
-            this.inputGainNode.gain.value = 0;
-
-            // Insert RNNoise if enabled and sample rate is 48kHz
-            // (WASM binary is already preloaded from Phase 1)
-            if (ncEnabled && this.audioContext.sampleRate === 48000) {
-                await this.setupRnnoiseNode();
-            }
-
-            // Connect the pipeline chain:
-            // source → [rnnoise] → HPF → compressor → analyser + inputGain → dest
-            this.connectInputPipeline();
-
-            // Create processed stream and publish that instead of raw mic
-            const dest = this.audioContext.createMediaStreamDestination();
-            this.inputGainNode.connect(dest);
-            const processedTrack = dest.stream.getAudioTracks()[0];
             // Publish with optimized Opus settings
             await this.livekitRoom.localParticipant.publishTrack(processedTrack, {
                 source: Track.Source.Microphone,
@@ -1035,6 +1000,58 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
+     * Build the full input audio pipeline and return the processed MediaStreamTrack.
+     * Runs in parallel with livekitRoom.connect() — only needs audioContext
+     * and localAudioTrack, both of which are ready before connect() starts.
+     *
+     * Pipeline: source → [RNNoise] → HPF → compressor → analyser + inputGain → dest
+     */
+    private async buildInputPipeline(audioTrack: LocalAudioTrack, ncEnabled: boolean): Promise<MediaStreamTrack> {
+        if (!this.audioContext) throw new Error("AudioContext not initialized");
+
+        this.sourceNode = this.audioContext.createMediaStreamSource(
+            new MediaStream([audioTrack.mediaStreamTrack]),
+        );
+
+        // High-pass filter — removes low-frequency noise (AC hum, rumble, pops)
+        this.highPassFilter = this.audioContext.createBiquadFilter();
+        this.highPassFilter.type = "highpass";
+        this.highPassFilter.frequency.value = 80;
+        this.highPassFilter.Q.value = 0.7;
+
+        // Compressor — evens out volume, prevents clipping on loud input
+        this.compressorNode = this.audioContext.createDynamicsCompressor();
+        this.compressorNode.threshold.value = -24;
+        this.compressorNode.knee.value = 12;
+        this.compressorNode.ratio.value = 4;
+        this.compressorNode.attack.value = 0.003;
+        this.compressorNode.release.value = 0.25;
+
+        // AnalyserNode — monitors input level
+        this.analyserNode = this.audioContext.createAnalyser();
+        this.analyserNode.fftSize = 256;
+
+        // Input GainNode — adjusts input volume before sending to LiveKit
+        // Start muted — unmutePipelines() restores the real volume.
+        this.inputGainNode = this.audioContext.createGain();
+        this.inputGainNode.gain.value = 0;
+
+        // Insert RNNoise if enabled and sample rate is 48kHz
+        // (WASM binary is already preloaded from Phase 1)
+        if (ncEnabled && this.audioContext.sampleRate === 48000) {
+            await this.setupRnnoiseNode();
+        }
+
+        // Connect the pipeline chain
+        this.connectInputPipeline();
+
+        // Create processed stream destination
+        const dest = this.audioContext.createMediaStreamDestination();
+        this.inputGainNode.connect(dest);
+        return dest.stream.getAudioTracks()[0];
+    }
+
+    /**
      * Connect the input audio pipeline chain:
      *   source → [rnnoise] → HPF → compressor → analyser + inputGain
      */
@@ -1190,8 +1207,26 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Private: JWT ────────────────────────────────────────
 
+    /**
+     * Return a cached OpenID token, fetching a fresh one only when the
+     * cache is empty or expired. Saves ~100-200ms on reconnect by
+     * skipping the round-trip to matrix.org.
+     */
+    private async getCachedOpenIdToken(): Promise<any> {
+        const now = Date.now();
+        if (NexusVoiceConnection.openIdTokenCache && now < NexusVoiceConnection.openIdTokenCache.expiresAt) {
+            return NexusVoiceConnection.openIdTokenCache.token;
+        }
+        const token = await this.client.getOpenIdToken();
+        // expires_in is in seconds. Cache for 80% of the lifetime to avoid
+        // edge-case expiry during the JWT request itself.
+        const expiresIn = (token.expires_in ?? 3600) * 0.8 * 1000;
+        NexusVoiceConnection.openIdTokenCache = { token, expiresAt: now + expiresIn };
+        return token;
+    }
+
     private async getJwt(): Promise<LivekitTokenResponse> {
-        const openIdToken = await this.client.getOpenIdToken();
+        const openIdToken = await this.getCachedOpenIdToken();
         const body = {
             room: this.room.roomId,
             openid_token: openIdToken,
