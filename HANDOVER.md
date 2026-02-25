@@ -2,26 +2,30 @@
 
 ## 現在の状態
 
-### 直近の作業（2026-02-25）
+### 直近の作業（2026-02-28）
 
-**VC 接続・切断の高速化**
-- **パイプライン並列化** (`a2b8266`): `buildInputPipeline()` を `livekitRoom.connect()` と並列実行（~50-100ms 短縮）
-- **OpenID キャッシュ** (`a2b8266`): `getCachedOpenIdToken()` で再接続時の matrix.org RTT 省略（~100-200ms 短縮）
-- **起動時プリフェッチ** (`0845fde`): `prefetch()` でログイン後に RNNoise WASM + OpenID トークンを先行取得。初回接続の cold-start 排除
-- **切断即時化** (`39b2570`): `leaveRoomSession()` + `livekitRoom.disconnect()` を fire-and-forget。ローカル処理のみ同期で即 Disconnected
-- **結果**: 接続 ~600ms（初回・再接続とも）、切断は体感即座
+**画面共有: ターゲット動的切替 + ピッカー改善**
+- **`switch_capture_target` Rust コマンド**: 配信中に WGC キャプチャ対象を切替（WASAPI 音声はそのまま）
+- **ピッカー リアルタイム更新**: 2秒ポーリングでウィンドウリスト・サムネイル更新
+- **品質プリセット統合**: ピッカー内に4段階プリセット行（プリセットパネル廃止）
+- **切替モード**: `mode="switch"` — [共有を停止(赤)] [変更] / [キャンセル]
+- **コントロールバー分岐**: Tauri 配信中→ピッカー / ブラウザ配信中→即停止
 
-**過去: 自前 LiveKit SFU セットアップ完了**
-- VPS（lche2.xvps.jp）に Docker で LiveKit SFU を構築
-- 3コンテナ: livekit-server + lk-jwt-service + nginx（TLS終端）
-- ポート: 7880(WSS), 7881(TCP TURN), 7882(UDP WebRTC), 7891(HTTPS JWT)
-- ブラウザ版（Firefox同士）で自前SFU経由の音声通話動作確認済み
+**VC バグ修正**
+- **ミュート状態の後参加者共有**: 新規参加者接続時に 500ms 遅延で再ブロードキャスト
+- **参加者リスト ログイン後表示**: LiveKit identity から userId を直接パース（`room.getMember()` 不要に）
+- **Tauri 音量制御**: `createMediaElementSource` → `createMediaStreamSource` に切替（WebView2 対応）
+
+**過去の主要マイルストーン**
+- 自前 LiveKit SFU (lche2.xvps.jp) 構築完了
+- VC 接続高速化（~600ms、切断即座）
+- ネイティブ画面キャプチャ（WGC + WASAPI）実装完了
 
 ### 未解決・次回やること
 
-1. **アプリ版（Tauri）を最新ビルドでテスト** — `git pull && pnpm tauri:dev` で自前SFUに接続するか確認。古いビルドでは Element の SFU (matrix-org.livekit.cloud) に繋いでいたため、ブラウザ版と混在できなかった
-2. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
-3. **ネイティブ画面キャプチャ（DXGI + WASAPI）** — 計画は `docs/native-capture-plan.md` に記載。3段階で段階的に実装予定（前回一気にやって失敗→revert済み）
+1. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
+2. **WASAPI プロセス除外** — 画面共有音声から VC の音声をループバック防止（Step 3）
+3. **システムトレイ常駐** — 閉じてもバックグラウンド動作
 
 ---
 
@@ -114,9 +118,11 @@ getUserMedia → LocalAudioTrack
 - ミュートは `inputGainNode.gain.value = 0`（LiveKit の track.mute() は使わない — Firefox で壊れるため）
 
 ### 出力（リモート音声）
-- per-participant `<audio>` 要素で再生（Chrome は remote WebRTC audio を AudioNode 経由でルーティング不可）
+- per-participant `<audio>` 要素 + Web Audio API で再生
 - ブラウザ: `audio.volume` で音量制御（0-1）
-- Tauri: `createMediaElementSource(audio)` → per-participant GainNode → outputMasterGain(0-2.0) → destination（>100% 増幅対応）
+- Tauri: `createMediaStreamSource(MediaStream)` → per-participant GainNode → outputMasterGain(0-2.0) → destination（>100% 増幅対応）
+  - `createMediaElementSource` は WebView2 で audio 要素の出力を正しくリダイレクトしないため不採用
+  - audio 要素は `volume=0` でシステム出力を抑制、`play()` で MediaStream を alive に保持
 
 ### 画面共有
 - `getDisplayMedia()` 直接呼出し（createLocalScreenTracks だと音声失敗時に全体中止）

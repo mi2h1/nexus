@@ -78,11 +78,16 @@ nexus/                          # element-web フォーク
 | Tauri 2 基本セットアップ | `src-tauri/` — Rust バックエンド + `tauri.conf.json` |
 | TauriPlatform | `WebPlatform` 継承 + 自動更新（`tauri-plugin-updater`） |
 | CORS バイパス | Tauri 時は `tauri-plugin-http` で直接 JWT 取得（プロキシ不要） |
-| >100% ボリューム | `createMediaElementSource()` → per-participant `GainNode` → master `GainNode`(0-2.0) |
+| >100% ボリューム | `createMediaStreamSource()` → per-participant `GainNode` → master `GainNode`(0-2.0) |
 | CI/CD | `tauri-release.yml` — `v*` タグで Windows ビルド + GitHub Release |
 | webpack ポート固定 | devServer port 1420（Tauri devUrl 互換） |
 | プラットフォーム検出 | `window.__TAURI_INTERNALS__` → `TauriPlatform` 自動選択 |
 | ログイン画面修正 | ロゴ白色化 + 「Nexusにようこそ」テキスト |
+| ネイティブ画面キャプチャ | WGC + WASAPI — カスタムピッカー + 音声キャプチャ |
+| 画面共有ターゲット切替 | `switch_capture_target` — 配信中のウィンドウ切替（Discord 同等） |
+| 画面共有ピッカー リアルタイム更新 | 2秒ポーリングでウィンドウリスト・サムネイル更新 |
+| 画面共有 品質プリセット統合 | ピッカー内に4段階プリセット（480p15/720p30/1080p30/1080p60） |
+| 音量制御修正 | `createMediaStreamSource` で Web Audio ルーティング（WebView2 対応） |
 
 ### ロードマップ
 
@@ -105,8 +110,9 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 
 | 施策 | 難易度 | 効果 | 状態 | 詳細 |
 |------|--------|------|------|------|
-| ネイティブ画面キャプチャ Step 1 | 高 | 共有バー消去、カスタムピッカー | 未着手 | [native-capture-plan.md](native-capture-plan.md) |
-| ネイティブ画面キャプチャ Step 2 | 高 | 画面共有に音声追加 | 未着手 | WASAPI 通常ループバック |
+| ネイティブ画面キャプチャ Step 1 | 高 | 共有バー消去、カスタムピッカー | ✅ 完了 | WGC + WASAPI + カスタムピッカー |
+| ネイティブ画面キャプチャ Step 2 | 高 | 画面共有に音声追加 | ✅ 完了 | WASAPI 通常ループバック |
+| 配信中ターゲット切替 | 中 | Discord 同等のウィンドウ切替 | ✅ 完了 | `switch_capture_target` Rust コマンド |
 | ネイティブ画面キャプチャ Step 3 | 高 | VC 声のループ防止 | 未着手 | WASAPI プロセス除外 |
 | システムトレイ常駐 | 低 | 閉じてもバックグラウンド動作 | 未着手 | `TrayIconBuilder` API |
 | Windows 自動音量低下バイパス | 中 | 通話中に他アプリの音量が下がらない | 未着手 | Windows API auto-ducking 無効化 |
@@ -206,6 +212,38 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - ローカルのオーディオ停止・ノード切断は同期で完了するため、UI は即座に Disconnected に遷移
   - MatrixRTC 離脱と WebSocket close はバックグラウンドで処理（失敗時は membership 自然タイムアウト + `clean()` で掃除）
 - **合計効果**: 接続 ~600ms（初回も再接続も）、切断は体感即座
+
+#### 2026-02-28 (画面共有ターゲット切替 + VC バグ修正)
+- **pnpm 403 エラー修正（CI）**: `pnpm/action-setup@v4` に `standalone: true` を追加
+  - npm レジストリからの fetch で 403 になる Windows ランナーの問題を回避
+  - 全ワークフロー（tauri-check, tauri-release, pages）に適用
+- **Rust `switch_capture_target` コマンド**: 配信中に画面キャプチャ対象を切替（Discord デスクトップ同等）
+  - WGC キャプチャのみ停止→再開始（WASAPI 音声はシステム全体なので再起動不要）
+  - `start_wgc_capture()` ヘルパーに抽出して `start_capture` と共有
+- **画面共有ピッカー リアルタイム更新**: 2秒ポーリングで `enumerate_capture_targets` を再取得
+  - ウィンドウリスト・サムネイルがピッカー表示中に自動更新
+  - 選択中のアイテムが消えた場合は選択をリセット
+- **画面共有ピッカー: 品質プリセット統合**: ピッカー内にプリセット行（480p15/720p30/1080p30/1080p60）を追加
+  - プリセットパネル（`NexusScreenSharePanel`）をスキップし、ピッカー直接表示に変更
+  - 選択したプリセットは SettingsStore に永続化
+- **画面共有ピッカー: 切替モード**: `mode="switch"` でボタンレイアウト変更
+  - 左: [共有を停止(赤)] [変更]、右: [キャンセル]
+  - 音声トグル非表示（音声は切替で変わらないため）
+- **コントロールバー配信ボタン分岐**: Tauri 配信中はピッカー表示 / ブラウザ配信中は即停止 / 未配信はピッカー表示
+- **ミュート状態の後参加者への共有修正**: VC に後から参加した人にミュート状態が見えない問題を修正
+  - 新規参加者接続時に自身のミュート状態を500ms遅延で再ブロードキャスト
+  - 自身の接続完了時にも初期ミュート状態をブロードキャスト
+- **VC 参加者リスト ログイン後表示修正**: ログイン後に一部参加者が表示されない問題を修正
+  - 原因: `resolveIdentityToUserId()` が `room.getMember()` に依存、/sync 完了前は null
+  - 修正: LiveKit identity 文字列 (`@user:server:device_id`) から userId を直接パース
+  - `_participants` マップのキーを `RoomMember` → `string`(userId) に変更
+  - `useVCParticipants` に `RoomStateEvent.Members` リスナー追加（/sync 完了時に RoomMember を遅延解決）
+  - `VoiceChannelParticipants` で null member をプレースホルダーアバター表示に対応
+- **Tauri 音量制御修正**: マスター音量・個別音量が効かない問題を修正
+  - 原因: `createMediaElementSource()` が WebView2 で audio 要素の出力を Web Audio API に正しくリダイレクトしない
+  - 修正: `createMediaStreamSource(MediaStream)` に切替（livekit-client の webAudioMix と同じアプローチ）
+  - audio 要素は `volume=0` でシステム出力を抑制、MediaStream を直接 AudioContext に接続
+  - 参加者音声と画面共有音声の両パスを統一
 
 #### 2026-02-27
 - **画面共有 PiP**: VC ルーム外で視聴中のリモート画面共有を PiP ウィンドウで表示
