@@ -152,7 +152,7 @@ Phase 5: publishTrack(processedTrack)
 - Phase 1（環境構築）: ✅ 完了
 - Phase 2（Discord風UIカスタマイズ）: ✅ 完了
 - Phase 2.5（通話機能内包）: ✅ 完了
-- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.3）
+- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.4）
 - 自前 SFU: ✅ 構築完了、ブラウザ版動作確認済み
 
 ### ロードマップ
@@ -167,6 +167,15 @@ Phase 5: publishTrack(processedTrack)
 - **tsc --noEmit** には `NODE_OPTIONS="--max-old-space-size=4096"` 必要
 - **ブランチ**: main のみ（upstream/develop で element-web 追跡）
 - **破壊的変更は事前確認** — 影響範囲と代替案を提示
+
+### Tauri リリース手順
+
+1. `src-tauri/tauri.conf.json` と `src-tauri/Cargo.toml` の `version` をバンプ
+2. コミット → `git tag vX.Y.Z` → `git push && git push origin vX.Y.Z`
+3. GitHub Actions `tauri-release` が自動でビルド → GitHub Release 作成
+4. アプリの自動更新が `latest.json` を参照して新バージョンを検出 → ダウンロード＆再起動
+
+**重要**: `tauri.conf.json` の version がそのまま `latest.json` の version と exe ファイル名に使われる。タグだけ打って version を上げ忘れると自動更新が動かない。
 - **Discord Docs 参照** — 真似できる部分、超えられる部分は積極的に実装
 
 ---

@@ -79,7 +79,8 @@ nexus/                          # element-web フォーク
 | TauriPlatform | `WebPlatform` 継承 + 自動更新（`tauri-plugin-updater`） |
 | CORS バイパス | Tauri 時は `tauri-plugin-http` で直接 JWT 取得（プロキシ不要） |
 | >100% ボリューム | `createMediaStreamSource()` → per-participant `GainNode` → master `GainNode`(0-2.0) |
-| CI/CD | `tauri-release.yml` — `v*` タグで Windows ビルド + GitHub Release |
+| CI/CD | `tauri-release.yml` — `v*` タグで Windows ビルド + GitHub Release + 自動更新 |
+| 自動更新 | `tauri-plugin-updater` — 起動時 + 30分ポーリングで `latest.json` チェック → ダウンロード＆再起動 |
 | webpack ポート固定 | devServer port 1420（Tauri devUrl 互換） |
 | プラットフォーム検出 | `window.__TAURI_INTERNALS__` → `TauriPlatform` 自動選択 |
 | ログイン画面修正 | ロゴ白色化 + 「Nexusにようこそ」テキスト |
@@ -244,6 +245,10 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - 修正: `createMediaStreamSource(MediaStream)` に切替（livekit-client の webAudioMix と同じアプローチ）
   - audio 要素は `volume=0` でシステム出力を抑制、MediaStream を直接 AudioContext に接続
   - 参加者音声と画面共有音声の両パスを統一
+- **自動更新バージョン修正**: `tauri.conf.json` と `Cargo.toml` の version を `0.1.4` に統一
+  - 過去リリース（v0.1.0〜v0.1.3）は全て `latest.json` の version が `0.1.0` のままで自動更新が機能していなかった
+  - 原因: `tauri.conf.json` の version をタグに合わせて更新していなかった
+  - v0.1.4 以降は正しくバージョン比較され、自動更新が動作する
 
 #### 2026-02-27
 - **画面共有 PiP**: VC ルーム外で視聴中のリモート画面共有を PiP ウィンドウで表示
