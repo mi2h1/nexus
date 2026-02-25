@@ -350,13 +350,11 @@ mod platform {
         pixels
     }
 
-    /// Capture a window thumbnail using PrintWindow.
+    /// Capture a window thumbnail by StretchBlt from the desktop DC at the window's screen rect.
     fn capture_window_thumbnail(hwnd_val: isize) -> (String, u32, u32) {
         use windows::Win32::Foundation::{HWND, RECT};
         use windows::Win32::Graphics::Gdi::*;
-        use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowRect, IsIconic, PrintWindow, PRINT_WINDOW_FLAGS,
-        };
+        use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsIconic};
 
         unsafe {
             let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
@@ -378,44 +376,35 @@ mod platform {
 
             let (tw, th) = thumb_size(w, h);
 
-            let hdc_desktop = GetDC(None);
-            if hdc_desktop.is_invalid() {
+            let hdc_screen = GetDC(HWND::default());
+            if hdc_screen.is_invalid() {
                 return (String::new(), w, h);
             }
 
-            // Full-size capture
-            let hdc_full = CreateCompatibleDC(Some(hdc_desktop));
-            let hbm_full = CreateCompatibleBitmap(hdc_desktop, w as i32, h as i32);
-            SelectObject(hdc_full.0, HGDIOBJ(hbm_full.0));
+            // Create thumbnail DC and bitmap
+            let hdc_thumb = CreateCompatibleDC(hdc_screen);
+            let hbm_thumb = CreateCompatibleBitmap(hdc_screen, tw as i32, th as i32);
+            SelectObject(hdc_thumb, HGDIOBJ(hbm_thumb.0));
 
-            let _ = PrintWindow(hwnd, hdc_full.0, PRINT_WINDOW_FLAGS(2));
-
-            // Resize to thumbnail
-            let hdc_thumb = CreateCompatibleDC(Some(hdc_desktop));
-            let hbm_thumb = CreateCompatibleBitmap(hdc_desktop, tw as i32, th as i32);
-            SelectObject(hdc_thumb.0, HGDIOBJ(hbm_thumb.0));
-
-            SetStretchBltMode(hdc_thumb.0, HALFTONE);
+            SetStretchBltMode(hdc_thumb, HALFTONE);
             let _ = StretchBlt(
-                hdc_thumb.0, 0, 0, tw as i32, th as i32,
-                hdc_full.0, 0, 0, w as i32, h as i32,
+                hdc_thumb, 0, 0, tw as i32, th as i32,
+                hdc_screen, rect.left, rect.top, w as i32, h as i32,
                 SRCCOPY,
             );
 
-            let pixels = read_bitmap_pixels(hdc_thumb.0, hbm_thumb, tw, th);
+            let pixels = read_bitmap_pixels(hdc_thumb, hbm_thumb, tw, th);
 
             // Cleanup
             let _ = DeleteDC(hdc_thumb);
             let _ = DeleteObject(HGDIOBJ(hbm_thumb.0));
-            let _ = DeleteDC(hdc_full);
-            let _ = DeleteObject(HGDIOBJ(hbm_full.0));
-            ReleaseDC(None, hdc_desktop);
+            ReleaseDC(HWND::default(), hdc_screen);
 
             (bgra_to_jpeg_base64(&pixels, tw, th), w, h)
         }
     }
 
-    /// Capture a monitor thumbnail using CreateDCW + BitBlt.
+    /// Capture a monitor thumbnail using CreateDCW + StretchBlt.
     fn capture_monitor_thumbnail(device_name: &str) -> String {
         use windows::Win32::Graphics::Gdi::*;
         use windows::core::PCWSTR;
@@ -429,12 +418,12 @@ mod platform {
                 PCWSTR(std::ptr::null()),
                 None,
             );
-            if hdc_monitor.0.is_invalid() {
+            if hdc_monitor.is_invalid() {
                 return String::new();
             }
 
-            let w = GetDeviceCaps(hdc_monitor.0, HORZRES) as u32;
-            let h = GetDeviceCaps(hdc_monitor.0, VERTRES) as u32;
+            let w = GetDeviceCaps(hdc_monitor, HORZRES) as u32;
+            let h = GetDeviceCaps(hdc_monitor, VERTRES) as u32;
             if w == 0 || h == 0 {
                 let _ = DeleteDC(hdc_monitor);
                 return String::new();
@@ -442,18 +431,18 @@ mod platform {
 
             let (tw, th) = thumb_size(w, h);
 
-            let hdc_thumb = CreateCompatibleDC(Some(hdc_monitor.0));
-            let hbm_thumb = CreateCompatibleBitmap(hdc_monitor.0, tw as i32, th as i32);
-            SelectObject(hdc_thumb.0, HGDIOBJ(hbm_thumb.0));
+            let hdc_thumb = CreateCompatibleDC(hdc_monitor);
+            let hbm_thumb = CreateCompatibleBitmap(hdc_monitor, tw as i32, th as i32);
+            SelectObject(hdc_thumb, HGDIOBJ(hbm_thumb.0));
 
-            SetStretchBltMode(hdc_thumb.0, HALFTONE);
+            SetStretchBltMode(hdc_thumb, HALFTONE);
             let _ = StretchBlt(
-                hdc_thumb.0, 0, 0, tw as i32, th as i32,
-                hdc_monitor.0, 0, 0, w as i32, h as i32,
+                hdc_thumb, 0, 0, tw as i32, th as i32,
+                hdc_monitor, 0, 0, w as i32, h as i32,
                 SRCCOPY,
             );
 
-            let pixels = read_bitmap_pixels(hdc_thumb.0, hbm_thumb, tw, th);
+            let pixels = read_bitmap_pixels(hdc_thumb, hbm_thumb, tw, th);
 
             let _ = DeleteDC(hdc_thumb);
             let _ = DeleteObject(HGDIOBJ(hbm_thumb.0));
