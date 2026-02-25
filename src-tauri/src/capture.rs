@@ -938,71 +938,42 @@ mod platform {
                 mode_name, pid
             );
 
-            // Step 3: Find a format the process loopback client accepts.
-            // Try IsFormatSupported first to get a closest-match format,
-            // then fall back to trying common formats.
-            let device_fmt_ptr = device_format.as_waveformatex_ref()
-                as *const _ as *const WAVEFORMATEX;
-
-            // Check if device format is supported; get closest match if not
-            let mut closest_match: *mut WAVEFORMATEX = std::ptr::null_mut();
-            let is_supported_hr = client.IsFormatSupported(
-                AUDCLNT_SHAREMODE_SHARED,
-                device_fmt_ptr,
-                Some(&mut closest_match),
-            );
-
-            // IsFormatSupported returns HRESULT directly:
-            // S_OK (0) = supported, S_FALSE (1) = closest match returned
-            let (use_format_ptr, use_sample_rate, use_channels, use_bits) =
-                if is_supported_hr.0 == 0 {
-                    // S_OK
-                    println!("[WASAPI] Device format supported by process loopback client");
-                    (device_fmt_ptr, sample_rate, channels, bits)
-                } else if is_supported_hr.0 == 1 && !closest_match.is_null() {
-                    // S_FALSE with closest match
-                    let sr = (*closest_match).nSamplesPerSec;
-                    let ch = (*closest_match).nChannels as usize;
-                    let b = (*closest_match).wBitsPerSample;
-                    println!(
-                        "[WASAPI] Device format not supported, closest match: {}Hz {}ch {}bit",
-                        sr, ch, b
-                    );
-                    (closest_match as *const WAVEFORMATEX, sr, ch, b)
-                } else {
-                    println!(
-                        "[WASAPI] IsFormatSupported returned 0x{:08X}, trying device format anyway",
-                        is_supported_hr.0 as u32
-                    );
-                    (device_fmt_ptr, sample_rate, channels, bits)
-                };
+            // Step 3: Initialize with PCM stereo format + AUTOCONVERTPCM.
+            // Matches the Microsoft ApplicationLoopback official sample:
+            // LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM + PCM 16bit stereo.
+            // AUTOCONVERTPCM lets Windows convert from the process's actual
+            // output format to our requested format.
+            let capture_fmt = WAVEFORMATEX {
+                wFormatTag: 1, // WAVE_FORMAT_PCM
+                nChannels: 2,
+                nSamplesPerSec: 48000,
+                wBitsPerSample: 16,
+                nBlockAlign: 2 * 16 / 8, // nChannels * wBitsPerSample / 8
+                nAvgBytesPerSec: 48000 * 2 * 16 / 8,
+                cbSize: 0,
+            };
 
             let _ = app.emit(
                 "wasapi-info",
                 format!(
-                    "WASAPI (process-{}, PID={}): {}Hz {}ch {}bit",
-                    mode_name.to_lowercase(), pid, use_sample_rate, use_channels, use_bits
+                    "WASAPI (process-{}, PID={}): {}Hz {}ch {}bit PCM",
+                    mode_name.to_lowercase(), pid, 48000, 2, 16
                 ),
             );
 
-            // LOOPBACK flag is required per Microsoft ApplicationLoopback sample
             let init_flags: u32 = 0x00020000  // AUDCLNT_STREAMFLAGS_LOOPBACK
-                                | 0x00040000; // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
-            let init_result = client.Initialize(
-                AUDCLNT_SHAREMODE_SHARED,
-                init_flags,
-                0,
-                0,
-                use_format_ptr,
-                None,
-            );
-
-            // Free closest_match if it was allocated
-            if !closest_match.is_null() {
-                CoTaskMemFree(Some(closest_match as *const _ as *const std::ffi::c_void));
-            }
-
-            init_result.map_err(|e| format!("Initialize: {}", e))?;
+                                | 0x00040000  // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+                                | 0x80000000; // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+            client
+                .Initialize(
+                    AUDCLNT_SHAREMODE_SHARED,
+                    init_flags,
+                    0,
+                    0,
+                    &capture_fmt as *const WAVEFORMATEX,
+                    None,
+                )
+                .map_err(|e| format!("Initialize: {}", e))?;
 
             // Get capture client and set up event handle
             let capture_client: IAudioCaptureClient = client
@@ -1015,10 +986,10 @@ mod platform {
                 .SetEventHandle(event_handle)
                 .map_err(|e| format!("SetEventHandle: {}", e))?;
 
-            // Use the actual initialized format for the capture loop
-            let cap_channels = use_channels;
-            let cap_bytes_per_sample = (use_bits / 8) as usize;
-            let cap_sample_rate = use_sample_rate;
+            // PCM 16-bit stereo 48kHz for the capture loop
+            let cap_channels = 2usize;
+            let cap_bytes_per_sample = 2usize; // 16-bit = 2 bytes
+            let cap_sample_rate = 48000u32;
 
             // Start the stream
             client.Start().map_err(|e| format!("Start: {}", e))?;
