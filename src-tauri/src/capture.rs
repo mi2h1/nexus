@@ -938,24 +938,49 @@ mod platform {
                 mode_name, pid
             );
 
-            // Step 3: Initialize with the device's native format.
-            // Cast wasapi's WaveFormat pointer to windows crate WAVEFORMATEX pointer
-            // (same C ABI layout — both are #[repr(C)] WAVEFORMATEX/WAVEFORMATEXTENSIBLE).
-            // wasapi's WaveFormat internally wraps windows::Win32::Media::Audio::WAVEFORMATEX,
-            // so we can cast the reference pointer directly.
-            let format_ptr = device_format.as_waveformatex_ref()
-                as *const _ as *const WAVEFORMATEX;
+            // Step 3: Initialize the client.
+            // INCLUDE mode: use stereo 48kHz 32-bit float (process loopback
+            // virtual device rejects multi-channel formats like 7.1ch).
+            // EXCLUDE mode: use the device's native format.
+            let stereo_fmt = WAVEFORMATEX {
+                wFormatTag: 3, // WAVE_FORMAT_IEEE_FLOAT
+                nChannels: 2,
+                nSamplesPerSec: 48000,
+                nAvgBytesPerSec: 48000 * 2 * 4,
+                nBlockAlign: 2 * 4,
+                wBitsPerSample: 32,
+                cbSize: 0,
+            };
+
+            let (format_ptr, init_sample_rate, init_channels, init_bits) = if target_pid > 0 {
+                // INCLUDE mode: stereo format
+                (
+                    &stereo_fmt as *const WAVEFORMATEX,
+                    48000u32,
+                    2usize,
+                    32u16,
+                )
+            } else {
+                // EXCLUDE mode: device native format
+                (
+                    device_format.as_waveformatex_ref()
+                        as *const _ as *const WAVEFORMATEX,
+                    sample_rate,
+                    channels,
+                    bits,
+                )
+            };
 
             let _ = app.emit(
                 "wasapi-info",
                 format!(
                     "WASAPI (process-{}, PID={}): {}Hz {}ch {}bit",
-                    mode_name.to_lowercase(), pid, sample_rate, channels, bits
+                    mode_name.to_lowercase(), pid, init_sample_rate, init_channels, init_bits
                 ),
             );
 
             // Event-driven shared mode with AUTOCONVERTPCM so Windows handles
-            // format conversion (e.g. process outputs stereo but device is 7.1ch).
+            // format conversion between process output and our requested format.
             let init_flags: u32 = 0x00040000  // AUDCLNT_STREAMFLAGS_EVENTCALLBACK
                                 | 0x80000000  // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
                                 | 0x08000000; // AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
@@ -981,9 +1006,17 @@ mod platform {
                 .SetEventHandle(event_handle)
                 .map_err(|e| format!("SetEventHandle: {}", e))?;
 
+            // Use the actual initialized format for the capture loop
+            let cap_channels = init_channels;
+            let cap_bytes_per_sample = (init_bits / 8) as usize;
+            let cap_sample_rate = init_sample_rate;
+
             // Start the stream
             client.Start().map_err(|e| format!("Start: {}", e))?;
-            println!("[WASAPI] Process-excluded loopback capture started");
+            println!(
+                "[WASAPI] Process loopback capture started ({}Hz {}ch {}bit)",
+                cap_sample_rate, cap_channels, init_bits
+            );
 
             // Capture loop
             let mut first_data = true;
@@ -1016,22 +1049,22 @@ mod platform {
                     if first_data {
                         first_data = false;
                         println!(
-                            "[WASAPI] Process-excluded: first {} frames captured",
+                            "[WASAPI] Process loopback: first {} frames captured",
                             frames_available
                         );
                     }
 
-                    let total_samples = frames_available as usize * channels;
-                    let buffer_bytes = total_samples * bytes_per_sample;
+                    let total_samples = frames_available as usize * cap_channels;
+                    let buffer_bytes = total_samples * cap_bytes_per_sample;
                     let raw_data = std::slice::from_raw_parts(buffer_ptr, buffer_bytes);
 
-                    let all_samples = decode_samples(raw_data, bytes_per_sample, total_samples);
+                    let all_samples = decode_samples(raw_data, cap_bytes_per_sample, total_samples);
                     let stereo =
-                        downmix_to_stereo(&all_samples, channels, frames_available as usize);
+                        downmix_to_stereo(&all_samples, cap_channels, frames_available as usize);
 
                     let payload = AudioPayload {
                         data: stereo,
-                        sample_rate: sample_rate,
+                        sample_rate: cap_sample_rate,
                         channels: 2,
                         frames: frames_available,
                     };
