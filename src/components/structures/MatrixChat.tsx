@@ -142,6 +142,7 @@ import Markdown from "../../Markdown";
 import { sanitizeHtmlParams } from "../../Linkify";
 import { isOnlyAdmin } from "../../utils/membership";
 import { ModuleApi } from "../../modules/Api.ts";
+import { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
 
 // legacy export
 export { default as Views } from "../../Views";
@@ -1834,6 +1835,10 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
                 this.onShowPostLoginScreen();
             }
         }
+
+        // Nexus: prefetch VC resources (RNNoise WASM + OpenID token)
+        // so the first voice channel join doesn't pay the cold-start cost.
+        NexusVoiceConnection.prefetch(cli);
     }
 
     public showScreen(screen: string, params?: { [key: string]: any }): void {

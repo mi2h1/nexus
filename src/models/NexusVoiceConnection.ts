@@ -1085,6 +1085,34 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Private: RNNoise setup ──────────────────────────────
 
     /**
+     * Prefetch VC resources at app startup (after login).
+     * Runs in the background — failures are silently ignored.
+     * Warms up: RNNoise WASM binary + OpenID token cache.
+     */
+    public static prefetch(client: MatrixClient): void {
+        // Fire-and-forget — don't block the caller
+        Promise.all([
+            NexusVoiceConnection.preloadRnnoiseWasm(),
+            NexusVoiceConnection.prefetchOpenIdToken(client),
+        ]).catch(() => {});
+    }
+
+    /**
+     * Prefetch and cache the OpenID token so the first VC join
+     * doesn't need to round-trip to matrix.org.
+     */
+    private static async prefetchOpenIdToken(client: MatrixClient): Promise<void> {
+        try {
+            const token = await client.getOpenIdToken();
+            const expiresIn = (token.expires_in ?? 3600) * 0.8 * 1000;
+            NexusVoiceConnection.openIdTokenCache = { token, expiresAt: Date.now() + expiresIn };
+            logger.info("OpenID token prefetched");
+        } catch (e) {
+            logger.warn("Failed to prefetch OpenID token", e);
+        }
+    }
+
+    /**
      * Preload the RNNoise WASM binary without requiring an AudioContext.
      * Called during connect() in parallel with JWT fetch and mic access
      * so the binary is already cached when setupRnnoiseNode() runs.
