@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-26 (v0.1.7)
+> 最終更新: 2026-02-26 (v0.1.10)
 
 ## リポジトリ情報
 
@@ -81,7 +81,7 @@ nexus/                          # element-web フォーク
 | TauriPlatform | `WebPlatform` 継承 + 自動更新（`tauri-plugin-updater`） |
 | CORS バイパス | Tauri 時は `tauri-plugin-http` で直接 JWT 取得（プロキシ不要） |
 | >100% ボリューム | `createMediaStreamSource()` → per-participant `GainNode` → master `GainNode`(0-2.0) |
-| CI/CD | `tauri-release.yml` — `v*` タグで Windows ビルド + GitHub Release + 自動更新 |
+| CI/CD | `tauri-release.yml` — `v*` タグで Windows ビルド + GitHub Release + 自動更新 + バージョン自動注入 |
 | 自動更新 | `tauri-plugin-updater` — 起動時 + 30分ポーリングで `latest.json` チェック → ダウンロード＆再起動 |
 | webpack ポート固定 | devServer port 1420（Tauri devUrl 互換） |
 | プラットフォーム検出 | `window.__TAURI_INTERNALS__` → `TauriPlatform` 自動選択 |
@@ -199,6 +199,17 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-26 (v0.1.10: 日本語翻訳 + アップデート検知修正 + CI改善)
+- **日本語翻訳 306件追加**: `ja.json` の翻訳カバレッジを 79.6% → 88.2% に向上
+  - `service_worker_error` (2), `settings` (178), `voip` (16), `common` (13), `labs` (24), `keyboard` (11), `notifications` (4), `room` (54), `setting.help_about` (4)
+  - サービスワーカーエラーのトーストが日本語で表示されるように
+  - 設定画面のほぼ全タブ（通知、外観、暗号化、セッション、サイドバー、VoIP等）が日本語化
+- **更新確認ボタン改善**: 設定 > ヘルプ＆情報の「更新を確認」ボタンで更新が見つかった場合、ボタンが「アップデート」（primary style）に切り替わり、クリックで `installUpdate()` を実行
+- **Web 版アップデート検知修正**: GitHub Actions の Build ステップで `git describe --tags --always` から VERSION を設定
+  - 以前は `package.json` の固定値 `1.12.11-rc.0` が毎回使われ、`/version` ファイルが変わらずアップデート検知が発火しなかった
+- **Tauri バージョン自動設定**: `tauri-release.yml` でタグ名から `tauri.conf.json` / `Cargo.toml` のバージョンを自動注入（手動更新不要に）
+- **VC 経過時間の右マージン追加**: `mx_NexusChannelIcon_elapsed` の `right` を `calc(var(--cpd-space-3x) + 4px)` に変更
 
 #### 2026-02-26 (v0.1.7: VC 経過時間 + 起動画面統一 + UI 調整)
 - **VC チャンネル経過時間表示**: 参加者がいる VC の NotificationDecoration に `0:32` 形式の経過時間を表示

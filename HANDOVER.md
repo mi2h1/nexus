@@ -2,32 +2,17 @@
 
 ## 現在の状態
 
-### 直近の作業（v0.1.7 — 2026-02-26）
+### 直近の作業（v0.1.10 — 2026-02-26）
 
-**VC チャンネル経過時間表示 + アクティブハイライト**
-- **経過時間表示**: VC に参加者がいる場合、チャンネルリスト右側（NotificationDecoration）に `0:32` 形式の経過時間を表示
-- **アクティブ表示**: 参加者がいる VC のスピーカーアイコンを緑に変更 + 左端に緑の縦ラインを表示
-- **経過時間の算出**: MatrixRTC `CallMembership.createdTs()` から実際の参加者のみの最古タイムスタンプを使用
-- **受話器アイコン廃止**: NotificationDecoration から VoiceCallSolidIcon/VideoCallSolidIcon を完全削除、経過時間テキストに置換
+**日本語翻訳の大幅追加**
+- `ja.json` に306件の翻訳を追加（カバレッジ 79.6% → 88.2%）
+- 対象: `service_worker_error`, `settings`(全サブセクション), `voip`, `common`, `labs`, `keyboard`, `notifications`, `room`(ヘッダー/検索/ピン留め等), `setting.help_about`
+- サービスワーカーエラーのトースト、設定画面のほぼ全タブが日本語化
 
-**起動画面の統一**
-- **スプラッシュ統一**: LOADING → PENDING_CLIENT_START → LOGGED_IN(未同期) を全て同じロゴ+スピナー画面に
-- **ロゴ SVG 化**: nexus-logo.png → nexus-logo.svg に変更（線画ロゴ）
-- **スピナー配置修正**: ウィンドウ下部から 48px に固定（`position: absolute; bottom: 48px`）
-
-**起動時の状態復元**
-- **前回のスペース・チャンネル復元**: `mx_last_room_id` + SpaceStore の localStorage から前回の状態を復元
-- **初回起動はホーム表示**: `mx_last_room_id` がない場合のみ ViewHomePage をディスパッチ
-- **ホームフラッシュ防止**: SpaceStore の `_activeSpace` 初期値を空文字にして `onReady` まで何もハイライトしない
-- **自動フォーカス防止**: LOGGED_IN 遷移直後に `activeElement.blur()` でツールチップ表示を抑制
-
-**UI 調整**
-- **アップデートダイアログ**: Tauri アプリ更新時にプログレスバー付きモーダル表示
-- **E2E アイコン非表示**: `mx_EventTile_e2eIcon` を `display: none`
-- **アバターサイズ**: メッセージのアバターを 40px → 35px に
-- **タイムスタンプ常時表示**: ホバー時のみでなく常に名前の右に表示、sender 非表示時は非表示
-- **チャンネルリスト余白調整**: `mx_RoomListItemView` min-height 36px→30px、VC 参加者 padding 縮小
-- **チャット入力欄**: 右パディングを 32px に調整
+**アップデート検知の修正**
+- 設定 > ヘルプ＆情報の「更新を確認」ボタン: 更新が見つかったら「アップデート」ボタンに切り替わるように変更
+- Web 版: ビルド時に `git describe --tags --always` から VERSION を設定（以前は固定値で検知が発火しなかった）
+- Tauri 版: CI でタグ名から `tauri.conf.json` / `Cargo.toml` のバージョンを自動注入（手動更新不要に）
 
 **過去の主要マイルストーン**
 - 自前 LiveKit SFU (lche2.xvps.jp) 構築完了
@@ -38,6 +23,7 @@
 
 1. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
 2. **システムトレイ常駐** — 閉じてもバックグラウンド動作
+3. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
 
 ---
 
@@ -174,7 +160,7 @@ Phase 5: publishTrack(processedTrack)
 - Phase 1（環境構築）: ✅ 完了
 - Phase 2（Discord風UIカスタマイズ）: ✅ 完了
 - Phase 2.5（通話機能内包）: ✅ 完了
-- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.7）
+- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.10）
 - 自前 SFU: ✅ 構築完了、ブラウザ版動作確認済み
 
 ### ロードマップ
@@ -192,12 +178,16 @@ Phase 5: publishTrack(processedTrack)
 
 ### Tauri リリース手順
 
-1. `src-tauri/tauri.conf.json` と `src-tauri/Cargo.toml` の `version` をバンプ
-2. コミット → `git tag vX.Y.Z` → `git push && git push origin vX.Y.Z`
-3. GitHub Actions `tauri-release` が自動でビルド → GitHub Release 作成
+1. コミット → `git tag vX.Y.Z` → `git push && git push origin vX.Y.Z`
+2. GitHub Actions `tauri-release` が自動でビルド → GitHub Release 作成
+3. バージョンはタグ名から自動注入（`tauri.conf.json` / `Cargo.toml` の手動更新不要）
 4. アプリの自動更新が `latest.json` を参照して新バージョンを検出 → ダウンロード＆再起動
 
-**重要**: `tauri.conf.json` の version がそのまま `latest.json` の version と exe ファイル名に使われる。タグだけ打って version を上げ忘れると自動更新が動かない。
+### Web 版リリース手順
+
+1. main にプッシュすると `pages.yml` が自動デプロイ
+2. ビルド時に `git describe --tags --always` で VERSION を決定（`/version` ファイルに書き出し）
+3. 既存ユーザーのブラウザが 10 分ポーリングで `/version` の変化を検知 → アップデートトースト表示
 - **Discord Docs 参照** — 真似できる部分、超えられる部分は積極的に実装
 
 ---

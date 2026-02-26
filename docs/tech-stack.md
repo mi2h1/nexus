@@ -1,6 +1,6 @@
 # 技術スタック — tech-stack.md
 
-> 最終更新: 2026-02-26 (v0.1.7)
+> 最終更新: 2026-02-26 (v0.1.10)
 
 ## 実行環境
 
@@ -39,7 +39,7 @@
 
 | 技術 | 用途 |
 |------|------|
-| Tauri 2 | Windows ネイティブデスクトップアプリ（v0.1.7） |
+| Tauri 2 | Windows ネイティブデスクトップアプリ（v0.1.10） |
 | tauri-plugin-updater | 自動更新（GitHub Release + latest.json） |
 | tauri-plugin-http | CORS バイパス（JWT 取得等） |
 | Windows Graphics Capture (WGC) | ネイティブ画面キャプチャ（映像） |
