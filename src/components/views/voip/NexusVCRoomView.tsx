@@ -166,6 +166,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                         members={visibleMembers}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
+                        hideNonScreenSharePanels={hideNonScreenSharePanels}
                     />
                 )}
             </div>
@@ -490,6 +491,7 @@ interface GridLayoutProps {
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
+    hideNonScreenSharePanels?: boolean;
 }
 
 function GridLayout({
@@ -501,9 +503,17 @@ function GridLayout({
     members,
     activeSpeakers,
     participantStates,
+    hideNonScreenSharePanels,
 }: GridLayoutProps): JSX.Element {
+    const isEmpty = hideNonScreenSharePanels && screenShares.length === 0 && unwatchedScreenShares.length === 0;
+
     return (
         <div className="nx_VCRoomView_grid">
+            {isEmpty && (
+                <div className="nx_VCRoomView_gridEmpty">
+                    画面を共有しているユーザーはいません
+                </div>
+            )}
             {screenShares.map((share) => (
                 <div key={`ss-${share.participantIdentity}`} className="nx_VCRoomView_gridScreenShare">
                     <ScreenShareTile
