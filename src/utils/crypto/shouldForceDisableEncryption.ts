@@ -8,24 +8,13 @@ Please see LICENSE files in the repository root for full details.
 
 import { type MatrixClient } from "matrix-js-sdk/src/matrix";
 
-import { getE2EEWellKnown } from "../WellKnownUtils";
-
 /**
- * Check e2ee io.element.e2ee setting
- * Returns true when .well-known e2ee config force_disable is TRUE
- * When true all new rooms should be created with encryption disabled
- * Can be overriden by synapse option encryption_enabled_by_default_for_room_type ( :/ )
- * https://matrix-org.github.io/synapse/latest/usage/configuration/config_documentation.html#encryption_enabled_by_default_for_room_type
- *
- * @param client
- * @returns whether well-known config forces encryption to DISABLED
+ * Nexus: 身内サーバー運用のため E2EE を強制無効化。
+ * matrix.org の .well-known は変更できないのでクライアント側で制御する。
+ * 新規ルームは暗号化なしで作成され、暗号化トグルも無効化される。
  */
-export function shouldForceDisableEncryption(client: MatrixClient): boolean {
-    const e2eeWellKnown = getE2EEWellKnown(client);
-
-    if (e2eeWellKnown) {
-        const shouldForceDisable = e2eeWellKnown["force_disable"] === true;
-        return shouldForceDisable;
-    }
-    return false;
+export function shouldForceDisableEncryption(_client: MatrixClient): boolean {
+    // Nexus: 身内サーバー運用のため E2EE を強制無効化
+    // matrix.org の .well-known は変更できないのでクライアント側で制御
+    return true;
 }

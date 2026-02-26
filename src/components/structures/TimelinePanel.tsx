@@ -62,7 +62,7 @@ import { haveRendererForEvent } from "../../events/EventTileFactory";
 // These pagination sizes are higher than they may possibly need be
 // once https://github.com/matrix-org/matrix-spec-proposals/pull/3874 lands
 const PAGINATE_SIZE = 50;
-const INITIAL_SIZE = 30;
+const INITIAL_SIZE = 50;
 const READ_RECEIPT_INTERVAL_MS = 500;
 
 const READ_MARKER_DEBOUNCE_MS = 100;
