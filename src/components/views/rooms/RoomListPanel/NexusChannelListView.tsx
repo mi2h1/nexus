@@ -27,6 +27,8 @@ import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 import { ChatSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import RightPanelStore from "../../../../stores/right-panel/RightPanelStore";
+import { RightPanelPhases } from "../../../../stores/right-panel/RightPanelStorePhases";
 
 /**
  * Format elapsed milliseconds as "H:MM:SS" or "M:SS".
@@ -311,6 +313,8 @@ function VoiceChannelItem({
                 action: Action.ViewRoom,
                 room_id: roomId,
             });
+            // 状態に関わらずチャット（Timeline）パネルを強制オープン
+            RightPanelStore.instance.setCard({ phase: RightPanelPhases.Timeline }, true, roomId);
         },
         [roomId],
     );
