@@ -7,7 +7,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { useCallback, type JSX } from "react";
 
-import nexusLogoPng from "../../../../res/img/nexus-logo.png";
+import nexusLogoSvg from "../../../../res/img/nexus-logo.svg";
 import BaseDialog from "./BaseDialog";
 import { NexusUpdateStore, NexusUpdateStoreEvent, UpdatePhase } from "../../../stores/NexusUpdateStore";
 import { useEventEmitterState } from "../../../hooks/useEventEmitter";
@@ -67,7 +67,7 @@ export default function NexusUpdateDialog({ onFinished }: Props): JSX.Element {
         >
             <div className="nx_UpdateDialog_content">
                 <img
-                    src={nexusLogoPng}
+                    src={nexusLogoSvg}
                     alt="Nexus"
                     className="nx_UpdateDialog_logo"
                 />

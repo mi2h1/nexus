@@ -16,9 +16,14 @@ Please see LICENSE files in the repository root for full details.
 }
 
 .mx_MatrixChat_splash_logo {
-    width: 64px;
-    height: 64px;
-    margin-bottom: 16px;
+    width: 80px;
+    height: auto;
+}
+
+/* スピナーをロゴの下に少し離して、かつ中央配置に影響しないよう absolute */
+.mx_MatrixChat_splash .mx_Spinner {
+    position: absolute;
+    bottom: 25%;
 }
 
 .mx_MatrixChat_wrapper {

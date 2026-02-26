@@ -31,7 +31,7 @@ import sanitizeHtml from "sanitize-html";
 import { I18nContext } from "@element-hq/web-shared-components";
 import { LockSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
-import nexusLogoPng from "../../../res/img/nexus-logo.png";
+import nexusLogoSvg from "../../../res/img/nexus-logo.svg";
 
 import PosthogTrackers from "../../PosthogTrackers";
 import { DecryptionFailureTracker } from "../../DecryptionFailureTracker";
@@ -2182,7 +2182,7 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             view = (
                 <div className="mx_MatrixChat_splash">
                     <img
-                        src={nexusLogoPng}
+                        src={nexusLogoSvg}
                         alt="Nexus"
                         className="mx_MatrixChat_splash_logo"
                     />
@@ -2207,7 +2207,7 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             view = (
                 <div className="mx_MatrixChat_splash">
                     <img
-                        src={nexusLogoPng}
+                        src={nexusLogoSvg}
                         alt="Nexus"
                         className="mx_MatrixChat_splash_logo"
                     />
@@ -2238,7 +2238,7 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
                 view = (
                     <div className="mx_MatrixChat_splash">
                         <img
-                            src={nexusLogoPng}
+                            src={nexusLogoSvg}
                             alt="Nexus"
                             className="mx_MatrixChat_splash_logo"
                         />

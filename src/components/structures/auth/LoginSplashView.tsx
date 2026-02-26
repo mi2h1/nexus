@@ -10,7 +10,7 @@ import React, { type JSX } from "react";
 import { type MatrixClient } from "matrix-js-sdk/src/matrix";
 import { CryptoEvent } from "matrix-js-sdk/src/crypto-api";
 
-import nexusLogoPng from "../../../../res/img/nexus-logo.png";
+import nexusLogoSvg from "../../../../res/img/nexus-logo.svg";
 import { messageForSyncError } from "../../../utils/ErrorUtils";
 import Spinner from "../../views/elements/Spinner";
 import ProgressBar from "../../views/elements/ProgressBar";
@@ -70,7 +70,7 @@ export function LoginSplashView(props: Props): JSX.Element {
 
     return (
         <div className="mx_MatrixChat_splash">
-            <img src={nexusLogoPng} alt="Nexus" className="mx_MatrixChat_splash_logo" />
+            <img src={nexusLogoSvg} alt="Nexus" className="mx_MatrixChat_splash_logo" />
             {errorBox}
             {spinnerOrProgress}
             <div className="mx_LoginSplashView_splashButtons">
