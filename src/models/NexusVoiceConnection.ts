@@ -1293,24 +1293,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             device_id: this.client.getDeviceId(),
         };
 
-        // ── Self-hosted JWT service (preferred, with fallback) ──
+        // ── Self-hosted JWT service (preferred, with retry + fallback) ──
         if (NEXUS_JWT_SERVICE_URL) {
             try {
-                const jwtUrl = `${NEXUS_JWT_SERVICE_URL}/sfu/get`;
-
-                if (isTauri()) {
-                    return await corsFreePost<LivekitTokenResponse>(jwtUrl, body);
-                }
-
-                const response = await fetch(jwtUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                if (!response.ok) {
-                    throw new Error(`${response.status} ${response.statusText}`);
-                }
-                return (await response.json()) as LivekitTokenResponse;
+                return await this.fetchJwtWithRetry(`${NEXUS_JWT_SERVICE_URL}/sfu/get`, body);
             } catch (e) {
                 logger.warn(`Self-hosted JWT service failed, falling back to transport URL: ${e}`);
             }
@@ -1326,12 +1312,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         const serviceUrl = livekitTransport.livekit_service_url as string;
 
-        // Tauri: direct access
+        // Tauri: direct access (with retry)
         if (isTauri()) {
-            return corsFreePost<LivekitTokenResponse>(`${serviceUrl}/sfu/get`, body);
+            return this.fetchJwtWithRetry(`${serviceUrl}/sfu/get`, body);
         }
 
-        // Browser: route through CORS proxy
+        // Browser: route through CORS proxy (with retry)
         let fetchUrl: string;
         let fetchBody: Record<string, unknown>;
 
@@ -1343,17 +1329,35 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             fetchBody = body;
         }
 
-        const response = await fetch(fetchUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(fetchBody),
-        });
+        return this.fetchJwtWithRetry(fetchUrl, fetchBody);
+    }
 
-        if (!response.ok) {
-            throw new Error(`Failed to get LiveKit token: ${response.status} ${response.statusText}`);
+    /**
+     * Fetch JWT with a single retry on transient errors (5xx / network).
+     */
+    private async fetchJwtWithRetry(url: string, body: Record<string, unknown>): Promise<LivekitTokenResponse> {
+        const attempt = async (): Promise<LivekitTokenResponse> => {
+            if (isTauri()) {
+                return corsFreePost<LivekitTokenResponse>(url, body);
+            }
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}`);
+            }
+            return (await response.json()) as LivekitTokenResponse;
+        };
+
+        try {
+            return await attempt();
+        } catch (e) {
+            logger.warn(`JWT fetch failed (${url}), retrying in 1s: ${e}`);
+            await new Promise((r) => setTimeout(r, 1000));
+            return attempt();
         }
-
-        return (await response.json()) as LivekitTokenResponse;
     }
 
     // ─── Private: Cleanup ────────────────────────────────────
