@@ -9,6 +9,7 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 
 import { useNexusScreenShares } from "../../../hooks/useNexusScreenShares";
 import type { ScreenShareInfo } from "../../../models/Call";
+import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
 
 interface NexusScreenShareContainerProps {
     roomId: string;
@@ -87,9 +88,15 @@ interface ScreenShareTileProps {
     onShareContextMenu?: (share: ScreenShareInfo, left: number, top: number) => void;
 }
 
+/** Minimum freeze duration (ms) before triggering A/V resync. */
+const FREEZE_THRESHOLD_MS = 500;
+/** Cooldown (ms) between consecutive resyncs to avoid flicker. */
+const RESYNC_COOLDOWN_MS = 3000;
+
 /**
- * Individual screen share tile — attaches LiveKit track to <video>.
- * Audio is routed through Web Audio API (NexusVoiceConnection), not <audio>.
+ * Individual screen share tile — combines video + audio tracks into a single
+ * MediaStream on the <video> element for A/V sync.
+ * Volume control is handled by NexusVoiceConnection via the registered element.
  */
 export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopWatching, onShareContextMenu }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -97,15 +104,77 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopW
     useEffect(() => {
         const videoEl = videoRef.current;
         if (!videoEl || !share.track) return;
-        share.track.attach(videoEl);
-        return () => {
-            share.track.detach(videoEl);
+
+        const hasAudio = !share.isLocal && share.audioTrack?.mediaStreamTrack;
+
+        // Build a combined MediaStream with video + audio for A/V sync.
+        const buildStream = (): MediaStream => {
+            const s = new MediaStream([share.track.mediaStreamTrack]);
+            if (hasAudio) {
+                s.addTrack(share.audioTrack.mediaStreamTrack);
+            }
+            return s;
         };
-    }, [share.track]);
+
+        videoEl.srcObject = buildStream();
+        videoEl.muted = true;
+        videoEl.play().catch(() => {});
+
+        // Register with NexusVoiceConnection for volume control
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        if (conn && hasAudio) {
+            conn.registerScreenShareVideoElement(share.participantIdentity, videoEl);
+        }
+
+        // ─── A/V resync after video freeze ─────────────────────────
+        // WebRTC video can freeze on keyframe loss while audio continues.
+        // After recovery the video jumps ahead, breaking sync.
+        // Detect freezes via requestVideoFrameCallback: during a freeze
+        // no callbacks fire, so the wall-clock gap between consecutive
+        // callbacks reveals the freeze duration.
+        let lastCbTime = 0;
+        let lastResyncTime = 0;
+        let frameCallbackId = 0;
+        let cancelled = false;
+
+        const onVideoFrame = (): void => {
+            if (cancelled) return;
+            const now = performance.now();
+
+            if (
+                lastCbTime > 0 &&
+                now - lastCbTime > FREEZE_THRESHOLD_MS &&
+                now - lastResyncTime > RESYNC_COOLDOWN_MS
+            ) {
+                videoEl.srcObject = buildStream();
+                videoEl.play().catch(() => {});
+                lastCbTime = 0;
+                lastResyncTime = now;
+            } else {
+                lastCbTime = now;
+            }
+
+            frameCallbackId = videoEl.requestVideoFrameCallback(onVideoFrame);
+        };
+
+        if (hasAudio && "requestVideoFrameCallback" in videoEl) {
+            frameCallbackId = videoEl.requestVideoFrameCallback(onVideoFrame);
+        }
+
+        return () => {
+            cancelled = true;
+            if (frameCallbackId && "cancelVideoFrameCallback" in videoEl) {
+                (videoEl as any).cancelVideoFrameCallback(frameCallbackId);
+            }
+            videoEl.srcObject = null;
+            if (conn && hasAudio) {
+                conn.unregisterScreenShareVideoElement(share.participantIdentity);
+            }
+        };
+    }, [share.track, share.audioTrack, share.participantIdentity, share.isLocal]);
 
     const onContextMenu = useCallback((e: React.MouseEvent) => {
         if (!onShareContextMenu) return;
-        // Only show context menu for remote screen shares with audio
         if (share.isLocal || !share.audioTrack) return;
         e.preventDefault();
         e.stopPropagation();
@@ -121,7 +190,6 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopW
                 className="mx_NexusScreenShareTile_video"
                 autoPlay
                 playsInline
-                muted
             />
             <div className="mx_NexusScreenShareTile_label">{label}</div>
             {onStopWatching && (

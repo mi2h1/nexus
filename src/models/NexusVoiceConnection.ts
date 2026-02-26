@@ -147,18 +147,21 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private outputAudioElements = new Map<string, HTMLAudioElement>();
     private participantVolumes = new Map<string, number>(); // 0-1.0
     // ─── Screen share audio ──────────────────────────────────
-    private screenShareAudioElements = new Map<string, HTMLAudioElement>();
+    private screenShareVideoElements = new Map<string, HTMLVideoElement>();
     private screenShareVolumes = new Map<string, number>(); // 0-1.0
     // ─── Tauri output audio pipeline (>100% volume) ──────────
-    // In Tauri, we use createMediaElementSource() to route <audio> through
+    // In Tauri, we use createMediaStreamSource() to route <audio> through
     // Web Audio API GainNodes, enabling volume amplification beyond 1.0.
+    // NOTE: Screen share audio does NOT use Web Audio — it stays on the
+    // <video> element (videoEl.volume) to preserve browser A/V sync.
     private outputAudioContext: AudioContext | null = null;
     private outputMasterGain: GainNode | null = null;
     private outputMediaSources = new Map<string, AudioNode>();
     private outputParticipantGains = new Map<string, GainNode>();
-    private ssMediaSources = new Map<string, AudioNode>();
-    private ssParticipantGains = new Map<string, GainNode>();
     private watchingScreenShares = new Set<string>(); // opt-in watching state
+    /** Timers that delay updateScreenShares() until audio track arrives. */
+    private pendingScreenShareTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private static readonly SCREEN_SHARE_AUDIO_WAIT_MS = 500;
     private analyserNode: AnalyserNode | null = null;
     private inputGainNode: GainNode | null = null;
     private sourceNode: MediaStreamAudioSourceNode | null = null;
@@ -864,17 +867,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public setScreenShareVolume(participantIdentity: string, volume: number): void {
         const clamped = Math.max(0, Math.min(1, volume));
         this.screenShareVolumes.set(participantIdentity, clamped);
+        const watching = this.watchingScreenShares.has(participantIdentity);
 
-        // Tauri: update per-screen-share GainNode
-        const ssGain = this.ssParticipantGains.get(participantIdentity);
-        if (ssGain) {
-            ssGain.gain.value = this.watchingScreenShares.has(participantIdentity) ? clamped : 0;
-        } else {
-            // Browser fallback
-            const audio = this.screenShareAudioElements.get(participantIdentity);
-            if (audio && this.watchingScreenShares.has(participantIdentity)) {
-                audio.volume = Math.min(1, clamped * this._masterOutputVolume);
-            }
+        const videoEl = this.screenShareVideoElements.get(participantIdentity);
+        if (videoEl && watching) {
+            videoEl.volume = Math.min(1, clamped * this._masterOutputVolume);
         }
         // Persist by resolved userId (stable across sessions)
         const userId = this.resolveIdentityToUserId(participantIdentity);
@@ -891,6 +888,31 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const userId = this.resolveIdentityToUserId(participantIdentity);
         if (userId) return this.loadPersistedVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, userId) ?? 1;
         return 1;
+    }
+
+    // ─── Public: Screen share video element registration ────
+
+    /**
+     * Register the <video> element used by ScreenShareTile for volume control.
+     * The tile combines video + audio tracks into a single MediaStream on this
+     * element. We use videoEl.volume directly (no Web Audio) to keep audio in
+     * the same pipeline as video — preserving browser RTCP SR-based A/V sync.
+     */
+    public registerScreenShareVideoElement(participantIdentity: string, videoEl: HTMLVideoElement): void {
+        this.screenShareVideoElements.set(participantIdentity, videoEl);
+        const watching = this.watchingScreenShares.has(participantIdentity);
+        const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
+
+        videoEl.muted = false;
+        videoEl.volume = watching ? Math.min(1, vol * this._masterOutputVolume) : 0;
+        videoEl.play().catch(() => {});
+    }
+
+    /**
+     * Unregister the <video> element when the tile unmounts.
+     */
+    public unregisterScreenShareVideoElement(participantIdentity: string): void {
+        this.screenShareVideoElements.delete(participantIdentity);
     }
 
     // ─── Public: Screen share watching ──────────────────────
@@ -910,36 +932,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.watchingScreenShares.delete(participantIdentity);
         }
 
-        // Play/pause the screen share <audio> element based on watching state.
-        // This prevents any audio from leaking when the user is not watching.
-        const ssAudio = this.screenShareAudioElements.get(participantIdentity);
-        if (ssAudio) {
-            if (watching) {
-                ssAudio.play().catch(() => {});
-            } else {
-                ssAudio.pause();
-            }
-        }
-
-        // Tauri: control via GainNode
-        const ssGain = this.ssParticipantGains.get(participantIdentity);
-        if (ssGain) {
-            if (watching) {
-                const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
-                ssGain.gain.value = vol;
-            } else {
-                ssGain.gain.value = 0;
-            }
-        } else {
-            // Browser fallback
-            if (ssAudio) {
-                if (watching) {
-                    const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
-                    ssAudio.volume = Math.min(1, vol * this._masterOutputVolume);
-                } else {
-                    ssAudio.volume = 0;
-                }
-            }
+        const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
+        const videoEl = this.screenShareVideoElements.get(participantIdentity);
+        if (videoEl) {
+            videoEl.volume = watching ? Math.min(1, vol * this._masterOutputVolume) : 0;
         }
         this.emit(CallEvent.WatchingChanged, new Set(this.watchingScreenShares));
     }
@@ -972,35 +968,26 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * audio outputs. Called when master volume changes or pipelines unmute.
      */
     private applyAllOutputVolumes(): void {
-        // Tauri: use GainNodes for >100% amplification
+        // Tauri: use GainNodes for >100% amplification (participant audio only)
         if (this.outputMasterGain) {
             this.outputMasterGain.gain.value = this._masterOutputVolume;
-            // Per-screen-share gains need watching state applied
-            for (const [identity] of this.screenShareAudioElements) {
-                const ssGain = this.ssParticipantGains.get(identity);
-                if (ssGain) {
-                    if (this.watchingScreenShares.has(identity)) {
-                        const vol = this.screenShareVolumes.get(identity) ?? 1;
-                        ssGain.gain.value = vol;
-                    } else {
-                        ssGain.gain.value = 0;
-                    }
-                }
-            }
-            return;
         }
 
-        // Browser: audio.volume capped at 1.0
-        for (const [identity, audio] of this.outputAudioElements) {
-            const vol = this.participantVolumes.get(identity) ?? 1;
-            audio.volume = Math.min(1, vol * this._masterOutputVolume);
+        // Browser: participant audio.volume capped at 1.0
+        if (!this.outputMasterGain) {
+            for (const [identity, audio] of this.outputAudioElements) {
+                const vol = this.participantVolumes.get(identity) ?? 1;
+                audio.volume = Math.min(1, vol * this._masterOutputVolume);
+            }
         }
-        for (const [identity, audio] of this.screenShareAudioElements) {
+
+        // Screen share audio: always via videoEl.volume (both Tauri and Browser)
+        for (const [identity, videoEl] of this.screenShareVideoElements) {
             if (this.watchingScreenShares.has(identity)) {
                 const vol = this.screenShareVolumes.get(identity) ?? 1;
-                audio.volume = Math.min(1, vol * this._masterOutputVolume);
+                videoEl.volume = Math.min(1, vol * this._masterOutputVolume);
             } else {
-                audio.volume = 0;
+                videoEl.volume = 0;
             }
         }
     }
@@ -1402,10 +1389,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.outputMediaSources.clear();
         for (const gain of this.outputParticipantGains.values()) gain.disconnect();
         this.outputParticipantGains.clear();
-        for (const source of this.ssMediaSources.values()) source.disconnect();
-        this.ssMediaSources.clear();
-        for (const gain of this.ssParticipantGains.values()) gain.disconnect();
-        this.ssParticipantGains.clear();
         if (this.outputMasterGain) {
             this.outputMasterGain.disconnect();
             this.outputMasterGain = null;
@@ -1415,12 +1398,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.outputAudioContext = null;
         }
 
-        // Clean up screen share <audio> elements
-        for (const audio of this.screenShareAudioElements.values()) {
-            audio.pause();
-            audio.srcObject = null;
-        }
-        this.screenShareAudioElements.clear();
+        // Clean up screen share elements
+        for (const timer of this.pendingScreenShareTimers.values()) clearTimeout(timer);
+        this.pendingScreenShareTimers.clear();
+        this.screenShareVideoElements.clear();
         this.watchingScreenShares.clear();
 
         // Stop local screen share
@@ -1506,9 +1487,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (publication.source === Track.Source.Microphone) {
             const audio = this.outputAudioElements.get(participant.identity);
             if (audio) audio.muted = true;
-        } else if (publication.source === Track.Source.ScreenShareAudio) {
-            const audio = this.screenShareAudioElements.get(participant.identity);
-            if (audio) audio.muted = true;
         }
         this.updateParticipants();
     };
@@ -1520,9 +1498,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!(participant instanceof RemoteParticipant)) return;
         if (publication.source === Track.Source.Microphone) {
             const audio = this.outputAudioElements.get(participant.identity);
-            if (audio) audio.muted = false;
-        } else if (publication.source === Track.Source.ScreenShareAudio) {
-            const audio = this.screenShareAudioElements.get(participant.identity);
             if (audio) audio.muted = false;
         }
         this.updateParticipants();
@@ -1537,9 +1512,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         // Handle screen share video track
         if (publication.source === Track.Source.ScreenShare) {
-            this.updateScreenShares();
             // Listen for track ended to promptly remove stale screen shares
-            // (e.g. remote user stops sharing but TrackUnsubscribed is delayed)
             const identity = participant.identity;
             const onEnded = (): void => {
                 track.mediaStreamTrack.removeEventListener("ended", onEnded);
@@ -1549,52 +1522,41 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 this.emit(CallEvent.ScreenShares, this._screenShares);
             };
             track.mediaStreamTrack.addEventListener("ended", onEnded);
+
+            // Delay updateScreenShares() briefly to wait for the audio track.
+            // LiveKit delivers video and audio as separate subscription events;
+            // if we emit immediately, ScreenShareTile starts playing video-only
+            // and audio arrives later out of sync.
+            const existing = this.pendingScreenShareTimers.get(identity);
+            if (existing) clearTimeout(existing);
+            this.pendingScreenShareTimers.set(
+                identity,
+                setTimeout(() => {
+                    this.pendingScreenShareTimers.delete(identity);
+                    this.updateScreenShares();
+                }, NexusVoiceConnection.SCREEN_SHARE_AUDIO_WAIT_MS),
+            );
             return;
         }
 
-        // Handle screen share audio — use <audio> element
+        // Handle screen share audio — audio is played via the <video> element
+        // in ScreenShareTile (combined MediaStream for A/V sync).
         if (publication.source === Track.Source.ScreenShareAudio) {
-            this.updateScreenShares();
-            try {
-                const audio = new Audio();
-                audio.srcObject = new MediaStream([track.mediaStreamTrack]);
-                // Restore persisted volume if available
-                const ssUserId = this.resolveIdentityToUserId(participant.identity);
-                const ssSavedVol = ssUserId
-                    ? this.loadPersistedVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, ssUserId)
-                    : null;
-                const ssInitialVol = ssSavedVol ?? this.screenShareVolumes.get(participant.identity) ?? 1;
-                if (ssSavedVol !== null) this.screenShareVolumes.set(participant.identity, ssSavedVol);
-                const watching = this.watchingScreenShares.has(participant.identity);
+            // Restore persisted volume if available
+            const ssUserId = this.resolveIdentityToUserId(participant.identity);
+            const ssSavedVol = ssUserId
+                ? this.loadPersistedVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, ssUserId)
+                : null;
+            if (ssSavedVol !== null) this.screenShareVolumes.set(participant.identity, ssSavedVol);
 
-                // Tauri: route through Web Audio for >100% volume.
-                // Use createMediaStreamSource (same approach as participant audio).
-                if (this.outputAudioContext && this.outputMasterGain) {
-                    const source = this.outputAudioContext.createMediaStreamSource(
-                        audio.srcObject as MediaStream,
-                    );
-                    const gain = this.outputAudioContext.createGain();
-                    gain.gain.value = watching ? ssInitialVol : 0;
-                    source.connect(gain).connect(this.outputMasterGain);
-                    this.ssMediaSources.set(participant.identity, source);
-                    this.ssParticipantGains.set(participant.identity, gain);
-                    // Suppress element's system output; play to keep stream alive
-                    audio.volume = 0;
-                    if (watching) {
-                        audio.play().catch(() => {});
-                    }
-                } else {
-                    // Browser: audio.volume capped at 1.0
-                    audio.volume = watching ? Math.min(1, ssInitialVol * this._masterOutputVolume) : 0;
-                    // Only play when actively watching
-                    if (watching) {
-                        audio.play().catch(() => {});
-                    }
-                }
-                this.screenShareAudioElements.set(participant.identity, audio);
-            } catch (e) {
-                logger.warn("onTrackSubscribed (ScreenShareAudio) error:", e);
+            // Audio arrived — cancel the pending video timer and emit both
+            // tracks together so ScreenShareTile starts playback in sync.
+            const pendingTimer = this.pendingScreenShareTimers.get(participant.identity);
+            if (pendingTimer) {
+                clearTimeout(pendingTimer);
+                this.pendingScreenShareTimers.delete(participant.identity);
             }
+            this.updateScreenShares();
             return;
         }
 
@@ -1674,23 +1636,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             return;
         }
 
-        // Handle screen share audio — clean up <audio> element
+        // Handle screen share audio unsubscribe
         if (publication.source === Track.Source.ScreenShareAudio) {
             this._screenShares = this._screenShares.filter(
                 (s) => s.participantIdentity !== participant.identity,
             );
             this.emit(CallEvent.ScreenShares, this._screenShares);
-            const ssAudio = this.screenShareAudioElements.get(participant.identity);
-            if (ssAudio) {
-                ssAudio.pause();
-                ssAudio.srcObject = null;
-                this.screenShareAudioElements.delete(participant.identity);
-            }
-            // Clean up Tauri audio nodes
-            this.ssMediaSources.get(participant.identity)?.disconnect();
-            this.ssMediaSources.delete(participant.identity);
-            this.ssParticipantGains.get(participant.identity)?.disconnect();
-            this.ssParticipantGains.delete(participant.identity);
+            this.screenShareVideoElements.delete(participant.identity);
             this.watchingScreenShares.delete(participant.identity);
             return;
         }
