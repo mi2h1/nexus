@@ -1200,7 +1200,8 @@ export class UnwrappedEventTile extends React.Component<EventTileProps, IState> 
         // If we have reactions or a pinned message badge, we need a footer
         const hasFooter = Boolean((reactionsRow && this.state.reactions) || pinnedMessageBadge);
 
-        const groupTimestamp = !useIRCLayout ? linkedTimestamp : null;
+        // Nexus: ユーザー名が表示されている時だけタイムスタンプを表示
+        const groupTimestamp = !useIRCLayout && sender ? linkedTimestamp : null;
         const ircTimestamp = useIRCLayout ? linkedTimestamp : null;
         const groupPadlock = !useIRCLayout && !isBubbleMessage && this.renderE2EPadlock();
         const ircPadlock = useIRCLayout && !isBubbleMessage && this.renderE2EPadlock();
