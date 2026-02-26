@@ -42,6 +42,7 @@ import { UserTab } from "../../dialogs/UserTab";
 import { type OpenToTabPayload } from "../../../../dispatcher/payloads/OpenToTabPayload";
 import Modal from "../../../../Modal";
 import LogoutDialog, { shouldShowLogoutDialog } from "../../dialogs/LogoutDialog";
+import NexusUpdateDialog from "../../dialogs/NexusUpdateDialog";
 
 const NexusUserPanel: React.FC = () => {
     const call = useActiveCall();
@@ -92,6 +93,7 @@ const NexusUserPanel: React.FC = () => {
     }, [updateAvailable]);
 
     const onUpdateClick = useCallback(() => {
+        Modal.createDialog(NexusUpdateDialog, {}, "nx_UpdateDialog");
         PlatformPeg.get()?.installUpdate();
     }, []);
 

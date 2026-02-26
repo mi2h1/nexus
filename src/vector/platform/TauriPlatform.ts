@@ -95,6 +95,7 @@ export default class TauriPlatform extends WebPlatform {
     }
 
     private async performTauriUpdate(): Promise<void> {
+        const store = NexusUpdateStore.instance;
         try {
             const { check } = await import("@tauri-apps/plugin-updater");
             const { relaunch } = await import("@tauri-apps/plugin-process");
@@ -106,11 +107,24 @@ export default class TauriPlatform extends WebPlatform {
             }
 
             logger.log(`TauriPlatform: downloading update ${update.version}...`);
-            await update.downloadAndInstall();
+            await update.downloadAndInstall((event) => {
+                switch (event.event) {
+                    case "Started":
+                        store.setDownloadStarted(event.data.contentLength ?? 0);
+                        break;
+                    case "Progress":
+                        store.addDownloadProgress(event.data.chunkLength);
+                        break;
+                    case "Finished":
+                        store.setInstalling();
+                        break;
+                }
+            });
             logger.log("TauriPlatform: update installed, relaunching...");
             await relaunch();
         } catch (e) {
             logger.error("TauriPlatform: failed to install update", e);
+            store.setError();
         }
     }
 }

@@ -1,0 +1,80 @@
+/*
+Copyright 2025 Nexus Contributors
+
+SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE files in the repository root for full details.
+*/
+
+.nx_UpdateDialog {
+    /* Override BaseDialog width */
+    .mx_Dialog {
+        width: 320px;
+        min-height: auto;
+        padding: 32px;
+    }
+
+    /* Hide the empty title area */
+    .mx_Dialog_header {
+        display: none;
+    }
+}
+
+.nx_UpdateDialog_content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+}
+
+.nx_UpdateDialog_logo {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 8px;
+}
+
+.nx_UpdateDialog_status {
+    font: var(--cpd-font-body-md-semibold);
+    color: var(--cpd-color-text-primary);
+}
+
+.nx_UpdateDialog_sub {
+    font: var(--cpd-font-body-sm-regular);
+    color: var(--cpd-color-text-secondary);
+}
+
+.nx_UpdateDialog_hint {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-tertiary);
+    margin-top: 4px;
+}
+
+.nx_UpdateDialog_progressBar {
+    width: 100%;
+    height: 6px;
+    background-color: var(--cpd-color-bg-subtle-secondary);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.nx_UpdateDialog_progressFill {
+    height: 100%;
+    background-color: var(--cpd-color-icon-accent-primary);
+    border-radius: 3px;
+    transition: width 0.2s ease;
+
+    &.nx_UpdateDialog_progressFill--indeterminate {
+        width: 40%;
+        animation: nx_updateIndeterminate 1.5s ease-in-out infinite;
+    }
+}
+
+@keyframes nx_updateIndeterminate {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(350%);
+    }
+}
