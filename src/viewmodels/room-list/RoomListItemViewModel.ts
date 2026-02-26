@@ -220,10 +220,17 @@ export class RoomListItemViewModel
             call?.callType === CallType.Voice ? "voice" : call?.callType === CallType.Video ? "video" : undefined;
 
         // Compute callStartedTs from the oldest MatrixRTC membership
+        // Only consider memberships whose sender is an actual call participant
+        // to avoid stale memberships from a previous session inflating the timer.
         let callStartedTs: number | null = null;
-        if (hasParticipantsInCall) {
+        if (hasParticipantsInCall && call) {
+            const participantUserIds = new Set<string>();
+            for (const member of call.participants.keys()) {
+                participantUserIds.add(member.userId);
+            }
             const session = client.matrixRTC.getRoomSession(room);
             for (const m of session.memberships) {
+                if (!m.sender || !participantUserIds.has(m.sender)) continue;
                 const ts = m.createdTs();
                 if (callStartedTs === null || ts < callStartedTs) callStartedTs = ts;
             }

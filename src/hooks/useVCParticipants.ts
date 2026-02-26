@@ -64,31 +64,34 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
 
             setTransitioningIds(isTransitioning && myUserId ? new Set([myUserId]) : new Set());
 
-            // Compute callStartedTs from the oldest membership
-            let startedTs: number | null = null;
-            for (const m of session.memberships) {
-                const ts = m.createdTs();
-                if (startedTs === null || ts < startedTs) startedTs = ts;
-            }
-            setCallStartedTs(startedTs);
-
             // 接続中: NexusVoiceConnection.participants を使う（userId → devices マップ）
             if (conn && isConnected) {
+                const participantIds = new Set(conn.participants.keys());
                 const participantList: VCParticipant[] = [];
-                for (const userId of conn.participants.keys()) {
+                for (const userId of participantIds) {
                     participantList.push({
                         userId,
                         member: room.getMember(userId),
                     });
                 }
                 // Ensure self stays in list even if MatrixRTC membership hasn't arrived yet
-                if (myUserId && !participantList.some((p) => p.userId === myUserId)) {
+                if (myUserId && !participantIds.has(myUserId)) {
+                    participantIds.add(myUserId);
                     participantList.push({
                         userId: myUserId,
                         member: room.getMember(myUserId),
                     });
                 }
                 setMembers(participantList);
+
+                // callStartedTs: 実際の参加者の membership だけから最古を取得
+                let startedTs: number | null = null;
+                for (const m of session.memberships) {
+                    if (!m.sender || !participantIds.has(m.sender)) continue;
+                    const ts = m.createdTs();
+                    if (startedTs === null || ts < startedTs) startedTs = ts;
+                }
+                setCallStartedTs(startedTs);
                 return;
             }
 
@@ -117,6 +120,15 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
             }
 
             setMembers(participantList);
+
+            // callStartedTs: 表示中の参加者の membership だけから最古を取得
+            let startedTs: number | null = null;
+            for (const m of session.memberships) {
+                if (!m.sender || !seen.has(m.sender)) continue;
+                const ts = m.createdTs();
+                if (startedTs === null || ts < startedTs) startedTs = ts;
+            }
+            setCallStartedTs(startedTs);
         };
 
         updateMembers();
