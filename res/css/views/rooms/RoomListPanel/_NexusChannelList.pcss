@@ -70,6 +70,14 @@
 
 .nx_VoiceChannelItem {
     position: relative;
+
+    /* 経過時間を右側に絶対配置 */
+    .mx_NexusChannelIcon_elapsed {
+        position: absolute;
+        right: var(--cpd-space-3x);
+        top: 50%;
+        transform: translateY(-50%);
+    }
 }
 
 .mx_VoiceChannelParticipants {

@@ -27,6 +27,40 @@ import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 
+/**
+ * Format elapsed milliseconds as "H:MM:SS" or "M:SS".
+ */
+function formatElapsed(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/**
+ * Hook that returns a formatted elapsed-time string updated every second.
+ */
+function useElapsedTime(startTs: number | null): string | null {
+    const [elapsed, setElapsed] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (startTs === null) {
+            setElapsed(null);
+            return;
+        }
+        const update = (): void => setElapsed(formatElapsed(Math.max(0, Date.now() - startTs)));
+        update();
+        const id = window.setInterval(update, 1000);
+        return () => window.clearInterval(id);
+    }, [startTs]);
+
+    return elapsed;
+}
+
 export interface NexusChannelListViewProps {
     vm: RoomListViewModel;
     onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
@@ -175,8 +209,9 @@ function VoiceChannelItem({
     matrixClient: ReturnType<typeof useMatrixClientContext>;
 }): JSX.Element {
     const [isTransitioning, setIsTransitioning] = useState(false);
-    const { members } = useVCParticipants(roomId);
+    const { members, callStartedTs } = useVCParticipants(roomId);
     const hasParticipants = members.length > 0;
+    const elapsed = useElapsedTime(hasParticipants ? callStartedTs : null);
 
     useEffect(() => {
         const store = NexusVoiceStore.instance;
@@ -274,6 +309,7 @@ function VoiceChannelItem({
             {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
             <div onClickCapture={onVoiceChannelClick} className="nx_VoiceChannelItem">
                 {renderItem(roomId, globalIndex, avatarRenderer)}
+                {elapsed && <span className="mx_NexusChannelIcon_elapsed">{elapsed}</span>}
             </div>
             <VoiceChannelParticipants roomId={roomId} />
         </div>
