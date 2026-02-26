@@ -121,14 +121,8 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
 
             setMembers(participantList);
 
-            // callStartedTs: 表示中の参加者の membership だけから最古を取得
-            let startedTs: number | null = null;
-            for (const m of session.memberships) {
-                if (!m.sender || !seen.has(m.sender)) continue;
-                const ts = m.createdTs();
-                if (startedTs === null || ts < startedTs) startedTs = ts;
-            }
-            setCallStartedTs(startedTs);
+            // 未接続時は経過時間を表示しない（stale membership 対策）
+            setCallStartedTs(null);
         };
 
         updateMembers();

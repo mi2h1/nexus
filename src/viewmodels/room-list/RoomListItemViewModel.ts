@@ -30,6 +30,7 @@ import { RoomNotifState as ElementRoomNotifState } from "../../RoomNotifs";
 import { shouldShowComponent } from "../../customisations/helpers/UIComponents";
 import { UIComponent } from "../../settings/UIFeature";
 import { CallStore, CallStoreEvent } from "../../stores/CallStore";
+import { ConnectionState } from "../../models/Call";
 import { clearRoomNotification, setMarkedUnreadState } from "../../utils/notifications";
 import { tagRoom } from "../../utils/room/tagRoom";
 import dispatcher from "../../dispatcher/dispatcher";
@@ -219,11 +220,11 @@ export class RoomListItemViewModel
         const callType =
             call?.callType === CallType.Voice ? "voice" : call?.callType === CallType.Video ? "video" : undefined;
 
-        // Compute callStartedTs from the oldest MatrixRTC membership
-        // Only consider memberships whose sender is an actual call participant
-        // to avoid stale memberships from a previous session inflating the timer.
+        // Compute callStartedTs from the oldest MatrixRTC membership.
+        // Only when connected — stale memberships from previous sessions
+        // would otherwise show a wrong elapsed time.
         let callStartedTs: number | null = null;
-        if (hasParticipantsInCall && call) {
+        if (hasParticipantsInCall && call && call.connectionState === ConnectionState.Connected) {
             const participantUserIds = new Set<string>();
             for (const member of call.participants.keys()) {
                 participantUserIds.add(member.userId);
