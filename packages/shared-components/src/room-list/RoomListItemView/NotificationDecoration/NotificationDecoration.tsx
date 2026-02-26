@@ -121,12 +121,6 @@ export const NotificationDecoration: React.FC<NotificationDecorationProps> = ({
             {callType && elapsed && (
                 <span className="mx_NexusChannelIcon_elapsed">{elapsed}</span>
             )}
-            {callType === "video" && !elapsed && (
-                <VideoCallSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />
-            )}
-            {callType === "voice" && !elapsed && (
-                <VoiceCallSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />
-            )}
             {invited && <EmailSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />}
             {isMention && <MentionIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />}
             {(isMention || isNotification) && <UnreadCounter count={count || null} />}
