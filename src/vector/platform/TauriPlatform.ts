@@ -20,10 +20,16 @@ const UPDATE_POLL_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 /**
  * Platform implementation for Tauri 2 native desktop app.
  * Extends WebPlatform — overrides only what Tauri provides natively:
+ *   - App version from tauri.conf.json
  *   - Self-update via tauri-plugin-updater
  *   - No service worker registration (native app doesn't need it)
  */
 export default class TauriPlatform extends WebPlatform {
+    public async getAppVersion(): Promise<string> {
+        const { getVersion } = await import("@tauri-apps/api/app");
+        return getVersion();
+    }
+
     public getHumanReadableName(): string {
         return "Tauri Platform";
     }
