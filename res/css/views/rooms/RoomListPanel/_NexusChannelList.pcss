@@ -52,9 +52,15 @@
     position: relative;
 }
 
-/* アクティブ VC: 左に細い緑縦ライン */
-.nx_VoiceChannelGroup--active {
-    border-left: 1px solid var(--cpd-color-icon-success-primary);
+/* アクティブ VC: 左に細い緑縦ライン（疑似要素で重ねて要素幅を維持） */
+.nx_VoiceChannelGroup--active::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--cpd-color-icon-success-primary);
 }
 
 .nx_VoiceChannelItem {
