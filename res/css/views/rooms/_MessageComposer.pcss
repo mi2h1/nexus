@@ -255,25 +255,9 @@ Please see LICENSE files in the repository root for full details.
 .mx_MessageComposer.mx_MessageComposer--compact {
     margin-right: 0;
 
-    .mx_MessageComposer_wrapper {
-        padding: 0 0 0 25px;
-    }
-
-    .mx_MessageComposer_e2eIconWrapper {
-        left: 0;
-    }
-
-    &:not(.mx_MessageComposer_e2eStatus) {
-        .mx_MessageComposer_wrapper {
-            padding: 0;
-        }
-    }
+    /* Nexus: E2EE無効化により e2e アイコン用の padding 上書きを削除 */
 
     .mx_MessageComposer_button:last-child {
         margin-right: 0;
-    }
-
-    .mx_MessageComposer_e2eIcon {
-        left: 0;
     }
 }
