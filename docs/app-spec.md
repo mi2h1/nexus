@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-26
+> 最終更新: 2026-02-26 (v0.1.6)
 
 ## 概要
 
@@ -39,6 +39,8 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | ミュート状態保持 | Nexus (VC中ミュート→切断後も維持) | 実装済み |
 | 音声タイミング同期 | Nexus (Connected と同時に unmutePipelines()) | 実装済み |
 | Ping/遅延表示 | Nexus (RTCPeerConnection.getStats) | 実装済み |
+| ネイティブ画面キャプチャ | Nexus Tauri (WGC + WASAPI, カスタムピッカー) | 実装済み |
+| プロセス単位オーディオ | Nexus Tauri (WASAPI INCLUDE モード — 共有アプリの音だけ) | 実装済み |
 
 ## UI 構成
 
@@ -208,6 +210,20 @@ VC 中にマイクミュートして切断した場合も、ミュート状態�
 - **個別音量**: 画面共有タイル右クリックで `NexusScreenShareContextMenu` 表示（`setScreenShareVolume()`）
 - **音量永続化**: `localStorage` に userId ベースで保存、再接続時に自動復元
 - **SpotlightLayout / GridLayout** 両方で同じ UX
+
+### ネイティブ画面キャプチャ（Tauri）
+
+映像: Windows Graphics Capture (WGC)、音声: WASAPI Process Loopback
+
+| 共有タイプ | 映像 | 音声モード | 動作 |
+|-----------|------|-----------|------|
+| ウィンドウ | WGC (HWND) | INCLUDE (`target_process_id` = アプリの PID) | そのアプリの音だけキャプチャ |
+| モニター | WGC (HMONITOR) | EXCLUDE (`target_process_id` = 0 → Nexus の PID) | 全システム音（Nexus 除く） |
+
+- **Initialize フラグ**: `LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM`（Microsoft 公式 ApplicationLoopback サンプル準拠）
+- **フォーマット**: PCM 16bit / 48kHz / stereo
+- **ターゲット切替**: `switch_capture_target` で WGC + WASAPI を同時に新ターゲットへ切替
+- **制限**: 同一プロセスの複数ウィンドウ（例: Firefox PiP×2）の音声は分離不可（Windows API の制約）
 
 ### 画面共有エンコーディング（Discord 準拠）
 

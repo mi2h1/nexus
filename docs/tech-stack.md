@@ -35,11 +35,22 @@
 | LiveKit SFU (matrix.org 提供) | VC・画面共有の SFU インフラ | 無料 |
 | Cloudflare Workers | LiveKit JWT 取得用 CORS プロキシ | 無料 |
 
+## ネイティブアプリ（Tauri 2）
+
+| 技術 | 用途 |
+|------|------|
+| Tauri 2 | Windows ネイティブデスクトップアプリ（v0.1.6） |
+| tauri-plugin-updater | 自動更新（GitHub Release + latest.json） |
+| tauri-plugin-http | CORS バイパス（JWT 取得等） |
+| Windows Graphics Capture (WGC) | ネイティブ画面キャプチャ（映像） |
+| WASAPI Process Loopback | ネイティブ音声キャプチャ（プロセス単位 INCLUDE/EXCLUDE） |
+| windows-capture | WGC Rust バインディング |
+| turbojpeg | サムネイル JPEG エンコード |
+
 ## 将来追加予定
 
 | 技術 | 用途 | 時期 |
 |------|------|------|
-| Tauri 2 | Windows ネイティブアプリ化 | Phase 3（Web UI 完成後） |
 | dtln-rs or web-noise-suppressor | 高度ノイズキャンセリング（WASM） | 検討中 |
 
 ## CSS アーキテクチャ

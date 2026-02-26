@@ -58,8 +58,11 @@ const NexusUserPanel: React.FC = () => {
         useCallback(() => NexusVoiceStore.instance.preMicMuted, []),
     );
 
-    // Show muted if in VC and muted, or if not in VC and pre-muted
-    const effectiveMuted = isInCall ? isMicMuted : preMicMuted;
+    // Show muted if in VC and muted, or if not in VC and pre-muted.
+    // During Connecting phase, continue showing preMicMuted because the
+    // connection's isMicMuted hasn't been initialized from preMicMuted yet.
+    const effectiveMuted =
+        connectionState === ConnectionState.Connected ? isMicMuted : preMicMuted;
 
     // Profile info (reactive)
     const displayName = useEventEmitterState(OwnProfileStore.instance, UPDATE_EVENT, useCallback(

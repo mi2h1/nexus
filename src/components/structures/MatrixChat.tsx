@@ -2179,6 +2179,11 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
         if (this.state.view === Views.LOADING) {
             view = (
                 <div className="mx_MatrixChat_splash">
+                    <img
+                        src="res/img/nexus-logo.png"
+                        alt="Nexus"
+                        className="mx_MatrixChat_splash_logo"
+                    />
                     <Spinner />
                 </div>
             );

@@ -93,12 +93,21 @@
 .mx_VoiceChannelParticipants_avatar {
     display: flex;
     align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
     border-radius: 50%;
     border: 2px solid transparent;
     transition: border-color 0.15s ease;
 
     &.mx_VoiceChannelParticipants_avatar--speaking {
         border-color: var(--cpd-color-icon-success-primary);
+    }
+
+    /* Reset InlineSpinner margins inside avatar container */
+    .mx_InlineSpinner svg {
+        margin: 0;
     }
 }
 

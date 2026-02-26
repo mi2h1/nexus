@@ -2,19 +2,22 @@
 
 ## 現在の状態
 
-### 直近の作業（2026-02-28）
+### 直近の作業（v0.1.6 — 2026-02-26）
 
-**画面共有: ターゲット動的切替 + ピッカー改善**
-- **`switch_capture_target` Rust コマンド**: 配信中に WGC キャプチャ対象を切替（WASAPI 音声はそのまま）
-- **ピッカー リアルタイム更新**: 2秒ポーリングでウィンドウリスト・サムネイル更新
-- **品質プリセット統合**: ピッカー内に4段階プリセット行（プリセットパネル廃止）
-- **切替モード**: `mode="switch"` — [共有を停止(赤)] [変更] / [キャンセル]
-- **コントロールバー分岐**: Tauri 配信中→ピッカー / ブラウザ配信中→即停止
+**プロセス単位オーディオキャプチャ**
+- **WASAPI INCLUDE モード**: ウィンドウ共有時はそのアプリの音だけをキャプチャ（`PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE`）
+- **モニター共有は従来通り EXCLUDE モード**: 全システム音（Nexus 除く）をキャプチャ
+- **Microsoft 公式サンプル準拠**: `LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM` + PCM 16bit/48kHz/stereo
+- **`GetWindowThreadProcessId`**: HWND から PID を取得し `CaptureTarget.process_id` に格納
+- **`switch_capture_target` 音声切替対応**: ターゲット変更時に WASAPI も新 PID で再起動
 
-**VC バグ修正**
-- **ミュート状態の後参加者共有**: 新規参加者接続時に 500ms 遅延で再ブロードキャスト
-- **参加者リスト ログイン後表示**: LiveKit identity から userId を直接パース（`room.getMember()` 不要に）
-- **Tauri 音量制御**: `createMediaElementSource` → `createMediaStreamSource` に切替（WebView2 対応）
+**バグ修正**
+- **共有画面変更時のオーディオ切替**: `switch_capture_target` が WGC のみ再起動していたのを WASAPI も再起動するよう修正
+- **再共有時の自動視聴防止**: ScreenShare ビデオトラック unsubscribe 時にも `watchingScreenShares` をクリア
+
+**バージョン表示**
+- **TauriPlatform.getAppVersion()**: `@tauri-apps/api/app` の `getVersion()` で `tauri.conf.json` のバージョンを返す
+- 設定「ヘルプと概要」ページに Nexus のバージョン（0.1.6）が表示される
 
 **過去の主要マイルストーン**
 - 自前 LiveKit SFU (lche2.xvps.jp) 構築完了
@@ -24,8 +27,7 @@
 ### 未解決・次回やること
 
 1. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
-2. **WASAPI プロセス除外** — 画面共有音声から VC の音声をループバック防止（Step 3）
-3. **システムトレイ常駐** — 閉じてもバックグラウンド動作
+2. **システムトレイ常駐** — 閉じてもバックグラウンド動作
 
 ---
 
@@ -124,9 +126,16 @@ getUserMedia → LocalAudioTrack
   - `createMediaElementSource` は WebView2 で audio 要素の出力を正しくリダイレクトしないため不採用
   - audio 要素は `volume=0` でシステム出力を抑制、`play()` で MediaStream を alive に保持
 
-### 画面共有
+### 画面共有（ブラウザ）
 - `getDisplayMedia()` 直接呼出し（createLocalScreenTracks だと音声失敗時に全体中止）
 - 音声なしでも映像のみで続行
+
+### ネイティブ画面キャプチャ（Tauri）
+- 映像: Windows Graphics Capture (WGC)、音声: WASAPI Process Loopback
+- ウィンドウ共有: INCLUDE モード（`target_process_id` = アプリの PID → そのアプリの音だけ）
+- モニター共有: EXCLUDE モード（`target_process_id` = 0 → 全システム音、Nexus 除く）
+- Initialize: `LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM` + PCM 16bit/48kHz/stereo
+- 制限: 同一プロセスの複数ウィンドウの音声は分離不可（Windows API の制約）
 
 ---
 
@@ -152,7 +161,7 @@ Phase 5: publishTrack(processedTrack)
 - Phase 1（環境構築）: ✅ 完了
 - Phase 2（Discord風UIカスタマイズ）: ✅ 完了
 - Phase 2.5（通話機能内包）: ✅ 完了
-- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.4）
+- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.6）
 - 自前 SFU: ✅ 構築完了、ブラウザ版動作確認済み
 
 ### ロードマップ

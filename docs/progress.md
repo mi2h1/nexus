@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-26
+> 最終更新: 2026-02-26 (v0.1.6)
 
 ## リポジトリ情報
 
@@ -45,6 +45,8 @@ nexus/                          # element-web フォーク
 │           ├── NexusVCControlBar.tsx     # VC コントロールバー
 │           ├── NexusScreenShareView.tsx  # 画面共有ビュー
 │           ├── NexusScreenSharePip.tsx  # 画面共有 PiP
+│           ├── NexusScreenSharePanel.tsx # 画面共有設定パネル
+│           ├── NexusScreenSharePicker.tsx # ネイティブ画面共有ピッカー
 │           └── NexusParticipantContextMenu.tsx # 参加者コンテキストメニュー
 ├── res/css/views/              # Nexus カスタム CSS
 │   ├── rooms/RoomListPanel/
@@ -63,7 +65,7 @@ nexus/                          # element-web フォーク
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── capabilities/default.json
-│   └── src/{main,lib}.rs
+│   └── src/{main,lib,capture}.rs
 ├── config.json                 # アプリ設定（Nexus カスタム）
 └── .github/workflows/
     ├── pages.yml               # GitHub Pages デプロイ
@@ -89,6 +91,8 @@ nexus/                          # element-web フォーク
 | 画面共有ピッカー リアルタイム更新 | 2秒ポーリングでウィンドウリスト・サムネイル更新 |
 | 画面共有 品質プリセット統合 | ピッカー内に4段階プリセット（480p15/720p30/1080p30/1080p60） |
 | 音量制御修正 | `createMediaStreamSource` で Web Audio ルーティング（WebView2 対応） |
+| プロセス単位オーディオキャプチャ | WASAPI INCLUDE モード — ウィンドウ共有時はそのアプリの音だけキャプチャ |
+| バージョン表示 | TauriPlatform で `@tauri-apps/api/app` の `getVersion()` → 設定ページに表示 |
 
 ### ロードマップ
 
@@ -112,9 +116,9 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | 施策 | 難易度 | 効果 | 状態 | 詳細 |
 |------|--------|------|------|------|
 | ネイティブ画面キャプチャ Step 1 | 高 | 共有バー消去、カスタムピッカー | ✅ 完了 | WGC + WASAPI + カスタムピッカー |
-| ネイティブ画面キャプチャ Step 2 | 高 | 画面共有に音声追加 | ✅ 完了 | WASAPI 通常ループバック |
-| 配信中ターゲット切替 | 中 | Discord 同等のウィンドウ切替 | ✅ 完了 | `switch_capture_target` Rust コマンド |
-| ネイティブ画面キャプチャ Step 3 | 高 | VC 声のループ防止 | 未着手 | WASAPI プロセス除外 |
+| ネイティブ画面キャプチャ Step 2 | 高 | 画面共有に音声追加 | ✅ 完了 | WASAPI ループバック |
+| 配信中ターゲット切替 | 中 | Discord 同等のウィンドウ切替 | ✅ 完了 | `switch_capture_target` — 映像+音声同時切替 |
+| プロセス単位オーディオキャプチャ | 高 | 共有アプリの音だけキャプチャ | ✅ 完了 | WASAPI INCLUDE モード（ウィンドウ共有時） |
 | システムトレイ常駐 | 低 | 閉じてもバックグラウンド動作 | 未着手 | `TrayIconBuilder` API |
 | Windows 自動音量低下バイパス | 中 | 通話中に他アプリの音量が下がらない | 未着手 | Windows API auto-ducking 無効化 |
 
@@ -213,6 +217,18 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - ローカルのオーディオ停止・ノード切断は同期で完了するため、UI は即座に Disconnected に遷移
   - MatrixRTC 離脱と WebSocket close はバックグラウンドで処理（失敗時は membership 自然タイムアウト + `clean()` で掃除）
 - **合計効果**: 接続 ~600ms（初回も再接続も）、切断は体感即座
+
+#### 2026-02-26 (v0.1.6: プロセス単位オーディオキャプチャ + バージョン表示)
+- **プロセス単位オーディオキャプチャ**: ウィンドウ共有時は WASAPI `PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` で共有アプリの音だけをキャプチャ
+  - `CaptureTarget` に `process_id` フィールド追加（`GetWindowThreadProcessId` で HWND → PID 変換）
+  - `start_capture` / `switch_capture_target` に `target_process_id` パラメータ追加
+  - `run_process_loopback()`: PID > 0 なら INCLUDE モード（アプリ音のみ）、PID = 0 なら EXCLUDE モード（全システム音 - Nexus）
+  - Microsoft 公式 ApplicationLoopback サンプル準拠: `LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM` + PCM 16bit/48kHz/stereo
+  - 制限: 同一プロセスの複数ウィンドウ（例: Firefox PiP×2）は音声分離不可（Windows API の制約）
+- **共有画面変更時のオーディオ切替修正**: `switch_capture_target` で WASAPI も新 PID で再起動するよう修正（以前は WGC のみ）
+- **再共有時の自動視聴防止**: ScreenShare ビデオトラック unsubscribe 時にも `watchingScreenShares` をクリア
+- **バージョン表示**: `TauriPlatform.getAppVersion()` オーバーライド — `@tauri-apps/api/app` の `getVersion()` で Nexus バージョン（tauri.conf.json）を返す
+- **バージョンバンプ**: v0.1.5 → v0.1.6
 
 #### 2026-02-28 (画面共有ターゲット切替 + VC バグ修正)
 - **pnpm 403 エラー修正（CI）**: `pnpm/action-setup@v4` に `standalone: true` を追加
