@@ -19,7 +19,7 @@ import React, {
 import classNames from "classnames";
 import { type Room, RoomEvent } from "matrix-js-sdk/src/matrix";
 import { KnownMembership } from "matrix-js-sdk/src/types";
-import { type DraggableProvidedDragHandleProps } from "react-beautiful-dnd";
+import { type DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import {
     ChevronDownIcon,
     ChevronRightIcon,
