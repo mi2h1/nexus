@@ -184,6 +184,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                     share={viewContextMenu.share}
                     hideNonScreenSharePanels={hideNonScreenSharePanels}
                     onHideNonScreenSharePanelsChange={setHideNonScreenSharePanels}
+                    onStopWatching={stopWatching}
                     onClose={() => setViewContextMenu(null)}
                 />
             )}
@@ -200,12 +201,13 @@ interface NexusVCViewContextMenuProps {
     share?: ScreenShareInfo;
     hideNonScreenSharePanels: boolean;
     onHideNonScreenSharePanelsChange: (value: boolean) => void;
+    onStopWatching?: (id: string) => void;
     onClose: () => void;
 }
 
 const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewContextMenuProps>(
     function NexusVCViewContextMenu(
-        { left, top, share, hideNonScreenSharePanels, onHideNonScreenSharePanelsChange, onClose },
+        { left, top, share, hideNonScreenSharePanels, onHideNonScreenSharePanelsChange, onStopWatching, onClose },
         ref,
     ) {
         const conn = NexusVoiceStore.instance.getActiveConnection();
@@ -240,7 +242,7 @@ const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewConte
                 onMouseDown={stopBubble}
                 onFocusCapture={stopBubble}
             >
-                {share && (
+                {share?.audioTrack && (
                     <>
                         <div className="nx_VCViewContextMenu_label">
                             {share.participantName} の配信音量
@@ -259,6 +261,20 @@ const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewConte
                                 {Math.round(initialVolume * 100)}%
                             </span>
                         </div>
+                        <div className="nx_VCViewContextMenu_separator" />
+                    </>
+                )}
+                {share && !share.isLocal && onStopWatching && (
+                    <>
+                        <button
+                            className="nx_VCViewContextMenu_item nx_VCViewContextMenu_stopWatching"
+                            onClick={() => {
+                                onStopWatching(share.participantIdentity);
+                                onClose();
+                            }}
+                        >
+                            視聴を停止
+                        </button>
                         <div className="nx_VCViewContextMenu_separator" />
                     </>
                 )}
@@ -437,7 +453,6 @@ function SpotlightLayout({
                         >
                             <ScreenShareTile
                                 share={share}
-                                onStopWatching={share.isLocal ? undefined : () => onStopWatching(share.participantIdentity)}
                                 onShareContextMenu={onShareContextMenu}
                             />
                         </div>

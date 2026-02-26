@@ -175,7 +175,7 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopW
 
     const onContextMenu = useCallback((e: React.MouseEvent) => {
         if (!onShareContextMenu) return;
-        if (share.isLocal || !share.audioTrack) return;
+        if (share.isLocal) return;
         e.preventDefault();
         e.stopPropagation();
         onShareContextMenu(share, e.clientX, e.clientY);
