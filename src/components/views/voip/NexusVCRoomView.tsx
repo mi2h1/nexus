@@ -22,6 +22,7 @@ import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
 import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
+import { VisibilityOffIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 interface NexusVCRoomViewProps {
     roomId: string;
@@ -266,15 +267,16 @@ const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewConte
                 )}
                 {share && !share.isLocal && onStopWatching && (
                     <>
-                        <button
-                            className="nx_VCViewContextMenu_item nx_VCViewContextMenu_stopWatching"
+                        <div
+                            className="nx_VCViewContextMenu_item nx_VCViewContextMenu_item--destructive"
                             onClick={() => {
                                 onStopWatching(share.participantIdentity);
                                 onClose();
                             }}
                         >
-                            視聴を停止
-                        </button>
+                            <VisibilityOffIcon width={18} height={18} />
+                            <span>視聴を停止</span>
+                        </div>
                         <div className="nx_VCViewContextMenu_separator" />
                     </>
                 )}

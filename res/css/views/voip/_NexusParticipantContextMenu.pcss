@@ -87,11 +87,25 @@ Please see LICENSE files in the repository root for full details.
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 6px 4px;
+    border-radius: 4px;
     cursor: pointer;
     font: var(--cpd-font-body-sm-regular);
     color: var(--cpd-color-text-primary);
 
+    &:hover {
+        background: var(--cpd-color-bg-subtle-secondary);
+    }
+
     input[type="checkbox"] {
         accent-color: var(--cpd-color-icon-accent-primary);
+    }
+
+    &.nx_VCViewContextMenu_item--destructive {
+        color: var(--cpd-color-text-critical-primary);
+
+        svg {
+            fill: currentcolor;
+        }
     }
 }
