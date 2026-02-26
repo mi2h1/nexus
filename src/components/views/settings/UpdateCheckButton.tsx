@@ -33,17 +33,7 @@ function getStatusText(status: UpdateCheckStatus, errorDetail?: string): ReactNo
         case UpdateCheckStatus.Downloading:
             return _t("update|downloading");
         case UpdateCheckStatus.Ready:
-            return _t(
-                "update|new_version_available",
-                {},
-                {
-                    a: (sub) => (
-                        <AccessibleButton kind="link_inline" onClick={installUpdate}>
-                            {sub}
-                        </AccessibleButton>
-                    ),
-                },
-            );
+            return null;
     }
 }
 
@@ -64,14 +54,26 @@ const UpdateCheckButton: React.FC = () => {
     });
 
     const busy = !!state && !doneStatuses.includes(state.status);
+    const updateReady = state?.status === UpdateCheckStatus.Ready;
 
     let suffix: JSX.Element | undefined;
-    if (state) {
-        suffix = (
-            <span className="mx_UpdateCheckButton_summary">
-                {getStatusText(state.status, state.detail)}
-                {busy && <InlineSpinner />}
-            </span>
+    if (state && !updateReady) {
+        const statusText = getStatusText(state.status, state.detail);
+        if (statusText) {
+            suffix = (
+                <span className="mx_UpdateCheckButton_summary">
+                    {statusText}
+                    {busy && <InlineSpinner />}
+                </span>
+            );
+        }
+    }
+
+    if (updateReady) {
+        return (
+            <AccessibleButton onClick={installUpdate} kind="primary">
+                {_t("action|update")}
+            </AccessibleButton>
         );
     }
 
