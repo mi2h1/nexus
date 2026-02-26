@@ -183,24 +183,30 @@ const NexusUserPanel: React.FC = () => {
 
     return (
         <div className="mx_NexusUserPanel">
-            {call && isInCall && <NexusCallStatusPanel call={call} />}
             <div className="mx_NexusUserPanel_content">
-                <div className="mx_NexusUserPanel_profile" ref={avatarRef}>
-                    <AccessibleButton
-                        className="mx_NexusUserPanel_avatarButton"
-                        onClick={onAvatarClick}
-                        title={_t("a11y|user_menu")}
-                    >
-                        <BaseAvatar
-                            idName={userId}
-                            name={displayName ?? userId}
-                            url={avatarUrl}
-                            size="32px"
-                        />
-                    </AccessibleButton>
-                    <span className="mx_NexusUserPanel_displayName">{displayName ?? userId}</span>
-                </div>
-                <div className="mx_NexusUserPanel_actions">
+                {call && isInCall && (
+                    <>
+                        <NexusCallStatusPanel call={call} />
+                        <div className="mx_NexusUserPanel_separator" />
+                    </>
+                )}
+                <div className="mx_NexusUserPanel_row">
+                    <div className="mx_NexusUserPanel_profile" ref={avatarRef}>
+                        <AccessibleButton
+                            className="mx_NexusUserPanel_avatarButton"
+                            onClick={onAvatarClick}
+                            title={_t("a11y|user_menu")}
+                        >
+                            <BaseAvatar
+                                idName={userId}
+                                name={displayName ?? userId}
+                                url={avatarUrl}
+                                size="32px"
+                            />
+                        </AccessibleButton>
+                        <span className="mx_NexusUserPanel_displayName">{displayName ?? userId}</span>
+                    </div>
+                    <div className="mx_NexusUserPanel_actions">
                     {updateAvailable && (
                         <div className="mx_NexusUserPanel_updateWrapper">
                             <AccessibleButton
@@ -235,6 +241,7 @@ const NexusUserPanel: React.FC = () => {
                     >
                         <SettingsSolidIcon width={20} height={20} />
                     </AccessibleButton>
+                    </div>
                 </div>
             </div>
             {renderContextMenu()}

@@ -15,16 +15,26 @@
 
 .mx_NexusUserPanel_content {
     display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    margin: 0 var(--cpd-space-2x) var(--cpd-space-2x);
+    background-color: var(--cpd-color-bg-subtle-secondary);
+}
+
+.mx_NexusUserPanel_row {
+    display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--cpd-space-3x);
     gap: var(--cpd-space-2x);
     min-height: 55px;
-    border-radius: 8px;
-    border: 1px solid var(--cpd-color-border-interactive-secondary);
-    margin: 0 var(--cpd-space-2x) var(--cpd-space-2x);
-    background-color: var(--cpd-color-bg-subtle-secondary);
+}
+
+.mx_NexusUserPanel_separator {
+    height: 1px;
+    background-color: var(--cpd-color-border-interactive-secondary);
 }
 
 .mx_NexusUserPanel_profile {
@@ -165,7 +175,6 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--cpd-space-2x) var(--cpd-space-3x);
-    border-bottom: 1px solid var(--cpd-color-bg-subtle-primary);
     gap: var(--cpd-space-2x);
 }
 
