@@ -538,6 +538,15 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
                 PosthogTrackers.instance.trackPageChange(this.state.view, this.state.page_type, durationMs);
             }
         }
+        // Nexus: prevent auto-focus on SpacePanel buttons after loading finishes.
+        // Tauri WebView may focus the first tabIndex=0 element (Home button), showing its tooltip.
+        if (prevState.view !== Views.LOGGED_IN && this.state.view === Views.LOGGED_IN) {
+            requestAnimationFrame(() => {
+                if (document.activeElement && document.activeElement !== document.body) {
+                    (document.activeElement as HTMLElement).blur?.();
+                }
+            });
+        }
         if (this.focusNext === "composer") {
             dis.fire(Action.FocusSendMessageComposer);
             this.focusNext = undefined;
