@@ -275,8 +275,13 @@ function VoiceChannelItem({
         };
     }, [roomId, matrixClient]);
 
+    const chatButtonRef = useRef<HTMLDivElement>(null);
+
     const onVoiceChannelClick = useCallback(
         (e: React.MouseEvent) => {
+            // Chat button click — skip VC join, let onChatClick handle it
+            if (chatButtonRef.current?.contains(e.target as Node)) return;
+
             e.stopPropagation();
             e.preventDefault();
 
@@ -324,7 +329,7 @@ function VoiceChannelItem({
                 {renderItem(roomId, globalIndex, avatarRenderer)}
                 {elapsed && <span className="mx_NexusChannelIcon_elapsed">{elapsed}</span>}
                 {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-                <div className="nx_VoiceChannelItem_chatButton" onClickCapture={onChatClick} title="チャットを表示">
+                <div ref={chatButtonRef} className="nx_VoiceChannelItem_chatButton" onClick={onChatClick} title="チャットを表示">
                     <ChatSolidIcon width={16} height={16} />
                 </div>
             </div>
