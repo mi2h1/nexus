@@ -4,6 +4,13 @@
 
 ### 直近の作業（2026-02-27）
 
+**VC 未参加時ルームビュー + サイドバーチャットボタン**
+- VC チャンネルホバー時にチャットアイコンボタンを表示（ChatSolidIcon）
+- クリックで VC 未参加のままルームビューを開き、`RightPanelStore.setCard(Timeline)` でチャットパネルを強制オープン
+- VC 未参加時の表示を「ボイスチャンネルに参加していません」+「参加」ボタンに変更
+- 既存ホバーメニュー（三点リーダー+ベル）は CSS `[class*="hoverMenu"]` で非表示
+- VC チャンネル名クリックは接続済み時は何もしない（ルームビューはチャットボタン専用に）
+
 **音質改善（v0.2.3）**
 - Opus ビットレート 64kbps → 128kbps（明瞭さ向上）
 - getUserMedia 制約: `autoGainControl: true`, `sampleRate: 48000`, `channelCount: 1`
