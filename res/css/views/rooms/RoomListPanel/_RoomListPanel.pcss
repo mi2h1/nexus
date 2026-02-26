@@ -10,8 +10,14 @@
     height: 100%;
     border-right: 1px solid var(--cpd-color-bg-subtle-primary);
 
-    /* Nexus: shared-components の RoomListHeaderView (min-height:60px) を上書き */
+    /* Nexus: shared-components の RoomListHeaderView を上書き */
     > header {
         min-height: 55px;
+
+        /* スペース名のフォントサイズを RoomHeader のチャンネル名 (body-lg) に合わせる */
+        h1 {
+            font: var(--cpd-font-body-lg-semibold);
+            letter-spacing: var(--cpd-font-letter-spacing-body-lg);
+        }
     }
 }
