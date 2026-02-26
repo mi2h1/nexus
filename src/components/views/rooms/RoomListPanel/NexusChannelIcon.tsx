@@ -74,10 +74,21 @@ export function VoiceChannelIcon({ roomId }: { roomId: string }): JSX.Element {
         ? "var(--cpd-color-icon-success-primary)" // green
         : "var(--cpd-color-icon-tertiary)"; // grey
 
+    if (elapsed) {
+        return (
+            <span className="mx_NexusChannelIcon mx_NexusChannelIcon_elapsed" aria-label="Voice channel">
+                {elapsed}
+            </span>
+        );
+    }
+
     return (
-        <span className="mx_NexusChannelIcon">
-            <VolumeOnSolidIcon width="16px" height="16px" color={color} aria-label="Voice channel" />
-            {elapsed && <span className="mx_NexusChannelIcon_elapsed">{elapsed}</span>}
-        </span>
+        <VolumeOnSolidIcon
+            className="mx_NexusChannelIcon mx_NexusChannelIcon_voice"
+            width="16px"
+            height="16px"
+            color={color}
+            aria-label="Voice channel"
+        />
     );
 }

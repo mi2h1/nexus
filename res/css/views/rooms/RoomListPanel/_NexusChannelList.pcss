@@ -55,8 +55,6 @@
 /* アクティブ VC: 左に細い緑縦ライン */
 .nx_VoiceChannelGroup--active {
     border-left: 1px solid var(--cpd-color-icon-success-primary);
-    margin-left: 15px;
-    padding-left: 0;
 }
 
 .nx_VoiceChannelItem {
@@ -90,16 +88,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 24px;
+    width: 24px;
     height: 24px;
     flex-shrink: 0;
 }
 
-/* 経過時間テキスト（細字、緑） */
+/* 経過時間テキスト（受話器アイコンの代わりに表示） */
 .mx_NexusChannelIcon_elapsed {
     font: var(--cpd-font-body-xs-regular);
     color: var(--cpd-color-icon-success-primary);
-    margin-left: 2px;
     white-space: nowrap;
 }
 
