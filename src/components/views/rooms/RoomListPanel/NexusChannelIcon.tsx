@@ -6,7 +6,6 @@
  */
 
 import React, { useState, useEffect, type JSX } from "react";
-import VolumeOnSolidIcon from "@vector-im/compound-design-tokens/assets/web/icons/volume-on-solid";
 
 import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 
@@ -62,33 +61,17 @@ function useElapsedTime(startTs: number | null): string | null {
 }
 
 /**
- * Discord-style speaker icon for voice channels.
- * Green + elapsed time when anyone is in the call, grey otherwise.
+ * Avatar slot for voice channels.
+ * Shows elapsed time when anyone is in the call, empty otherwise.
  */
 export function VoiceChannelIcon({ roomId }: { roomId: string }): JSX.Element {
     const { members, callStartedTs } = useVCParticipants(roomId);
     const hasParticipants = members.length > 0;
     const elapsed = useElapsedTime(hasParticipants ? callStartedTs : null);
 
-    const color = hasParticipants
-        ? "var(--cpd-color-icon-success-primary)" // green
-        : "var(--cpd-color-icon-tertiary)"; // grey
-
-    if (elapsed) {
-        return (
-            <span className="mx_NexusChannelIcon mx_NexusChannelIcon_elapsed" aria-label="Voice channel">
-                {elapsed}
-            </span>
-        );
-    }
-
     return (
-        <VolumeOnSolidIcon
-            className="mx_NexusChannelIcon mx_NexusChannelIcon_voice"
-            width="16px"
-            height="16px"
-            color={color}
-            aria-label="Voice channel"
-        />
+        <span className="mx_NexusChannelIcon mx_NexusChannelIcon_elapsed" aria-label="Voice channel">
+            {elapsed}
+        </span>
     );
 }
