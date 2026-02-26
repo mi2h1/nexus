@@ -2205,11 +2205,14 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
         } else if (this.state.view === Views.PENDING_CLIENT_START) {
             // we think we are logged in, but are still waiting for the /sync to complete
             view = (
-                <LoginSplashView
-                    matrixClient={MatrixClientPeg.safeGet()}
-                    onLogoutClick={this.onLogoutClick}
-                    syncError={this.state.syncError}
-                />
+                <div className="mx_MatrixChat_splash">
+                    <img
+                        src={nexusLogoPng}
+                        alt="Nexus"
+                        className="mx_MatrixChat_splash_logo"
+                    />
+                    <Spinner />
+                </div>
             );
         } else if (this.state.view === Views.LOGGED_IN) {
             // `ready` and `view==LOGGED_IN` may be set before `page_type` (because the
@@ -2233,11 +2236,14 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             } else {
                 // we think we are logged in, but are still waiting for the /sync to complete
                 view = (
-                    <LoginSplashView
-                        matrixClient={MatrixClientPeg.safeGet()}
-                        onLogoutClick={this.onLogoutClick}
-                        syncError={this.state.syncError}
-                    />
+                    <div className="mx_MatrixChat_splash">
+                        <img
+                            src={nexusLogoPng}
+                            alt="Nexus"
+                            className="mx_MatrixChat_splash_logo"
+                        />
+                        <Spinner />
+                    </div>
                 );
             }
         } else if (this.state.view === Views.WELCOME) {
