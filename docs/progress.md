@@ -106,6 +106,15 @@ nexus/                          # element-web フォーク
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
 
+#### 2026-02-27 (v0.2.3: 音質改善 + DevTools 有効化)
+- **Opus ビットレート引き上げ**: 64kbps → 128kbps（10人以下なので帯域問題なし、音声の明瞭さ向上）
+- **getUserMedia 制約最適化**: `autoGainControl: true`（マイク音量自動正規化）、`sampleRate: 48000`（Opus ネイティブレート）、`channelCount: 1`（モノラル）
+- **ボイスゲート「プツッ」修正**: 50ms `DelayNode` ルックアヘッドを導入
+  - 音声パスに遅延を挟み、レベル検出は遅延前で実施 → ゲートオープン判断時点で音声はまだ到達前
+  - ゲートオープン時: `linearRampToValueAtTime` → `setValueAtTime` に変更（即座に開いても冒頭欠落なし）
+  - ゲートクローズ時: ramp を 20ms → 50ms に延長（滑らかなフェードアウト）
+- **リリースビルドで DevTools 有効化**: `tauri` の `features` に `"devtools"` 追加
+
 #### 最優先: VC 接続高速化
 
 | 施策 | 難易度 | 効果 | 状態 | 詳細 |
@@ -134,10 +143,10 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | 施策 | 難易度 | 効果 | 状態 | Discord 比較 |
 |------|--------|------|------|-------------|
 | 画面共有 A/V 同期改善 | 高 | 映像と音声のズレ解消 | ✅ 改善済み（100-300ms、許容範囲） | Discord は RTCP SR + カスタム C++ エンジン |
-| AGC（自動ゲイン制御） | 低 | マイク音量の自動調整 | 未着手 | Discord 標準搭載 |
+| AGC（自動ゲイン制御） | 低 | マイク音量の自動調整 | ✅ 完了 | Discord 標準搭載 |
 | VAD 改善 | 低 | RNNoise の VAD 出力を活用 | 未着手 | Discord は Krisp |
 | スピーカーミュート（デフ） | 低 | 出力を一括ミュート | 未着手 | Discord 標準搭載 |
-| Opus 動的ビットレート | 中 | 接続品質に応じて 32〜128kbps | 未着手 | Discord 実装済み |
+| Opus ビットレート引き上げ | 低 | 128kbps 固定 | ✅ 完了 | Discord は動的(32〜128kbps) |
 | DTLN ノイズキャンセリング | 高 | RNNoise より高品質な NC | 未着手 | Discord は Krisp (有料級) |
 | エコーキャンセレーション強化 | 高 | スピーカー利用時のエコー除去 | 未着手 | |
 

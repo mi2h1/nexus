@@ -4,29 +4,19 @@
 
 ### 直近の作業（2026-02-27）
 
-**画面共有 A/V 同期（再検証完了 — v0.2.2）**
-- 前回の試行時に受信側が旧バージョン（v0.2.0）だったため、全4方策を再適用して双方最新で再検証
-- 再適用した方策:
-  1. 映像+音声を同一 MediaStream に統合（`<video>` 1要素で再生）
-  2. Web Audio 経由を廃止し `videoEl.volume` で直接制御
-  3. トラック到着タイミング同期（映像到着時に音声を500ms待機）
-  4. `requestVideoFrameCallback` でフリーズ検出→MediaStream 再構築
-- **結果**: ズレが「数秒」→「100-300ms（映像が先行）」に改善。ユーザー許容範囲内と判断
-- `playoutDelayHint` による追加調整も提案したが、ユーザーが現状維持を選択
+**音質改善（v0.2.3）**
+- Opus ビットレート 64kbps → 128kbps（明瞭さ向上）
+- getUserMedia 制約: `autoGainControl: true`, `sampleRate: 48000`, `channelCount: 1`
+- ボイスゲート「プツッ」修正: 50ms `DelayNode` ルックアヘッド導入
+  - 音声パスに遅延挿入、レベル検出は遅延前（= 50ms 先読み）
+  - ゲートオープン: `linearRamp` → `setValueAtTime`（即座に開く）
+  - ゲートクローズ: ramp 20ms → 50ms に延長
+- リリースビルドで DevTools 有効化（`tauri features = ["devtools"]`）
 
-**パネル非表示の空メッセージ**
-- 「画面共有ではないパネルを非表示」ON + 誰も画面共有していないとき:
-  - Spotlight: 「画面を共有しているユーザーはいません」テキスト表示
-  - Grid: 同上（`nx_VCRoomView_gridEmpty` で全幅中央表示）
-
-**CI バージョン自動コミット**
-- `tauri-release.yml` に `update-version` ジョブを追加
-- リリースビルド成功後、タグからバージョンを取得し `tauri.conf.json` / `Cargo.toml` を main に自動コミット
-- 開発版でバージョンがズレる問題を解消
-
-**バージョン管理修正**
-- `tauri.conf.json` / `Cargo.toml` を手動で 0.2.1 に更新（0.1.9 のままだった）
-- `Cargo.lock` をリポジトリに追加（Tauri バイナリでは推奨）
+**過去のマイルストーン（v0.2.2）**
+- 画面共有 A/V 同期再検証完了（100-300ms、許容範囲）
+- パネル非表示の空メッセージ
+- CI バージョン自動コミット
 
 **過去の主要マイルストーン**
 - 統合コンテキストメニュー（VC 背景右クリック）
@@ -129,7 +119,8 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 ```
 getUserMedia → LocalAudioTrack
   → MediaStreamSource → [RNNoise] → HPF(80Hz) → Compressor
-  → Analyser + InputGainNode → MediaStreamDestination → publish to LiveKit
+  → Analyser (遅延なし、即時レベル検出)
+  → DelayNode(50ms) → InputGainNode → MediaStreamDestination → publish to LiveKit
 ```
 - AudioContext はユーザージェスチャー内（await 前）に生成必須
 - ミュートは `inputGainNode.gain.value = 0`（LiveKit の track.mute() は使わない — Firefox で壊れるため）
