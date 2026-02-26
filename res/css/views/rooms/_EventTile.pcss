@@ -13,7 +13,7 @@ $left-gutter: 74px;
     --EventTile_content-margin-inline-end: 34px;
     --EventTile_group_line-spacing-block-start: 1px;
     --EventTile_group_line-spacing-block-end: 3px;
-    --EventTile_group_line-spacing-inline-start: $left-gutter;
+    --EventTile_group_line-spacing-inline-start: 60px;
     --EventTile_group_line-line-height: $font-22px;
     --EventTile_ThreadSummary-line-height: calc(2 * $font-12px);
 
@@ -474,7 +474,7 @@ $left-gutter: 74px;
             display: flex;
             align-items: baseline;
             gap: var(--cpd-space-2x);
-            margin-left: $left-gutter;
+            margin-left: 60px;
         }
 
         .mx_EventTile_senderRow > .mx_DisambiguatedProfile {
@@ -509,7 +509,7 @@ $left-gutter: 74px;
         }
 
         .mx_RoomView_timeline_rr_enabled & {
-            $inline-end-margin: 80px;
+            $inline-end-margin: 0px;
 
             .mx_ThreadSummary,
             .mx_ThreadSummary_icon,
