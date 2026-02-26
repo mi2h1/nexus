@@ -1083,7 +1083,7 @@ export class UnwrappedEventTile extends React.Component<EventTileProps, IState> 
             avatarSize = "20px";
             needsSenderProfile = true;
         } else {
-            avatarSize = "40px";
+            avatarSize = "35px";
             needsSenderProfile = true;
         }
 
@@ -1145,15 +1145,8 @@ export class UnwrappedEventTile extends React.Component<EventTileProps, IState> 
             />
         ) : undefined;
 
-        const showTimestamp =
-            this.props.mxEvent.getTs() &&
-            !this.props.hideTimestamp &&
-            (this.props.alwaysShowTimestamps ||
-                this.props.last ||
-                this.state.hover ||
-                this.state.focusWithin ||
-                this.state.actionBarFocused ||
-                Boolean(this.state.contextMenu));
+        // Nexus: タイムスタンプを常に表示（ホバー時のみ表示する動作を廃止）
+        const showTimestamp = !!this.props.mxEvent.getTs() && !this.props.hideTimestamp;
 
         // Thread panel shows the timestamp of the last reply in that thread
         let ts =
