@@ -1870,15 +1870,33 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Private: Participants ────────────────────────────────
 
     private onParticipantConnected = (): void => {
+        const prevCount = this._participants.size;
         this.updateParticipants();
+        const newCount = this._participants.size;
+
+        // Play join SE — LiveKit fires before MatrixRTC so this is the
+        // reliable trigger point for remote participant join sounds.
+        if (this.connected && !this._suppressMembershipSounds && newCount > prevCount) {
+            playVcSound(VC_JOIN_SOUND);
+        }
+
         // Re-broadcast our mute state so the new joiner picks it up.
         // Slight delay to ensure their data channel is ready.
         setTimeout(() => this.broadcastMuteState(this._isMicMuted), 500);
     };
 
     private onParticipantDisconnected = (participant: Participant): void => {
+        const prevCount = this._participants.size;
         this.remoteMuteStates.delete(participant.identity);
         this.updateParticipants();
+        const newCount = this._participants.size;
+
+        // Play leave SE — LiveKit fires before MatrixRTC so this is the
+        // reliable trigger point for remote participant leave sounds.
+        if (this.connected && !this._suppressMembershipSounds && newCount < prevCount && newCount > 0) {
+            playVcSound(VC_LEAVE_SOUND);
+        }
+
         this.updateScreenShares();
     };
 

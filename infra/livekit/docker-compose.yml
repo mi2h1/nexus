@@ -18,7 +18,7 @@ services:
         max-file: "3"
 
   lk-jwt-service:
-    image: ghcr.io/element-hq/lk-jwt-service:latest
+    image: nexus-lk-jwt-service:latest
     container_name: nexus-jwt
     restart: always
     environment:
@@ -29,6 +29,8 @@ services:
       LIVEKIT_SECRET: "0930254ce08f85941dd721f2eea601d1941d2353810367fdd94f758c78b5fd11"
       # Trust matrix.org for OpenID token verification
       LIVEKIT_FULL_ACCESS_HOMESERVERS: "matrix.org"
+      # Whitelist of Matrix user IDs allowed to get JWT tokens
+      LIVEKIT_ALLOWED_USER_IDS: "@mi2h:matrix.org,@lche:matrix.org,@yama_yu:matrix.org,@makotu510:matrix.org,@msyumallow:matrix.org,@1stbloodkyo:matrix.org,@mohumo:matrix.org"
     depends_on:
       - livekit
     logging:
