@@ -61,7 +61,7 @@ import SettingsStore from "../../../settings/SettingsStore";
 import { SettingLevel } from "../../../settings/SettingLevel";
 import UIStore from "../../../stores/UIStore";
 import { useSettingValue } from "../../../hooks/useSettings";
-import UserMenu from "../../structures/UserMenu";
+
 import IndicatorScrollbar from "../../structures/IndicatorScrollbar";
 import { useDispatcher } from "../../../hooks/useDispatcher";
 import defaultDispatcher from "../../../dispatcher/dispatcher";

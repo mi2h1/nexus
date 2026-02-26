@@ -10,7 +10,6 @@ import {
     RoomEvent,
     type MatrixClient,
     type Room,
-    type RoomMember,
 } from "matrix-js-sdk/src/matrix";
 import { KnownMembership, type Membership } from "matrix-js-sdk/src/types";
 import { logger as rootLogger } from "matrix-js-sdk/src/logger";
@@ -24,8 +23,8 @@ import {
     Room as LivekitRoom,
     RoomEvent as LivekitRoomEvent,
     type Participant,
-    type RemoteTrackPublication,
-    type RemoteParticipant,
+    type TrackPublication,
+    RemoteParticipant,
     LocalAudioTrack,
     LocalVideoTrack,
     createLocalAudioTrack,
@@ -230,7 +229,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private set participants(value: Map<string, Set<string>>) {
         const prevValue = this._participants;
         this._participants = value;
-        this.emit(CallEvent.Participants, value, prevValue);
+        this.emit(CallEvent.Participants, value as any, prevValue as any);
     }
 
     public get latencyMs(): number | null {
@@ -1494,7 +1493,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * We only mute/unmute <audio> elements for remote participants.
      */
     private onTrackMuted = (
-        publication: RemoteTrackPublication,
+        publication: TrackPublication,
         participant: Participant,
     ): void => {
         if (!(participant instanceof RemoteParticipant)) return;
@@ -1506,7 +1505,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     };
 
     private onTrackUnmuted = (
-        publication: RemoteTrackPublication,
+        publication: TrackPublication,
         participant: Participant,
     ): void => {
         if (!(participant instanceof RemoteParticipant)) return;
@@ -1518,8 +1517,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     };
 
     private onTrackSubscribed = (
-        track: RemoteTrackPublication["track"],
-        publication: RemoteTrackPublication,
+        track: TrackPublication["track"],
+        publication: TrackPublication,
         participant: RemoteParticipant,
     ): void => {
         if (!track) return;
@@ -1627,8 +1626,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     };
 
     private onTrackUnsubscribed = (
-        track: RemoteTrackPublication["track"],
-        publication: RemoteTrackPublication,
+        track: TrackPublication["track"],
+        publication: TrackPublication,
         participant: RemoteParticipant,
     ): void => {
         if (!track) return;

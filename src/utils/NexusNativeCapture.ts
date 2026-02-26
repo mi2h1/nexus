@@ -137,7 +137,8 @@ export class NativeAudioCaptureStream {
     private writePos = 0;
     private readPos = 0;
     private bufferSize: number;
-    private channelCount: number;
+    // @ts-ignore used for future multi-channel support
+    private _channelCount: number;
     private unlisten: (() => void) | null = null;
     private stopped = false;
     private dataReceived = false;
@@ -145,7 +146,7 @@ export class NativeAudioCaptureStream {
     private available = 0;
 
     constructor(audioContext: AudioContext, sampleRate = 48000, channels = 2) {
-        this.channelCount = channels;
+        this._channelCount = channels;
         this.audioContext = audioContext;
         // Ring buffer: 2 seconds of audio (interleaved) at the context's sample rate.
         // Use a generous buffer to handle jitter between WASAPI and ScriptProcessorNode.

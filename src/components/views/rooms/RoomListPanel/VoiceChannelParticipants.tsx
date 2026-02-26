@@ -6,7 +6,7 @@
  */
 
 import React, { type JSX, useCallback, useState } from "react";
-import { type RoomMember } from "matrix-js-sdk/src/matrix";
+
 import classNames from "classnames";
 import { MicOffSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 

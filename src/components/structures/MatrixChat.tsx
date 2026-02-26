@@ -103,7 +103,7 @@ import { PosthogAnalytics } from "../../PosthogAnalytics";
 import { initSentry } from "../../sentry";
 import LegacyCallHandler from "../../LegacyCallHandler";
 import { showSpaceInvite } from "../../utils/space";
-import { type ButtonEvent } from "../views/elements/AccessibleButton";
+
 import { type ActionPayload } from "../../dispatcher/payloads";
 import { type SummarizedNotificationState } from "../../stores/notifications/SummarizedNotificationState";
 import Views from "../../Views";
@@ -134,7 +134,7 @@ import { shouldSkipSetupEncryption } from "../../utils/crypto/shouldSkipSetupEnc
 import { Filter } from "../views/dialogs/spotlight/Filter";
 import { SessionLockStolenView } from "./auth/SessionLockStolenView";
 import { ConfirmSessionLockTheftView } from "./auth/ConfirmSessionLockTheftView";
-import { LoginSplashView } from "./auth/LoginSplashView";
+
 import { cleanUpDraftsIfRequired } from "../../DraftCleaner";
 import { InitialCryptoSetupStore } from "../../stores/InitialCryptoSetupStore";
 import { setTheme } from "../../theme";
@@ -2040,13 +2040,13 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
         this.setPageSubtitle();
     }
 
+    /* Nexus: logout button moved to NexusUserPanel
     private onLogoutClick(event: ButtonEvent): void {
-        dis.dispatch({
-            action: "logout",
-        });
+        dis.dispatch({ action: "logout" });
         event.stopPropagation();
         event.preventDefault();
     }
+    */
 
     private handleResize = (): void => {
         const LHS_THRESHOLD = 1000;

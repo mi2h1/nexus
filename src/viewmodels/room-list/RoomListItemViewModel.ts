@@ -226,7 +226,7 @@ export class RoomListItemViewModel
         if (hasParticipantsInCall && call) {
             const participantUserIds = new Set<string>();
             for (const member of call.participants.keys()) {
-                participantUserIds.add(member.userId);
+                participantUserIds.add(typeof member === "string" ? member : member.userId);
             }
             const session = client.matrixRTC.getRoomSession(room);
             for (const m of session.memberships) {

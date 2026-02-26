@@ -6,21 +6,19 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX } from "react";
+import React from "react";
 import { createRef } from "react";
 import classNames from "classnames";
-import { ExploreIcon, DialPadIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
-import dis from "../../dispatcher/dispatcher";
 import { _t } from "../../languageHandler";
 import LegacyRoomList from "../views/rooms/LegacyRoomList";
 import LegacyCallHandler, { LegacyCallHandlerEvent } from "../../LegacyCallHandler";
 import { HEADER_HEIGHT } from "../views/rooms/RoomSublist";
-import { Action } from "../../dispatcher/actions";
-import RoomSearch from "./RoomSearch";
+
+
 import type ResizeNotifier from "../../utils/ResizeNotifier";
 import SpaceStore from "../../stores/spaces/SpaceStore";
-import { MetaSpace, type SpaceKey, UPDATE_SELECTED_SPACE } from "../../stores/spaces";
+import { type SpaceKey, UPDATE_SELECTED_SPACE } from "../../stores/spaces";
 import { getKeyBindingsManager } from "../../KeyBindingsManager";
 import UIStore from "../../stores/UIStore";
 import { type IState as IRovingTabIndexState } from "../../accessibility/RovingTabIndex";
@@ -31,10 +29,6 @@ import { UPDATE_EVENT } from "../../stores/AsyncStore";
 import IndicatorScrollbar from "./IndicatorScrollbar";
 import RoomBreadcrumbs from "../views/rooms/RoomBreadcrumbs";
 import { KeyBindingAction } from "../../accessibility/KeyboardShortcuts";
-import { shouldShowComponent } from "../../customisations/helpers/UIComponents";
-import { UIComponent } from "../../settings/UIFeature";
-import AccessibleButton, { type ButtonEvent } from "../views/elements/AccessibleButton";
-import PosthogTrackers from "../../PosthogTrackers";
 import type PageType from "../../PageTypes";
 import { Landmark, LandmarkNavigation } from "../../accessibility/LandmarkNavigation";
 import SettingsStore from "../../settings/SettingsStore";
@@ -116,6 +110,7 @@ export default class LeftPanel extends React.Component<IProps, IState> {
         this.setState({ activeSpace });
     };
 
+    /* Nexus: dial pad and explore removed with renderSearchDialExplore
     private onDialPad = (): void => {
         dis.fire(Action.OpenDialPad);
     };
@@ -124,6 +119,7 @@ export default class LeftPanel extends React.Component<IProps, IState> {
         dis.fire(Action.ViewRoomDirectory);
         PosthogTrackers.trackInteraction("WebLeftPanelExploreRoomsButton", ev);
     };
+    */
 
     private refreshStickyHeaders = (): void => {
         if (!this.listContainerRef.current) return; // ignore: no headers to sticky
@@ -338,50 +334,11 @@ export default class LeftPanel extends React.Component<IProps, IState> {
         }
     }
 
+    /* Nexus: search/dial/explore bar removed — restore when needed
     private renderSearchDialExplore(): React.ReactNode {
-        let dialPadButton: JSX.Element | undefined;
-
-        // If we have dialer support, show a button to bring up the dial pad to start a new call
-        if (this.state.supportsPstnProtocol) {
-            dialPadButton = (
-                <AccessibleButton
-                    className="mx_LeftPanel_dialPadButton"
-                    onClick={this.onDialPad}
-                    title={_t("left_panel|open_dial_pad")}
-                >
-                    <DialPadIcon />
-                </AccessibleButton>
-            );
-        }
-
-        let rightButton: JSX.Element | undefined;
-        if (this.state.activeSpace === MetaSpace.Home && shouldShowComponent(UIComponent.ExploreRooms)) {
-            rightButton = (
-                <AccessibleButton
-                    className="mx_LeftPanel_exploreButton"
-                    onClick={this.onExplore}
-                    title={_t("action|explore_rooms")}
-                >
-                    <ExploreIcon />
-                </AccessibleButton>
-            );
-        }
-
-        return (
-            <div
-                className="mx_LeftPanel_filterContainer"
-                onFocus={this.onFocus}
-                onBlur={this.onBlur}
-                onKeyDown={this.onKeyDown}
-                role="search"
-            >
-                <RoomSearch isMinimized={this.props.isMinimized} />
-
-                {dialPadButton}
-                {rightButton}
-            </div>
-        );
+        ...
     }
+    */
 
     public render(): React.ReactNode {
         const useNewRoomList = SettingsStore.getValue("feature_new_room_list");

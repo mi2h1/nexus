@@ -8,8 +8,9 @@ Please see LICENSE files in the repository root for full details.
 import React, { useState, useCallback } from "react";
 import { Flex, RoomListHeaderView, useCreateAutoDisposedViewModel } from "@element-hq/web-shared-components";
 
-import { shouldShowComponent } from "../../../../customisations/helpers/UIComponents";
-import { UIComponent } from "../../../../settings/UIFeature";
+// Nexus: search bar removed for now
+// import { shouldShowComponent } from "../../../../customisations/helpers/UIComponents";
+// import { UIComponent } from "../../../../settings/UIFeature";
 import { RoomListSearch } from "./RoomListSearch";
 import { RoomListView } from "./RoomListView";
 import { _t } from "../../../../languageHandler";
@@ -33,7 +34,8 @@ type RoomListPanelProps = {
  * The panel of the room list
  */
 export const RoomListPanel: React.FC<RoomListPanelProps> = ({ activeSpace }) => {
-    const displayRoomSearch = shouldShowComponent(UIComponent.FilterContainer);
+    // Nexus: currently unused — will restore when search UI is added back
+    // const displayRoomSearch = shouldShowComponent(UIComponent.FilterContainer);
     const [focusedElement, setFocusedElement] = useState<Element | null>(null);
 
     const onFocus = useCallback((ev: React.FocusEvent): void => {

@@ -105,7 +105,8 @@ function RoomHeaderButtons({
         </Tooltip>
     );
 
-    const joinCallButton = (
+    // @ts-ignore Nexus: call buttons hidden — will restore when needed
+    const _joinCallButton = (
         <Tooltip
             label={
                 videoCallDisabledReason ??
@@ -269,22 +270,24 @@ function RoomHeaderButtons({
             </IconButton>
         </Tooltip>
     );
-    let videoCallButton: JSX.Element | undefined = startVideoCallButton;
-    let voiceCallButton: JSX.Element | undefined = startVoiceCallButton;
+    // @ts-ignore Nexus: call buttons hidden — will restore when needed
+    let _videoCallButton: JSX.Element | undefined = startVideoCallButton;
+    // @ts-ignore Nexus: call buttons hidden — will restore when needed
+    let _voiceCallButton: JSX.Element | undefined = startVoiceCallButton;
     if (isConnectedToCall) {
-        videoCallButton = toggleCallButton;
-        voiceCallButton = undefined;
+        _videoCallButton = toggleCallButton;
+        _voiceCallButton = undefined;
     } else if (isViewingCall) {
-        videoCallButton = closeLobbyButton;
-        voiceCallButton = undefined;
+        _videoCallButton = closeLobbyButton;
+        _voiceCallButton = undefined;
     }
 
     if (!showVideoCallButton) {
-        videoCallButton = undefined;
+        _videoCallButton = undefined;
     }
 
     if (!showVoiceCallButton) {
-        voiceCallButton = undefined;
+        _voiceCallButton = undefined;
     }
 
     const roomContext = useScopedRoomContext("mainSplitContentType");

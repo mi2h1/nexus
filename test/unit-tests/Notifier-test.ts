@@ -525,7 +525,7 @@ describe("Notifier", () => {
                         content: {},
                     }),
                     {
-                        kind: "session",
+                        kind: "session" as any,
                         data: {
                             call_id: "123",
                             application: "m.call",

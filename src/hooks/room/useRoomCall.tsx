@@ -20,7 +20,7 @@ import { useWidgets } from "../../utils/WidgetUtils";
 import { WidgetType } from "../../widgets/WidgetType";
 import { useCall, useConnectionState, useParticipantCount } from "../useCall";
 import { useRoomMemberCount } from "../useRoomMembers";
-import { Call, ConnectionState } from "../../models/Call";
+import { ConnectionState } from "../../models/Call";
 import { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
 import { placeCall } from "../../utils/room/placeCall";
 import { Container, WidgetLayoutStore } from "../../stores/widgets/WidgetLayoutStore";
