@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-26 (v0.1.10)
+> 最終更新: 2026-02-26
 
 ## リポジトリ情報
 
@@ -133,6 +133,7 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 
 | 施策 | 難易度 | 効果 | 状態 | Discord 比較 |
 |------|--------|------|------|-------------|
+| 画面共有 A/V 同期改善 | 高 | 映像と音声のズレ解消 | 調査完了・未解決 | Discord は RTCP SR + カスタム C++ エンジン |
 | AGC（自動ゲイン制御） | 低 | マイク音量の自動調整 | 未着手 | Discord 標準搭載 |
 | VAD 改善 | 低 | RNNoise の VAD 出力を活用 | 未着手 | Discord は Krisp |
 | スピーカーミュート（デフ） | 低 | 出力を一括ミュート | 未着手 | Discord 標準搭載 |
@@ -199,6 +200,29 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-26 (統合コンテキストメニュー + ポップアウト断念 + A/V同期調査)
+- **統合コンテキストメニュー**: VC ルームビューの右クリックメニューを統一
+  - 背景右クリック → 「画面共有ではないパネルを非表示」チェックボックス
+  - 画面共有タイル右クリック → 上記 + 音量スライダー
+  - `NexusVCViewContextMenu` を `NexusVCRoomView.tsx` に実装
+  - `ScreenShareTile` の内部コンテキストメニューを `onShareContextMenu` コールバックに変更
+  - `NexusScreenShareContextMenu` を削除（統合メニューに吸収）
+- **ポップアウト機能（試行→全削除）**: VCルームビューを別ウィンドウにポップアウトする機能を実装試行
+  - Document PiP API → WebView2 未サポート（`window.documentPictureInPicture` が存在しない）
+  - `window.open()` フォールバック → Tauri にブロックされる
+  - Tauri Window API → 別JSコンテキストのためLiveKitトラック共有不可、結果として全く別の機能になった
+  - 全コード削除、教訓をドキュメント化（プラットフォーム固有APIは設計前にPoC検証すべき）
+- **画面共有 A/V 同期（調査→試行→リバート）**: 画面共有の映像と音声のズレを調査・修正試行
+  - Discord の音声アーキテクチャを詳細調査（RTCP Sender Report、Speaking flags 0/1/2、playout delay、RTP format）
+  - discord-video-stream (RE プロジェクト) のソースコードを分析（SSRC 割当、RTCP SR 実装、playout-delay RTP 拡張）
+  - 試行した方策:
+    1. 映像+音声を同一 `MediaStream` に統合し `<video>` で再生 → 初期同期は改善するが安定性低下
+    2. Web Audio (`createMediaStreamSource`) 経由を廃止し `videoEl.volume` で直接制御 → A/V同期がさらに悪化
+    3. LiveKit のトラック到着タイミング同期（映像到着時に音声を500ms待機してから React に通知）→ 効果不明
+    4. `requestVideoFrameCallback` でフリーズ検出 → MediaStream 再構築 → 悪化
+  - **結論**: 元の分離パイプライン（`<video muted>` + 別 `<audio>` + Web Audio GainNode）が最も安定。全変更をリバート
+  - 根本原因: LiveKit SFU が映像・音声を別 RTP ストリームで配信するため、完全な同期はアプリ層では困難
 
 #### 2026-02-26 (v0.1.10: 日本語翻訳 + アップデート検知修正 + CI改善)
 - **日本語翻訳 306件追加**: `ja.json` の翻訳カバレッジを 79.6% → 88.2% に向上

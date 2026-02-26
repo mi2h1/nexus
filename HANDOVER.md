@@ -2,17 +2,31 @@
 
 ## 現在の状態
 
-### 直近の作業（v0.1.10 — 2026-02-26）
+### 直近の作業（2026-02-26）
 
-**日本語翻訳の大幅追加**
-- `ja.json` に306件の翻訳を追加（カバレッジ 79.6% → 88.2%）
-- 対象: `service_worker_error`, `settings`(全サブセクション), `voip`, `common`, `labs`, `keyboard`, `notifications`, `room`(ヘッダー/検索/ピン留め等), `setting.help_about`
-- サービスワーカーエラーのトースト、設定画面のほぼ全タブが日本語化
+**統合コンテキストメニュー**
+- VC ルームビューの背景右クリックで統合コンテキストメニューを表示
+  - 「画面共有ではないパネルを非表示」チェックボックス — 全参加者タイルを非表示にできる
+  - 画面共有タイル右クリック時は音量スライダーも表示（従来の `NexusScreenShareContextMenu` を統合）
+- `NexusVCViewContextMenu` を `NexusVCRoomView.tsx` 内に実装
+- `ScreenShareTile` から内部コンテキストメニューを削除し `onShareContextMenu` コールバックに変更
 
-**アップデート検知の修正**
-- 設定 > ヘルプ＆情報の「更新を確認」ボタン: 更新が見つかったら「アップデート」ボタンに切り替わるように変更
-- Web 版: ビルド時に `git describe --tags --always` から VERSION を設定（以前は固定値で検知が発火しなかった）
-- Tauri 版: CI でタグ名から `tauri.conf.json` / `Cargo.toml` のバージョンを自動注入（手動更新不要に）
+**ポップアウト機能（試行→断念→全削除）**
+- Document PiP API → WebView2 未サポート
+- `window.open()` → Tauri にブロックされる
+- Tauri Window API → 元の要件（別ウィンドウに VC を出す）を満たせない別物になった
+- 全コードをリバートし、教訓をドキュメント化
+
+**画面共有 A/V 同期（調査→試行→リバート）**
+- 画面共有の映像と音声にズレがある問題を調査
+- Discord の音声アーキテクチャ（RTCP Sender Report、Speaking flags、playout delay）を詳細調査
+- 試行した方策と結果:
+  1. 映像+音声を同一 MediaStream に統合 → 改善不十分
+  2. Web Audio 経由を廃止し `videoEl.volume` 直接制御 → 悪化
+  3. トラック到着タイミング同期（映像到着時に音声を500ms待機）→ 効果不明
+  4. `requestVideoFrameCallback` でフリーズ検出→MediaStream再構築 → 悪化
+- **結論**: 元の分離パイプライン（`<video muted>` + 別 `<audio>` + Web Audio GainNode）が最も安定。全リバート済み
+- **根本原因**: LiveKit SFU が映像・音声を別 RTP ストリームで配信するため、完全な同期はアプリ層では困難。現状のズレ（数十ms）は許容範囲
 
 **過去の主要マイルストーン**
 - 自前 LiveKit SFU (lche2.xvps.jp) 構築完了
@@ -21,9 +35,10 @@
 
 ### 未解決・次回やること
 
-1. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
-2. **システムトレイ常駐** — 閉じてもバックグラウンド動作
-3. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
+1. **画面共有 A/V 同期** — 現状数十msのズレあり。LiveKit SFU の RTP 配信特性に起因。根本解決には SFU 側の設定（playout-delay RTP 拡張等）か、カスタムメディアエンジンが必要
+2. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
+3. **システムトレイ常駐** — 閉じてもバックグラウンド動作
+4. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
 
 ---
 
@@ -125,7 +140,15 @@ getUserMedia → LocalAudioTrack
   - `createMediaElementSource` は WebView2 で audio 要素の出力を正しくリダイレクトしないため不採用
   - audio 要素は `volume=0` でシステム出力を抑制、`play()` で MediaStream を alive に保持
 
-### 画面共有（ブラウザ）
+### 画面共有音声（受信側）
+- 映像: `share.track.attach(videoEl)` → `<video autoPlay muted>` — LiveKit のトラック管理に委任
+- 音声: 別 `<audio>` 要素で再生 — `onTrackSubscribed` で ScreenShareAudio を受信時に作成
+- Tauri: `createMediaStreamSource(MediaStream)` → per-share `GainNode` → `outputMasterGain` → destination（>100% 増幅対応）
+- ブラウザ: `audio.volume` で音量制御（0-1）
+- **映像と音声は分離パイプライン** — LiveKit SFU が別 RTP ストリームで配信するため。同一 MediaStream 統合は試行したが安定性が低下したためリバート
+- 視聴オプトイン: `watchingScreenShares` セットで管理。未視聴時は gain=0 / audio.pause()
+
+### 画面共有（ブラウザ送信側）
 - `getDisplayMedia()` 直接呼出し（createLocalScreenTracks だと音声失敗時に全体中止）
 - 音声なしでも映像のみで続行
 
