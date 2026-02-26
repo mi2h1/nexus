@@ -107,7 +107,7 @@ nexus/                          # element-web フォーク
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
 
-#### 2026-02-27 (VC 未参加時ルームビュー + サイドバーチャットボタン)
+#### 2026-02-27 (v0.2.4: VC チャットボタン + UI 改善)
 - **VC 未参加時のルームビュー改善**: 「まだ誰もいません」→「ボイスチャンネルに参加していません」+「参加」ボタンに変更
   - 参加ボタンの視認性修正（白背景+黒文字に変更、compound トークン未解決対策）
 - **サイドバー VC チャットボタン**: VC チャンネルホバー時にチャットアイコンボタンを表示

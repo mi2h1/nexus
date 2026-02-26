@@ -4,14 +4,16 @@
 
 ### 直近の作業（2026-02-27）
 
-**VC 未参加時ルームビュー + サイドバーチャットボタン**
-- VC チャンネルホバー時にチャットアイコンボタンを表示（ChatSolidIcon）
+**v0.2.4: VC チャットボタン + UI 改善**
+- VC チャンネルホバー時にチャットアイコンボタンを表示（ChatSolidIcon + Tooltip「チャットを表示」）
 - クリックで VC 未参加のままルームビューを開き、`RightPanelStore.setCard(Timeline)` でチャットパネルを強制オープン
 - VC 未参加時の表示を「ボイスチャンネルに参加していません」+「参加」ボタンに変更
 - 既存ホバーメニュー（三点リーダー+ベル）は CSS `[class*="hoverMenu"]` で非表示
 - VC チャンネル名クリックは接続済み時は何もしない（ルームビューはチャットボタン専用に）
+- 視聴停止をボタンから右クリックメニュー項目に変更（赤テキスト+アイコン）
+- ログイン直後の VC 参加者リスト stale 表示を軽減
 
-**音質改善（v0.2.3）**
+**v0.2.3: 音質改善**
 - Opus ビットレート 64kbps → 128kbps（明瞭さ向上）
 - getUserMedia 制約: `autoGainControl: true`, `sampleRate: 48000`, `channelCount: 1`
 - ボイスゲート「プツッ」修正: 50ms `DelayNode` ルックアヘッド導入
@@ -34,9 +36,10 @@
 
 ### 未解決・次回やること
 
-1. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
-2. **システムトレイ常駐** — 閉じてもバックグラウンド動作
-3. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
+1. **画面共有が出来ないユーザーがいる** — Tauri リリース版で1名報告。原因未特定。OS/ブラウザ/エラーメッセージを確認中
+2. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
+3. **システムトレイ常駐** — 閉じてもバックグラウンド動作
+4. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
 
 ---
 
