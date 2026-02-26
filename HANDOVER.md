@@ -2,47 +2,44 @@
 
 ## 現在の状態
 
-### 直近の作業（2026-02-26）
+### 直近の作業（2026-02-27）
 
-**統合コンテキストメニュー**
-- VC ルームビューの背景右クリックで統合コンテキストメニューを表示
-  - 「画面共有ではないパネルを非表示」チェックボックス — 全参加者タイルを非表示にできる
-  - 画面共有タイル右クリック時は音量スライダーも表示（従来の `NexusScreenShareContextMenu` を統合）
-- `NexusVCViewContextMenu` を `NexusVCRoomView.tsx` 内に実装
-- `ScreenShareTile` から内部コンテキストメニューを削除し `onShareContextMenu` コールバックに変更
+**画面共有 A/V 同期（再検証完了 — v0.2.2）**
+- 前回の試行時に受信側が旧バージョン（v0.2.0）だったため、全4方策を再適用して双方最新で再検証
+- 再適用した方策:
+  1. 映像+音声を同一 MediaStream に統合（`<video>` 1要素で再生）
+  2. Web Audio 経由を廃止し `videoEl.volume` で直接制御
+  3. トラック到着タイミング同期（映像到着時に音声を500ms待機）
+  4. `requestVideoFrameCallback` でフリーズ検出→MediaStream 再構築
+- **結果**: ズレが「数秒」→「100-300ms（映像が先行）」に改善。ユーザー許容範囲内と判断
+- `playoutDelayHint` による追加調整も提案したが、ユーザーが現状維持を選択
 
-**ポップアウト機能（試行→断念→全削除）**
-- Document PiP API → WebView2 未サポート
-- `window.open()` → Tauri にブロックされる
-- Tauri Window API → 元の要件（別ウィンドウに VC を出す）を満たせない別物になった
-- 全コードをリバートし、教訓をドキュメント化
+**パネル非表示の空メッセージ**
+- 「画面共有ではないパネルを非表示」ON + 誰も画面共有していないとき:
+  - Spotlight: 「画面を共有しているユーザーはいません」テキスト表示
+  - Grid: 同上（`nx_VCRoomView_gridEmpty` で全幅中央表示）
 
-**画面共有 A/V 同期（調査→試行→リバート）**
-- 画面共有の映像と音声にズレがある問題を調査
-- Discord の音声アーキテクチャ（RTCP Sender Report、Speaking flags、playout delay）を詳細調査
-- 試行した方策と結果:
-  1. 映像+音声を同一 MediaStream に統合 → 改善不十分
-  2. Web Audio 経由を廃止し `videoEl.volume` 直接制御 → 悪化
-  3. トラック到着タイミング同期（映像到着時に音声を500ms待機）→ 効果不明
-  4. `requestVideoFrameCallback` でフリーズ検出→MediaStream再構築 → 悪化
-- **結論**: 元の分離パイプライン（`<video muted>` + 別 `<audio>` + Web Audio GainNode）が最も安定。全リバート済み
-- **根本原因**: LiveKit SFU が映像・音声を別 RTP ストリームで配信するため、完全な同期はアプリ層では困難。現状のズレ（数十ms）は許容範囲
+**CI バージョン自動コミット**
+- `tauri-release.yml` に `update-version` ジョブを追加
+- リリースビルド成功後、タグからバージョンを取得し `tauri.conf.json` / `Cargo.toml` を main に自動コミット
+- 開発版でバージョンがズレる問題を解消
+
+**バージョン管理修正**
+- `tauri.conf.json` / `Cargo.toml` を手動で 0.2.1 に更新（0.1.9 のままだった）
+- `Cargo.lock` をリポジトリに追加（Tauri バイナリでは推奨）
 
 **過去の主要マイルストーン**
+- 統合コンテキストメニュー（VC 背景右クリック）
+- ポップアウト機能（試行→断念→全削除 — WebView2 が Document PiP 未サポート）
 - 自前 LiveKit SFU (lche2.xvps.jp) 構築完了
 - VC 接続高速化（~600ms、切断即座）
 - ネイティブ画面キャプチャ（WGC + WASAPI）実装完了
 
 ### 未解決・次回やること
 
-1. **画面共有 A/V 同期（再検証）** — 前回の試行時、受信側が旧バージョン（v0.2.0）のまま更新されていなかったため、変更が一切反映されていなかった可能性が高い。以下の方策を受信側も最新にした状態で再検証すべき:
-   - 映像+音声を同一 MediaStream に統合（`<video>` 1要素で再生）
-   - Web Audio 経由を廃止し `videoEl.volume` で直接制御（RTCP SR 同期を維持）
-   - トラック到着タイミング同期（映像到着時に音声を500ms待機）
-   - `requestVideoFrameCallback` でフリーズ検出→MediaStream 再構築
-2. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
-3. **システムトレイ常駐** — 閉じてもバックグラウンド動作
-4. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
+1. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
+2. **システムトレイ常駐** — 閉じてもバックグラウンド動作
+3. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
 
 ---
 
@@ -145,12 +142,12 @@ getUserMedia → LocalAudioTrack
   - audio 要素は `volume=0` でシステム出力を抑制、`play()` で MediaStream を alive に保持
 
 ### 画面共有音声（受信側）
-- 映像: `share.track.attach(videoEl)` → `<video autoPlay muted>` — LiveKit のトラック管理に委任
-- 音声: 別 `<audio>` 要素で再生 — `onTrackSubscribed` で ScreenShareAudio を受信時に作成
-- Tauri: `createMediaStreamSource(MediaStream)` → per-share `GainNode` → `outputMasterGain` → destination（>100% 増幅対応）
-- ブラウザ: `audio.volume` で音量制御（0-1）
-- **映像と音声は分離パイプライン** — LiveKit SFU が別 RTP ストリームで配信するため。同一 MediaStream 統合は試行したが安定性が低下したためリバート
-- 視聴オプトイン: `watchingScreenShares` セットで管理。未視聴時は gain=0 / audio.pause()
+- 映像+音声: 同一 `MediaStream` に統合し `<video>` 1要素で再生（ブラウザの A/V 同期に委任）
+- 音量制御: `videoEl.volume` で直接制御（Web Audio 経由ではない — RTCP SR 同期を維持）
+- `registerScreenShareVideoElement()` / `unregisterScreenShareVideoElement()` で NexusVoiceConnection に登録
+- トラック到着同期: 映像到着時に500ms待機し、音声到着で即座に React に通知（`pendingScreenShareTimers`）
+- フリーズ検出: `requestVideoFrameCallback` で500ms以上のギャップを検出 → MediaStream 再構築（3秒クールダウン）
+- 視聴オプトイン: `watchingScreenShares` セットで管理。未視聴時は `videoEl.volume=0`
 
 ### 画面共有（ブラウザ送信側）
 - `getDisplayMedia()` 直接呼出し（createLocalScreenTracks だと音声失敗時に全体中止）
@@ -208,7 +205,8 @@ Phase 5: publishTrack(processedTrack)
 1. コミット → `git tag vX.Y.Z` → `git push && git push origin vX.Y.Z`
 2. GitHub Actions `tauri-release` が自動でビルド → GitHub Release 作成
 3. バージョンはタグ名から自動注入（`tauri.conf.json` / `Cargo.toml` の手動更新不要）
-4. アプリの自動更新が `latest.json` を参照して新バージョンを検出 → ダウンロード＆再起動
+4. ビルド成功後、`update-version` ジョブが `tauri.conf.json` / `Cargo.toml` のバージョンを main に自動コミット
+5. アプリの自動更新が `latest.json` を参照して新バージョンを検出 → ダウンロード＆再起動
 
 ### Web 版リリース手順
 

@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-26
+> 最終更新: 2026-02-27
 
 ## リポジトリ情報
 
@@ -81,7 +81,7 @@ nexus/                          # element-web フォーク
 | TauriPlatform | `WebPlatform` 継承 + 自動更新（`tauri-plugin-updater`） |
 | CORS バイパス | Tauri 時は `tauri-plugin-http` で直接 JWT 取得（プロキシ不要） |
 | >100% ボリューム | `createMediaStreamSource()` → per-participant `GainNode` → master `GainNode`(0-2.0) |
-| CI/CD | `tauri-release.yml` — `v*` タグで Windows ビルド + GitHub Release + 自動更新 + バージョン自動注入 |
+| CI/CD | `tauri-release.yml` — `v*` タグで Windows ビルド + GitHub Release + 自動更新 + バージョン自動注入 + main へバージョン自動コミット |
 | 自動更新 | `tauri-plugin-updater` — 起動時 + 30分ポーリングで `latest.json` チェック → ダウンロード＆再起動 |
 | webpack ポート固定 | devServer port 1420（Tauri devUrl 互換） |
 | プラットフォーム検出 | `window.__TAURI_INTERNALS__` → `TauriPlatform` 自動選択 |
@@ -133,7 +133,7 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 
 | 施策 | 難易度 | 効果 | 状態 | Discord 比較 |
 |------|--------|------|------|-------------|
-| 画面共有 A/V 同期改善 | 高 | 映像と音声のズレ解消 | 要再検証（前回は受信側が旧版で未反映だった） | Discord は RTCP SR + カスタム C++ エンジン |
+| 画面共有 A/V 同期改善 | 高 | 映像と音声のズレ解消 | ✅ 改善済み（100-300ms、許容範囲） | Discord は RTCP SR + カスタム C++ エンジン |
 | AGC（自動ゲイン制御） | 低 | マイク音量の自動調整 | 未着手 | Discord 標準搭載 |
 | VAD 改善 | 低 | RNNoise の VAD 出力を活用 | 未着手 | Discord は Krisp |
 | スピーカーミュート（デフ） | 低 | 出力を一括ミュート | 未着手 | Discord 標準搭載 |
@@ -200,6 +200,18 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-27 (v0.2.2: A/V同期再検証 + パネル空メッセージ + CI自動バージョン)
+- **画面共有 A/V 同期（再検証完了）**: 前回は受信側が旧版(v0.2.0)で未反映だった4方策を再適用し、双方最新で再検証
+  - 映像+音声を同一 MediaStream に統合 + `videoEl.volume` 直接制御 + トラック到着同期 + フリーズ検出
+  - 結果: ズレが「数秒」→「100-300ms（映像先行）」に改善。ユーザー許容範囲内と判断
+- **パネル非表示の空メッセージ**: 「画面共有ではないパネルを非表示」ON + 画面共有なし時に「画面を共有しているユーザーはいません」を表示
+  - Spotlight レイアウト: `nx_VCRoomView_spotlightEmpty`
+  - Grid レイアウト: `nx_VCRoomView_gridEmpty`（全幅中央表示）
+- **CI バージョン自動コミット**: `tauri-release.yml` に `update-version` ジョブ追加
+  - リリースビルド成功後、タグからバージョンを取得し `tauri.conf.json` / `Cargo.toml` を main に自動コミット
+  - 開発版でバージョンがズレる問題を解消
+- **バージョン管理修正**: `tauri.conf.json` / `Cargo.toml` を 0.2.1 に手動更新 + `Cargo.lock` をリポジトリに追加
 
 #### 2026-02-26 (統合コンテキストメニュー + ポップアウト断念 + A/V同期調査)
 - **統合コンテキストメニュー**: VC ルームビューの右クリックメニューを統一
