@@ -154,6 +154,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
                         myUserId={client.getUserId()}
+                        hideNonScreenSharePanels={hideNonScreenSharePanels}
                     />
                 ) : (
                     <GridLayout
@@ -348,6 +349,8 @@ interface SpotlightLayoutProps {
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
     myUserId: string | null;
+    /** True when non-screen-share panels are hidden via context menu. */
+    hideNonScreenSharePanels?: boolean;
 }
 
 function SpotlightLayout({
@@ -361,6 +364,7 @@ function SpotlightLayout({
     activeSpeakers,
     participantStates,
     myUserId,
+    hideNonScreenSharePanels,
 }: SpotlightLayoutProps): JSX.Element {
     // Manual screen share selection (null = auto from spotlightTarget)
     const [manualScreenShareId, setManualScreenShareId] = useState<string | null>(null);
@@ -415,6 +419,10 @@ function SpotlightLayout({
                         <div className="nx_VCRoomView_spotlightAvatarName">
                             {effectiveTarget.member.name}
                         </div>
+                    </div>
+                ) : hideNonScreenSharePanels ? (
+                    <div className="nx_VCRoomView_spotlightEmpty">
+                        画面を共有しているユーザーはいません
                     </div>
                 ) : null}
             </div>
