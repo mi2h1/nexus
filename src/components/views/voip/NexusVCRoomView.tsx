@@ -128,12 +128,12 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
         return (
             <div className="nx_VCRoomView">
                 <div className="nx_VCRoomView_empty">
-                    <div className="nx_VCRoomView_emptyText">まだ誰もいません</div>
+                    <div className="nx_VCRoomView_emptyText">ボイスチャンネルに参加していません</div>
                     <AccessibleButton
                         className="nx_VCRoomView_joinButton"
                         onClick={onJoinCall}
                     >
-                        通話に参加する
+                        参加
                     </AccessibleButton>
                 </div>
             </div>

@@ -26,6 +26,7 @@ import { CallEvent, ConnectionState } from "../../../../models/Call";
 import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
+import { ChatSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 /**
  * Format elapsed milliseconds as "H:MM:SS" or "M:SS".
@@ -301,6 +302,18 @@ function VoiceChannelItem({
         [matrixClient, roomId, isTransitioning],
     );
 
+    const onChatClick = useCallback(
+        (e: React.MouseEvent) => {
+            e.stopPropagation();
+            e.preventDefault();
+            defaultDispatcher.dispatch({
+                action: Action.ViewRoom,
+                room_id: roomId,
+            });
+        },
+        [roomId],
+    );
+
     return (
         <div className={classNames("nx_VoiceChannelGroup", {
             "nx_VoiceChannelGroup--active": hasParticipants,
@@ -310,6 +323,10 @@ function VoiceChannelItem({
             <div onClickCapture={onVoiceChannelClick} className="nx_VoiceChannelItem">
                 {renderItem(roomId, globalIndex, avatarRenderer)}
                 {elapsed && <span className="mx_NexusChannelIcon_elapsed">{elapsed}</span>}
+                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                <div className="nx_VoiceChannelItem_chatButton" onClickCapture={onChatClick} title="チャットを表示">
+                    <ChatSolidIcon width={16} height={16} />
+                </div>
             </div>
             <VoiceChannelParticipants roomId={roomId} />
         </div>

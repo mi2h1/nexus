@@ -71,6 +71,11 @@
 .nx_VoiceChannelItem {
     position: relative;
 
+    /* デフォルトのホバーメニュー（三点リーダー+ベル）を非表示 */
+    [class*="hoverMenu"] {
+        display: none !important;
+    }
+
     /* 経過時間を右側に絶対配置 */
     .mx_NexusChannelIcon_elapsed {
         position: absolute;
@@ -78,6 +83,33 @@
         top: 50%;
         transform: translateY(-50%);
     }
+}
+
+/* チャット表示ボタン（ホバー時のみ表示） */
+.nx_VoiceChannelItem_chatButton {
+    display: none;
+    position: absolute;
+    right: calc(var(--cpd-space-3x) + 4px);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+    align-items: center;
+    justify-content: center;
+    padding: var(--cpd-space-1x);
+    border: none;
+    border-radius: var(--cpd-space-1x);
+    background: transparent;
+    color: var(--cpd-color-icon-secondary);
+    cursor: pointer;
+
+    &:hover {
+        background: var(--cpd-color-bg-subtle-secondary);
+        color: var(--cpd-color-icon-primary);
+    }
+}
+
+.nx_VoiceChannelItem:hover .nx_VoiceChannelItem_chatButton {
+    display: flex;
 }
 
 .mx_VoiceChannelParticipants {
