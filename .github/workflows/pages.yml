@@ -34,8 +34,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile || pnpm install --frozen-lockfile
 
+      - name: Determine version
+        id: version
+        run: echo "value=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
+
       - name: Build
-        run: pnpm build
+        run: VERSION=${{ steps.version.outputs.value }} pnpm build
 
       - name: Copy config
         run: cp config.json webapp/config.json
