@@ -140,7 +140,34 @@ iptables -A INPUT -p tcp --dport 7891 -j ACCEPT
 
 ---
 
-## Step 4: Docker で Nexus サービスを起動
+## Step 4: lk-jwt-service カスタムビルド
+
+`lk-jwt-service` はユーザーホワイトリスト機能を追加したカスタム版を使用する。
+
+```bash
+# ソースは /root/lk-jwt-service にある
+cd /root/lk-jwt-service
+docker build --build-arg GO_VERSION=1.23 -t nexus-lk-jwt-service:latest .
+```
+
+### ホワイトリスト管理
+
+`docker-compose.yml` の `LIVEKIT_ALLOWED_USER_IDS` にカンマ区切りで Matrix ユーザー ID を設定:
+```yaml
+LIVEKIT_ALLOWED_USER_IDS: "@user1:matrix.org,@user2:matrix.org"
+```
+- 未設定 = 全ユーザー許可（既存互換）
+- ホワイトリスト外のユーザーには `403 M_FORBIDDEN` を返す
+- ユーザー追加後は `docker compose up -d lk-jwt-service` で反映（数秒のダウンタイム）
+
+### ロールバック
+
+`docker-compose.yml` の image を `ghcr.io/element-hq/lk-jwt-service:latest` に戻し、
+`LIVEKIT_ALLOWED_USER_IDS` を削除して `docker compose up -d lk-jwt-service`。
+
+---
+
+## Step 5: Docker で Nexus サービスを起動
 
 ```bash
 cd /root/dev/nexus/infra/livekit
@@ -149,21 +176,21 @@ docker compose up -d
 
 これで 3 コンテナが起動する:
 - `nexus-livekit` — LiveKit SFU
-- `nexus-jwt` — JWT 発行サービス (OpenID 検証 → LiveKit JWT)
+- `nexus-jwt` — JWT 発行サービス (カスタムビルド、OpenID 検証 + ホワイトリスト → LiveKit JWT)
 - `nexus-nginx` — TLS 終端 (7880 WSS, 7891 HTTPS)
 
 ---
 
-## Step 5: 動作確認
+## Step 6: 動作確認
 
-### 5-1. コンテナ状態
+### 6-1. コンテナ状態
 
 ```bash
 docker ps
 # 3 コンテナ全て "Up" であること
 ```
 
-### 5-2. JWT エンドポイント
+### 6-2. JWT エンドポイント
 
 ```bash
 curl -k https://lche2.xvps.jp:7891/healthz
@@ -171,14 +198,14 @@ curl -k https://lche2.xvps.jp:7891/healthz
 curl -k -o /dev/null -w "%{http_code}" https://lche2.xvps.jp:7891/
 ```
 
-### 5-3. LiveKit WebSocket
+### 6-3. LiveKit WebSocket
 
 ```bash
 # WebSocket 接続テスト（upgrade が返ること）
 curl -k -I -H "Upgrade: websocket" -H "Connection: Upgrade" https://lche2.xvps.jp:7880/
 ```
 
-### 5-4. ブラウザ確認
+### 6-4. ブラウザ確認
 
 1. https://mi2h1.github.io/nexus/ を開く
 2. ログイン → VC チャンネルに参加
@@ -187,7 +214,7 @@ curl -k -I -H "Upgrade: websocket" -H "Connection: Upgrade" https://lche2.xvps.j
 
 ---
 
-## Step 6: certbot 自動更新の設定（推奨）
+## Step 7: certbot 自動更新の設定（推奨）
 
 ```bash
 # certbot の renew hook で証明書をコピー + nginx リロード
@@ -207,9 +234,10 @@ chmod +x /etc/letsencrypt/renewal-hooks/deploy/nexus-ssl.sh
 
 | ファイル | 用途 |
 |---------|------|
-| `infra/livekit/docker-compose.yml` | Docker サービス定義 |
+| `infra/livekit/docker-compose.yml` | Docker サービス定義 (ホワイトリスト設定含む) |
 | `infra/livekit/livekit.yaml` | LiveKit SFU 設定 (node_ip, ポート, API キー) |
 | `infra/livekit/nginx.conf` | Nginx TLS 終端 + CORS 設定 |
+| `/root/lk-jwt-service/main.go` | lk-jwt-service カスタム版ソース (ホワイトリスト機能) |
 | `src/models/NexusVoiceConnection.ts:94` | JWT サービス URL (クライアント側) |
 
 ---

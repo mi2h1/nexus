@@ -4,6 +4,19 @@
 
 ### 直近の作業（2026-02-27）
 
+**SFU ただ乗り防止 + SE 修正 + TypeScript エラー全解消**
+- lk-jwt-service にユーザー ID ホワイトリスト追加（`LIVEKIT_ALLOWED_USER_IDS` 環境変数）
+  - カスタム Docker イメージ `nexus-lk-jwt-service:latest` をビルド・デプロイ
+  - ホワイトリスト外のユーザーには `403 M_FORBIDDEN` を返す
+  - 未設定時は全ユーザー許可（既存互換）
+  - ユーザー追加: `docker-compose.yml` の環境変数を編集 → `docker compose up -d lk-jwt-service`
+  - ロールバック: image を `ghcr.io/element-hq/lk-jwt-service:latest` に戻す
+- VC 他ユーザー入退室 SE が鳴らないバグを修正
+  - 原因: LiveKit `ParticipantConnected/Disconnected` が MatrixRTC `MembershipsChanged` より先に発火し、
+    参加者カウントが既に更新済みのため `onMembershipsChanged` でカウント変化を検出できなかった
+  - 修正: `onParticipantConnected` / `onParticipantDisconnected` に SE 再生ロジックを追加
+- TypeScript エラー 21 件を全て解消（型不一致修正 + 未使用コード整理）
+
 **v0.2.4: VC チャットボタン + UI 改善**
 - VC チャンネルホバー時にチャットアイコンボタンを表示（ChatSolidIcon + Tooltip「チャットを表示」）
 - クリックで VC 未参加のままルームビューを開き、`RightPanelStore.setCard(Timeline)` でチャットパネルを強制オープン
@@ -30,7 +43,7 @@
 **過去の主要マイルストーン**
 - 統合コンテキストメニュー（VC 背景右クリック）
 - ポップアウト機能（試行→断念→全削除 — WebView2 が Document PiP 未サポート）
-- 自前 LiveKit SFU (lche2.xvps.jp) 構築完了
+- 自前 LiveKit SFU (lche2.xvps.jp) 構築完了 + ユーザーホワイトリスト保護
 - VC 接続高速化（~600ms、切断即座）
 - ネイティブ画面キャプチャ（WGC + WASAPI）実装完了
 
@@ -69,7 +82,7 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 - AMD EPYC 3コア / 3.8GB RAM / 28GB ディスク
 - **Docker コンテナ** (3つ): `infra/livekit/docker-compose.yml` で管理
   - `nexus-livekit` — LiveKit SFU (WebRTC メディア中継)
-  - `nexus-jwt` — lk-jwt-service (Matrix OpenID → LiveKit JWT 変換)
+  - `nexus-jwt` — lk-jwt-service (Matrix OpenID → LiveKit JWT 変換、カスタムビルド + ユーザーホワイトリスト)
   - `nexus-nginx` — TLS 終端 (Let's Encrypt)
 - **ポート**: 7880(WSS), 7881(TCP TURN), 7882(UDP WebRTC), 7891(HTTPS JWT)
 - **SSL 証明書**: `/etc/ssl/lche2/` (fullchain.pem + privkey.pem)

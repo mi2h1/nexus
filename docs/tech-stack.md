@@ -1,6 +1,6 @@
 # 技術スタック — tech-stack.md
 
-> 最終更新: 2026-02-26 (v0.1.10)
+> 最終更新: 2026-02-27
 
 ## 実行環境
 
@@ -32,8 +32,9 @@
 | matrix.org | Matrix ホームサーバー（公開サーバー利用） | 無料 |
 | GitHub Pages | クライアントホスティング | 無料 |
 | GitHub Actions | CI/CD（ビルド & デプロイ） | 無料 |
-| LiveKit SFU (matrix.org 提供) | VC・画面共有の SFU インフラ | 無料 |
-| Cloudflare Workers | LiveKit JWT 取得用 CORS プロキシ | 無料 |
+| LiveKit SFU (自前 VPS) | VC・画面共有の SFU インフラ (lche2.xvps.jp) | VPS 費用 |
+| lk-jwt-service (カスタムビルド) | Matrix OpenID → LiveKit JWT 変換 + ユーザーホワイトリスト | 同上 |
+| Cloudflare Workers | LiveKit JWT 取得用 CORS プロキシ（フォールバック） | 無料 |
 
 ## ネイティブアプリ（Tauri 2）
 

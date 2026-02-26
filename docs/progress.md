@@ -97,6 +97,7 @@ nexus/                          # element-web フォーク
 | VC 経過時間表示 | NotificationDecoration に経過時間テキスト表示（受話器アイコン廃止） |
 | VC アクティブハイライト | 参加者がいる VC のアイコンを緑化 + 左端に緑縦ライン |
 | VC チャットボタン | VC チャンネルホバーでチャットアイコン表示、クリックで VC 未参加のままルームビュー+チャットパネルを開く |
+| SFU ユーザーホワイトリスト | lk-jwt-service カスタムビルド — `LIVEKIT_ALLOWED_USER_IDS` でJWT発行対象を制限 |
 | 起動画面統一 | LOADING〜同期完了まで単一のロゴ+スピナー画面 |
 | 起動時状態復元 | 前回のスペース・チャンネルを復元（初回はホーム表示） |
 | E2E アイコン非表示 | `mx_EventTile_e2eIcon` を CSS で非表示 |
@@ -106,6 +107,20 @@ nexus/                          # element-web フォーク
 
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 2026-02-27 (SFU ホワイトリスト + SE 修正 + TS エラー全解消)
+- **lk-jwt-service ユーザーホワイトリスト**: フォーク等によるただ乗り防止
+  - `LIVEKIT_ALLOWED_USER_IDS` 環境変数（カンマ区切り）でJWT発行対象を制限
+  - `isAllowedUser()` メソッド追加、`processLegacySFURequest` / `processSFURequest` で403拒否
+  - カスタム Docker イメージ `nexus-lk-jwt-service:latest` をビルド・デプロイ
+- **VC 他ユーザー入退室 SE 修正**: LiveKit `ParticipantConnected/Disconnected` イベントで SE 再生
+  - 原因: LiveKit イベントが MatrixRTC より先に発火し、`onMembershipsChanged` 時点でカウント変化なし
+- **TypeScript エラー 21 件全解消**: 11ファイルを修正
+  - NexusVoiceConnection: `RemoteTrackPublication` → `TrackPublication`、`RemoteParticipant` を値importに変更
+  - RoomListItemViewModel: `string | RoomMember` 両対応
+  - Element Web 由来の未使用通話 UI コード整理（LeftPanel, MatrixChat, RoomHeader）
+  - 未使用 import 削除（VoiceChannelParticipants, SpacePanel, useRoomCall）
+  - Notifier-test: 未export の `MembershipKind` enum に `as any` キャスト
 
 #### 2026-02-27 (v0.2.4: VC チャットボタン + UI 改善)
 - **VC 未参加時のルームビュー改善**: 「まだ誰もいません」→「ボイスチャンネルに参加していません」+「参加」ボタンに変更

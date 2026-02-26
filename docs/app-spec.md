@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-26 (v0.1.10)
+> 最終更新: 2026-02-27
 
 ## 概要
 
@@ -176,7 +176,8 @@ VC 中にマイクミュートして切断した場合も、ミュート状態�
 ### SE（効果音）タイミング
 - **入室**: ボタン押下時に standby SE → 接続確立時に join SE（`joinVoiceChannel` で明示再生）
 - **退室**: ボタン押下時に leave SE → スピナー+グレーアウト表示 → 切断完了後にリストから削除
-- **他ユーザー入退室**: MatrixRTC MembershipsChanged イベント時に join/leave SE
+- **他ユーザー入退室**: LiveKit ParticipantConnected/Disconnected イベント時に join/leave SE
+  - MatrixRTC MembershipsChanged より先に発火するため、LiveKit イベントが正しいトリガーポイント
 - **ミュート/アンミュート**: トグル時に mute/unmute SE
 - **画面共有開始**: screen-on SE（`updateScreenShares()` で新規 identity 検出時）
 - **画面共有終了**: screen-off SE（`updateScreenShares()` / `onTrackUnsubscribed` で identity 消失時）
