@@ -297,7 +297,11 @@ function VoiceChannelItem({
             const store = NexusVoiceStore.instance;
             const existing = store.getConnection(roomId);
             if (existing?.connected) {
-                // Already in this VC — do nothing (use chat button to view room)
+                // Already in this VC — navigate to room view (show call UI)
+                defaultDispatcher.dispatch({
+                    action: Action.ViewRoom,
+                    room_id: roomId,
+                });
                 return;
             }
             // Join (will disconnect from any other VC)
