@@ -10,9 +10,7 @@ import {
     MentionIcon,
     ErrorIcon,
     NotificationsOffSolidIcon,
-    VideoCallSolidIcon,
     EmailSolidIcon,
-    VoiceCallSolidIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
 import { UnreadCounter, Unread } from "@vector-im/compound-web";
 import { CallType } from "matrix-js-sdk/src/webrtc/call";
@@ -73,12 +71,6 @@ export function NotificationDecoration({
             data-testid="notification-decoration"
         >
             {isUnsentMessage && <ErrorIcon width="20px" height="20px" fill="var(--cpd-color-icon-critical-primary)" />}
-            {callType === CallType.Video && (
-                <VideoCallSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />
-            )}
-            {callType === CallType.Voice && (
-                <VoiceCallSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />
-            )}
             {invited && <EmailSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />}
             {isMention && <MentionIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />}
             {(isMention || isNotification) && <UnreadCounter count={count || null} />}

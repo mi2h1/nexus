@@ -10,9 +10,7 @@ import {
     MentionIcon,
     ErrorSolidIcon,
     NotificationsOffSolidIcon,
-    VideoCallSolidIcon,
     EmailSolidIcon,
-    VoiceCallSolidIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
 import { UnreadCounter, Unread } from "@vector-im/compound-web";
 
