@@ -139,7 +139,8 @@ export class SpaceStoreClass extends AsyncStoreWithClient<EmptyObject> {
         userIdsBySpace: new Map<Room["roomId"], Set<string>>(),
     };
     // The space currently selected in the Space Panel
-    private _activeSpace: SpaceKey = MetaSpace.Home; // set properly by onReady
+    // Nexus: 初期値を空にして onReady まで何もハイライトさせない
+    private _activeSpace: SpaceKey = "";
     private _suggestedRooms: ISuggestedRoom[] = [];
     private _invitedSpaces = new Set<Room>();
     private spaceOrderLocalEchoMap = new Map<string, string | undefined>();
@@ -1169,7 +1170,7 @@ export class SpaceStoreClass extends AsyncStoreWithClient<EmptyObject> {
         this.userIdsBySpace = new Map();
         this._aggregatedSpaceCache.roomIdsBySpace.clear();
         this._aggregatedSpaceCache.userIdsBySpace.clear();
-        this._activeSpace = MetaSpace.Home; // set properly by onReady
+        this._activeSpace = ""; // set properly by onReady
         this._suggestedRooms = [];
         this._invitedSpaces = new Set();
         this._enabledMetaSpaces = [];
