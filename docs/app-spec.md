@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-26 (v0.1.6)
+> 最終更新: 2026-02-26 (v0.1.7)
 
 ## 概要
 
@@ -41,6 +41,10 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | Ping/遅延表示 | Nexus (RTCPeerConnection.getStats) | 実装済み |
 | ネイティブ画面キャプチャ | Nexus Tauri (WGC + WASAPI, カスタムピッカー) | 実装済み |
 | プロセス単位オーディオ | Nexus Tauri (WASAPI INCLUDE モード — 共有アプリの音だけ) | 実装済み |
+| VC 経過時間表示 | Nexus (NotificationDecoration に経過時間テキスト表示) | 実装済み |
+| VC アクティブハイライト | Nexus (参加者がいる VC の緑アイコン + 緑縦ライン) | 実装済み |
+| アプリ自動更新 UI | Nexus Tauri (NexusUpdateDialog — プログレスバー付きモーダル) | 実装済み |
+| 起動時状態復元 | Nexus (前回のスペース・チャンネルを復元、初回はホーム) | 実装済み |
 
 ## UI 構成
 
@@ -75,6 +79,7 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 - **コンポーネント**: `NexusChannelListView`
 - テキストチャンネル（`#` アイコン）とボイスチャンネル（スピーカーアイコン）を視覚的に分離
 - VC チャンネルの下に参加者リストをリアルタイム表示（`VoiceChannelParticipants`）
+- 参加者がいる VC: スピーカーアイコン緑化 + 経過時間表示 + 左端に緑縦ライン
 - 未接続の VC チャンネルは「まだ誰もいません」+ 参加ボタンを表示
 
 #### Call Status Panel（左サイドバー下部）
@@ -303,6 +308,7 @@ MatrixRTC の `m.call.member` (MSC4143) は sticky state event であり、以�
 | ルームヘッダーの通話ボタン | コードで非表示 |
 | メンバーのステートイベント | setting_defaults で非表示 |
 | Element Call iframe | コードで完全排除（LiveKit 直接接続に移行） |
+| E2E 暗号化アイコン | CSS で非表示（`mx_EventTile_e2eIcon`） |
 
 ## Phase 別の実装計画
 

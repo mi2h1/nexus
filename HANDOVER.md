@@ -2,22 +2,32 @@
 
 ## 現在の状態
 
-### 直近の作業（v0.1.6 — 2026-02-26）
+### 直近の作業（v0.1.7 — 2026-02-26）
 
-**プロセス単位オーディオキャプチャ**
-- **WASAPI INCLUDE モード**: ウィンドウ共有時はそのアプリの音だけをキャプチャ（`PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE`）
-- **モニター共有は従来通り EXCLUDE モード**: 全システム音（Nexus 除く）をキャプチャ
-- **Microsoft 公式サンプル準拠**: `LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM` + PCM 16bit/48kHz/stereo
-- **`GetWindowThreadProcessId`**: HWND から PID を取得し `CaptureTarget.process_id` に格納
-- **`switch_capture_target` 音声切替対応**: ターゲット変更時に WASAPI も新 PID で再起動
+**VC チャンネル経過時間表示 + アクティブハイライト**
+- **経過時間表示**: VC に参加者がいる場合、チャンネルリスト右側（NotificationDecoration）に `0:32` 形式の経過時間を表示
+- **アクティブ表示**: 参加者がいる VC のスピーカーアイコンを緑に変更 + 左端に緑の縦ラインを表示
+- **経過時間の算出**: MatrixRTC `CallMembership.createdTs()` から実際の参加者のみの最古タイムスタンプを使用
+- **受話器アイコン廃止**: NotificationDecoration から VoiceCallSolidIcon/VideoCallSolidIcon を完全削除、経過時間テキストに置換
 
-**バグ修正**
-- **共有画面変更時のオーディオ切替**: `switch_capture_target` が WGC のみ再起動していたのを WASAPI も再起動するよう修正
-- **再共有時の自動視聴防止**: ScreenShare ビデオトラック unsubscribe 時にも `watchingScreenShares` をクリア
+**起動画面の統一**
+- **スプラッシュ統一**: LOADING → PENDING_CLIENT_START → LOGGED_IN(未同期) を全て同じロゴ+スピナー画面に
+- **ロゴ SVG 化**: nexus-logo.png → nexus-logo.svg に変更（線画ロゴ）
+- **スピナー配置修正**: ウィンドウ下部から 48px に固定（`position: absolute; bottom: 48px`）
 
-**バージョン表示**
-- **TauriPlatform.getAppVersion()**: `@tauri-apps/api/app` の `getVersion()` で `tauri.conf.json` のバージョンを返す
-- 設定「ヘルプと概要」ページに Nexus のバージョン（0.1.6）が表示される
+**起動時の状態復元**
+- **前回のスペース・チャンネル復元**: `mx_last_room_id` + SpaceStore の localStorage から前回の状態を復元
+- **初回起動はホーム表示**: `mx_last_room_id` がない場合のみ ViewHomePage をディスパッチ
+- **ホームフラッシュ防止**: SpaceStore の `_activeSpace` 初期値を空文字にして `onReady` まで何もハイライトしない
+- **自動フォーカス防止**: LOGGED_IN 遷移直後に `activeElement.blur()` でツールチップ表示を抑制
+
+**UI 調整**
+- **アップデートダイアログ**: Tauri アプリ更新時にプログレスバー付きモーダル表示
+- **E2E アイコン非表示**: `mx_EventTile_e2eIcon` を `display: none`
+- **アバターサイズ**: メッセージのアバターを 40px → 35px に
+- **タイムスタンプ常時表示**: ホバー時のみでなく常に名前の右に表示、sender 非表示時は非表示
+- **チャンネルリスト余白調整**: `mx_RoomListItemView` min-height 36px→30px、VC 参加者 padding 縮小
+- **チャット入力欄**: 右パディングを 32px に調整
 
 **過去の主要マイルストーン**
 - 自前 LiveKit SFU (lche2.xvps.jp) 構築完了
@@ -86,6 +96,9 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 ---
 
 ## Nexus カスタムファイル（主要）
+
+### ストア
+- `src/stores/NexusUpdateStore.ts` — Tauri 自動更新管理（ダウンロード進捗、インストール状態）
 
 ### VC コア
 - `src/models/NexusVoiceConnection.ts` — LiveKit 直接接続 + MatrixRTC + Web Audio パイプライン
@@ -161,7 +174,7 @@ Phase 5: publishTrack(processedTrack)
 - Phase 1（環境構築）: ✅ 完了
 - Phase 2（Discord風UIカスタマイズ）: ✅ 完了
 - Phase 2.5（通話機能内包）: ✅ 完了
-- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.6）
+- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.7）
 - 自前 SFU: ✅ 構築完了、ブラウザ版動作確認済み
 
 ### ロードマップ

@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-26 (v0.1.6)
+> 最終更新: 2026-02-26 (v0.1.7)
 
 ## リポジトリ情報
 
@@ -93,6 +93,13 @@ nexus/                          # element-web フォーク
 | 音量制御修正 | `createMediaStreamSource` で Web Audio ルーティング（WebView2 対応） |
 | プロセス単位オーディオキャプチャ | WASAPI INCLUDE モード — ウィンドウ共有時はそのアプリの音だけキャプチャ |
 | バージョン表示 | TauriPlatform で `@tauri-apps/api/app` の `getVersion()` → 設定ページに表示 |
+| アップデートダイアログ | NexusUpdateStore + NexusUpdateDialog — ダウンロード進捗バー付きモーダル |
+| VC 経過時間表示 | NotificationDecoration に経過時間テキスト表示（受話器アイコン廃止） |
+| VC アクティブハイライト | 参加者がいる VC のアイコンを緑化 + 左端に緑縦ライン |
+| 起動画面統一 | LOADING〜同期完了まで単一のロゴ+スピナー画面 |
+| 起動時状態復元 | 前回のスペース・チャンネルを復元（初回はホーム表示） |
+| E2E アイコン非表示 | `mx_EventTile_e2eIcon` を CSS で非表示 |
+| タイムスタンプ常時表示 | sender 表示時のみ名前の右に常時表示（ホバー不要） |
 
 ### ロードマップ
 
@@ -192,6 +199,28 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 ## Phase 2: 機能カスタマイズ
 
 ### 完了したタスク
+
+#### 2026-02-26 (v0.1.7: VC 経過時間 + 起動画面統一 + UI 調整)
+- **VC チャンネル経過時間表示**: 参加者がいる VC の NotificationDecoration に `0:32` 形式の経過時間を表示
+  - `useVCParticipants` に `callStartedTs` を追加（MatrixRTC `CallMembership.createdTs()` の最古値）
+  - `RoomListItemViewModel` に `callStartedTs` を追加、実際の参加者の membership のみから算出
+  - shared-components の `NotificationDecoration` に `useElapsedTime` フック追加
+  - VoiceCallSolidIcon / VideoCallSolidIcon を完全削除し経過時間テキストに置換
+- **VC アクティブハイライト**: 参加者がいる VC のスピーカーアイコンを緑に + 左端に緑縦ライン（`::before` 疑似要素）
+  - `VoiceChannelIcon` を `useVCParticipants` ベースに変更（自分以外の参加者も検出）
+  - `NexusChannelListView` の `VoiceChannelItem` を `nx_VoiceChannelGroup` div でラップ
+- **アップデートダイアログ**: `NexusUpdateStore` + `NexusUpdateDialog` — ダウンロード進捗バー付きモーダル
+- **起動画面統一**: LOADING → PENDING_CLIENT_START → LOGGED_IN(未同期) を全て同じロゴ+スピナー画面に統一
+  - LoginSplashView の使用箇所を置換、nexus-logo.svg を webpack import で表示
+  - スピナーをウィンドウ下部 48px に絶対配置（`position: absolute; bottom: 48px; height: auto; flex: none`）
+- **起動時状態復元**: `showScreenAfterLogin` で `mx_last_room_id` があれば前回のチャンネルを表示、なければホーム
+  - SpaceStore の `_activeSpace` 初期値を空文字にして `onReady` までホームがハイライトされるフラッシュを防止
+  - LOGGED_IN 遷移直後に `activeElement.blur()` でホームボタンのツールチップ表示を抑制
+- **E2E アイコン非表示**: `mx_EventTile_e2eIcon` を `display: none !important`
+- **アバターサイズ変更**: メッセージのアバターを 40px → 35px に
+- **タイムスタンプ常時表示**: `showTimestamp` からホバー条件を削除し常時表示、`groupTimestamp` を sender がある時のみ表示
+- **チャンネルリスト余白調整**: `mx_RoomListItemView` min-height 36px→30px、VC 参加者 padding 縮小
+- **チャット入力欄右パディング**: 32px に調整
 
 #### 2026-02-26 (VC 参加者リスト精度改善)
 - **CallStore ghost cleanup の isCallRoom() フィルタ修正**: `onMembershipsChangedForCleanup` が Nexus の VC ルームをスキップしていたバグを修正
