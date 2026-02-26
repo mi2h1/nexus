@@ -5,11 +5,10 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import React, { type JSX } from "react";
+import React, { useState, useEffect, type JSX } from "react";
 import VolumeOnSolidIcon from "@vector-im/compound-design-tokens/assets/web/icons/volume-on-solid";
 
-import { useCall, useConnectionState } from "../../../../hooks/useCall";
-import { ConnectionState } from "../../../../models/Call";
+import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 
 /**
  * Discord-style "#" icon for text channels.
@@ -23,24 +22,62 @@ export function TextChannelIcon(): JSX.Element {
 }
 
 /**
+ * Format elapsed milliseconds as "H:MM:SS" or "M:SS".
+ */
+function formatElapsed(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/**
+ * Hook that returns a formatted elapsed-time string updated every second.
+ * Returns null when startTs is null.
+ */
+function useElapsedTime(startTs: number | null): string | null {
+    const [elapsed, setElapsed] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (startTs === null) {
+            setElapsed(null);
+            return;
+        }
+
+        const update = (): void => {
+            const diff = Date.now() - startTs;
+            setElapsed(formatElapsed(Math.max(0, diff)));
+        };
+
+        update();
+        const id = window.setInterval(update, 1000);
+        return () => window.clearInterval(id);
+    }, [startTs]);
+
+    return elapsed;
+}
+
+/**
  * Discord-style speaker icon for voice channels.
- * Green when a call is connected, grey otherwise.
+ * Green + elapsed time when anyone is in the call, grey otherwise.
  */
 export function VoiceChannelIcon({ roomId }: { roomId: string }): JSX.Element {
-    const call = useCall(roomId);
-    const connectionState = useConnectionState(call);
-    const isConnected = connectionState === ConnectionState.Connected;
-    const color = isConnected
+    const { members, callStartedTs } = useVCParticipants(roomId);
+    const hasParticipants = members.length > 0;
+    const elapsed = useElapsedTime(hasParticipants ? callStartedTs : null);
+
+    const color = hasParticipants
         ? "var(--cpd-color-icon-success-primary)" // green
         : "var(--cpd-color-icon-tertiary)"; // grey
 
     return (
-        <VolumeOnSolidIcon
-            className="mx_NexusChannelIcon mx_NexusChannelIcon_voice"
-            width="16px"
-            height="16px"
-            color={color}
-            aria-label="Voice channel"
-        />
+        <span className="mx_NexusChannelIcon">
+            <VolumeOnSolidIcon width="16px" height="16px" color={color} aria-label="Voice channel" />
+            {elapsed && <span className="mx_NexusChannelIcon_elapsed">{elapsed}</span>}
+        </span>
     );
 }

@@ -6,6 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState, type JSX, type ReactNode } from "react";
+import classNames from "classnames";
 import {
     RoomListItemView,
     RoomListLoadingSkeleton,
@@ -22,6 +23,7 @@ import { VoiceChannelParticipants } from "./VoiceChannelParticipants";
 import { TextChannelIcon, VoiceChannelIcon } from "./NexusChannelIcon";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
 import { CallEvent, ConnectionState } from "../../../../models/Call";
+import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 
@@ -173,6 +175,8 @@ function VoiceChannelItem({
     matrixClient: ReturnType<typeof useMatrixClientContext>;
 }): JSX.Element {
     const [isTransitioning, setIsTransitioning] = useState(false);
+    const { members } = useVCParticipants(roomId);
+    const hasParticipants = members.length > 0;
 
     useEffect(() => {
         const store = NexusVoiceStore.instance;
@@ -263,13 +267,15 @@ function VoiceChannelItem({
     );
 
     return (
-        <React.Fragment>
+        <div className={classNames("nx_VoiceChannelGroup", {
+            "nx_VoiceChannelGroup--active": hasParticipants,
+        })}>
             {/* Use onClickCapture to intercept BEFORE RoomListItemView's button onClick fires */}
             {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
             <div onClickCapture={onVoiceChannelClick} className="nx_VoiceChannelItem">
                 {renderItem(roomId, globalIndex, avatarRenderer)}
             </div>
             <VoiceChannelParticipants roomId={roomId} />
-        </React.Fragment>
+        </div>
     );
 }

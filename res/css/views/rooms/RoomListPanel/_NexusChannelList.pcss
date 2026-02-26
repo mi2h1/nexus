@@ -47,6 +47,18 @@
     user-select: none;
 }
 
+/* VC グループラッパー */
+.nx_VoiceChannelGroup {
+    position: relative;
+}
+
+/* アクティブ VC: 左に細い緑縦ライン */
+.nx_VoiceChannelGroup--active {
+    border-left: 1px solid var(--cpd-color-icon-success-primary);
+    margin-left: 15px;
+    padding-left: 0;
+}
+
 .nx_VoiceChannelItem {
     position: relative;
 }
@@ -78,9 +90,17 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
+    min-width: 24px;
     height: 24px;
     flex-shrink: 0;
+}
+
+/* 経過時間テキスト（細字、緑） */
+.mx_NexusChannelIcon_elapsed {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-icon-success-primary);
+    margin-left: 2px;
+    white-space: nowrap;
 }
 
 .mx_NexusChannelIcon_text {

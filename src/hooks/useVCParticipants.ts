@@ -23,6 +23,8 @@ interface VCParticipantsResult {
     connected: boolean;
     /** User IDs currently connecting or disconnecting (shown as grayed-out spinner) */
     transitioningIds: Set<string>;
+    /** Timestamp (ms) when the first participant joined the current call, or null if empty */
+    callStartedTs: number | null;
 }
 
 /**
@@ -41,6 +43,7 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
     const [members, setMembers] = useState<VCParticipant[]>([]);
     const [connected, setConnected] = useState(false);
     const [transitioningIds, setTransitioningIds] = useState<Set<string>>(new Set());
+    const [callStartedTs, setCallStartedTs] = useState<number | null>(null);
 
     useEffect(() => {
         const room = client.getRoom(roomId);
@@ -60,6 +63,14 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
                 connState === ConnectionState.Disconnecting;
 
             setTransitioningIds(isTransitioning && myUserId ? new Set([myUserId]) : new Set());
+
+            // Compute callStartedTs from the oldest membership
+            let startedTs: number | null = null;
+            for (const m of session.memberships) {
+                const ts = m.createdTs();
+                if (startedTs === null || ts < startedTs) startedTs = ts;
+            }
+            setCallStartedTs(startedTs);
 
             // 接続中: NexusVoiceConnection.participants を使う（userId → devices マップ）
             if (conn && isConnected) {
@@ -151,5 +162,5 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
         };
     }, [client, roomId]);
 
-    return { members, connected, transitioningIds };
+    return { members, connected, transitioningIds, callStartedTs };
 }
