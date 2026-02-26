@@ -39,3 +39,59 @@ Please see LICENSE files in the repository root for full details.
     font: var(--cpd-font-body-sm-regular);
     color: var(--cpd-color-text-secondary);
 }
+
+/* ─── Unified VC view context menu ───────────────────── */
+
+.nx_VCViewContextMenu {
+    min-width: 240px;
+    padding: 12px 16px;
+    background: var(--cpd-color-bg-canvas-default);
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.nx_VCViewContextMenu_label {
+    font: var(--cpd-font-body-sm-semibold);
+    color: var(--cpd-color-text-primary);
+    margin-bottom: 8px;
+}
+
+.nx_VCViewContextMenu_sliderRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nx_VCViewContextMenu_slider {
+    flex: 1;
+    accent-color: var(--cpd-color-icon-accent-primary);
+    height: 4px;
+    cursor: pointer;
+}
+
+.nx_VCViewContextMenu_percent {
+    width: 36px;
+    text-align: right;
+    font: var(--cpd-font-body-sm-regular);
+    color: var(--cpd-color-text-secondary);
+}
+
+.nx_VCViewContextMenu_separator {
+    height: 1px;
+    background: var(--cpd-color-border-interactive-secondary);
+    margin: 10px 0;
+}
+
+.nx_VCViewContextMenu_item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font: var(--cpd-font-body-sm-regular);
+    color: var(--cpd-color-text-primary);
+
+    input[type="checkbox"] {
+        accent-color: var(--cpd-color-icon-accent-primary);
+    }
+}

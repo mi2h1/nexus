@@ -9,7 +9,6 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 
 import { useNexusScreenShares } from "../../../hooks/useNexusScreenShares";
 import type { ScreenShareInfo } from "../../../models/Call";
-import { NexusScreenShareContextMenu } from "./NexusParticipantContextMenu";
 
 interface NexusScreenShareContainerProps {
     roomId: string;
@@ -84,15 +83,16 @@ const NexusScreenShareView: React.FC<NexusScreenShareViewProps> = ({ screenShare
 interface ScreenShareTileProps {
     share: ScreenShareInfo;
     onStopWatching?: () => void;
+    /** Callback for right-click on a remote screen share (used by unified context menu). */
+    onShareContextMenu?: (share: ScreenShareInfo, left: number, top: number) => void;
 }
 
 /**
  * Individual screen share tile — attaches LiveKit track to <video>.
  * Audio is routed through Web Audio API (NexusVoiceConnection), not <audio>.
  */
-export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopWatching }) => {
+export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopWatching, onShareContextMenu }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
 
     useEffect(() => {
         const videoEl = videoRef.current;
@@ -104,11 +104,13 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopW
     }, [share.track]);
 
     const onContextMenu = useCallback((e: React.MouseEvent) => {
+        if (!onShareContextMenu) return;
         // Only show context menu for remote screen shares with audio
         if (share.isLocal || !share.audioTrack) return;
         e.preventDefault();
-        setContextMenu({ left: e.clientX, top: e.clientY });
-    }, [share.isLocal, share.audioTrack]);
+        e.stopPropagation();
+        onShareContextMenu(share, e.clientX, e.clientY);
+    }, [share, onShareContextMenu]);
 
     const label = `${share.participantName}の画面`;
 
@@ -131,14 +133,6 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopW
                         視聴を停止
                     </button>
                 </div>
-            )}
-            {contextMenu && (
-                <NexusScreenShareContextMenu
-                    share={share}
-                    left={contextMenu.left}
-                    top={contextMenu.top}
-                    onFinished={() => setContextMenu(null)}
-                />
             )}
         </div>
     );

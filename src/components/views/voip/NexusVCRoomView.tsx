@@ -6,6 +6,7 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { useState, useRef, useEffect, useCallback, type JSX, useMemo } from "react";
+import ReactDOM from "react-dom";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 
 import { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
@@ -45,6 +46,46 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
 
     const [layoutMode, setLayoutMode] = useState<VCLayoutMode>("spotlight");
 
+    // ─── Panel visibility (context menu) ────────────────
+    const [hideNonScreenSharePanels, setHideNonScreenSharePanels] = useState(false);
+    const [viewContextMenu, setViewContextMenu] = useState<{
+        left: number;
+        top: number;
+        /** If set, show volume slider for this screen share. */
+        share?: ScreenShareInfo;
+    } | null>(null);
+    const contextMenuRef = useRef<HTMLDivElement>(null);
+
+    /** Right-click on the view background — no volume slider. */
+    const onViewContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setViewContextMenu({ left: e.clientX, top: e.clientY });
+    }, []);
+
+    /** Right-click on a watched screen share tile — includes volume slider. */
+    const onShareContextMenu = useCallback((share: ScreenShareInfo, left: number, top: number) => {
+        setViewContextMenu({ left, top, share });
+    }, []);
+
+    // Close context menu on click outside or Escape
+    useEffect(() => {
+        if (!viewContextMenu) return;
+        const onPointerDown = (e: PointerEvent): void => {
+            if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+                setViewContextMenu(null);
+            }
+        };
+        const onKeyDown = (e: KeyboardEvent): void => {
+            if (e.key === "Escape") setViewContextMenu(null);
+        };
+        document.addEventListener("pointerdown", onPointerDown);
+        document.addEventListener("keydown", onKeyDown);
+        return () => {
+            document.removeEventListener("pointerdown", onPointerDown);
+            document.removeEventListener("keydown", onKeyDown);
+        };
+    }, [viewContextMenu]);
+
     // Watching state lives in NexusVoiceConnection (persists across room navigation)
     const watchingIds = useNexusWatchingScreenShares();
 
@@ -58,6 +99,12 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
         [screenShares, watchingIds],
     );
 
+    // ─── Panel visibility filtering ─────────────────────
+    const visibleMembers = useMemo(
+        () => hideNonScreenSharePanels ? [] : members,
+        [members, hideNonScreenSharePanels],
+    );
+
     const startWatching = useCallback((id: string) => {
         NexusVoiceStore.instance.getActiveConnection()?.setScreenShareWatching(id, true);
     }, []);
@@ -67,7 +114,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
     }, []);
 
     // Debounced spotlight target based on active speaker (only watched screen shares)
-    const spotlightTarget = useSpotlightTarget(client.getUserId(), members, watchedScreenShares, activeSpeakers);
+    const spotlightTarget = useSpotlightTarget(client.getUserId(), visibleMembers, watchedScreenShares, activeSpeakers);
 
     const onJoinCall = useCallback(() => {
         const room = client.getRoom(roomId);
@@ -94,7 +141,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
 
     return (
         <div className="nx_VCRoomView">
-            <div className="nx_VCRoomView_content">
+            <div className="nx_VCRoomView_content" onContextMenu={onViewContextMenu}>
                 {layoutMode === "spotlight" ? (
                     <SpotlightLayout
                         spotlightTarget={spotlightTarget}
@@ -102,7 +149,8 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                         unwatchedScreenShares={unwatchedScreenShares}
                         onStartWatching={startWatching}
                         onStopWatching={stopWatching}
-                        members={members}
+                        onShareContextMenu={onShareContextMenu}
+                        members={visibleMembers}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
                         myUserId={client.getUserId()}
@@ -113,7 +161,8 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                         unwatchedScreenShares={unwatchedScreenShares}
                         onStartWatching={startWatching}
                         onStopWatching={stopWatching}
-                        members={members}
+                        onShareContextMenu={onShareContextMenu}
+                        members={visibleMembers}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
                     />
@@ -125,9 +174,108 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                 onLayoutModeChange={setLayoutMode}
                 participantCount={members.length}
             />
+            {viewContextMenu && (
+                <NexusVCViewContextMenu
+                    ref={contextMenuRef}
+                    left={viewContextMenu.left}
+                    top={viewContextMenu.top}
+                    share={viewContextMenu.share}
+                    hideNonScreenSharePanels={hideNonScreenSharePanels}
+                    onHideNonScreenSharePanelsChange={setHideNonScreenSharePanels}
+                    onClose={() => setViewContextMenu(null)}
+                />
+            )}
         </div>
     );
 }
+
+// ─── Unified view context menu ────────────────────────────────
+
+interface NexusVCViewContextMenuProps {
+    left: number;
+    top: number;
+    /** If set, shows a volume slider for this screen share's audio. */
+    share?: ScreenShareInfo;
+    hideNonScreenSharePanels: boolean;
+    onHideNonScreenSharePanelsChange: (value: boolean) => void;
+    onClose: () => void;
+}
+
+const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewContextMenuProps>(
+    function NexusVCViewContextMenu(
+        { left, top, share, hideNonScreenSharePanels, onHideNonScreenSharePanelsChange, onClose },
+        ref,
+    ) {
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        const initialVolume = share ? (conn?.getScreenShareVolume(share.participantIdentity) ?? 1) : 1;
+        const volumeRef = useRef(initialVolume);
+        const percentRef = useRef<HTMLSpanElement>(null);
+
+        const onVolumeChange = useCallback(
+            (e: React.ChangeEvent<HTMLInputElement>) => {
+                if (!share) return;
+                const val = parseFloat(e.target.value);
+                volumeRef.current = val;
+                if (percentRef.current) {
+                    percentRef.current.textContent = `${Math.round(val * 100)}%`;
+                }
+                conn?.setScreenShareVolume(share.participantIdentity, val);
+            },
+            [conn, share],
+        );
+
+        const stopBubble = (e: React.SyntheticEvent): void => {
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+        };
+
+        return ReactDOM.createPortal(
+            <div
+                className="nx_VCViewContextMenu"
+                ref={ref}
+                style={{ left, top, position: "fixed", zIndex: 5000 }}
+                onPointerDown={stopBubble}
+                onMouseDown={stopBubble}
+                onFocusCapture={stopBubble}
+            >
+                {share && (
+                    <>
+                        <div className="nx_VCViewContextMenu_label">
+                            {share.participantName} の配信音量
+                        </div>
+                        <div className="nx_VCViewContextMenu_sliderRow">
+                            <input
+                                type="range"
+                                className="nx_VCViewContextMenu_slider"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                defaultValue={initialVolume}
+                                onChange={onVolumeChange}
+                            />
+                            <span className="nx_VCViewContextMenu_percent" ref={percentRef}>
+                                {Math.round(initialVolume * 100)}%
+                            </span>
+                        </div>
+                        <div className="nx_VCViewContextMenu_separator" />
+                    </>
+                )}
+                <label className="nx_VCViewContextMenu_item">
+                    <input
+                        type="checkbox"
+                        checked={hideNonScreenSharePanels}
+                        onChange={(e) => {
+                            onHideNonScreenSharePanelsChange(e.target.checked);
+                            onClose();
+                        }}
+                    />
+                    <span>画面共有ではないパネルを非表示</span>
+                </label>
+            </div>,
+            document.body,
+        );
+    },
+);
 
 // ─── Spotlight target resolution ─────────────────────────────
 
@@ -195,6 +343,7 @@ interface SpotlightLayoutProps {
     unwatchedScreenShares: ScreenShareInfo[];
     onStartWatching: (id: string) => void;
     onStopWatching: (id: string) => void;
+    onShareContextMenu: (share: ScreenShareInfo, left: number, top: number) => void;
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
@@ -207,6 +356,7 @@ function SpotlightLayout({
     unwatchedScreenShares,
     onStartWatching,
     onStopWatching,
+    onShareContextMenu,
     members,
     activeSpeakers,
     participantStates,
@@ -257,6 +407,7 @@ function SpotlightLayout({
                     <ScreenShareTile
                         share={effectiveTarget.share}
                         onStopWatching={effectiveTarget.share.isLocal ? undefined : () => onStopWatching(effectiveTarget.share.participantIdentity)}
+                        onShareContextMenu={onShareContextMenu}
                     />
                 ) : effectiveTarget?.type === "member" ? (
                     <div className="nx_VCRoomView_spotlightAvatar">
@@ -278,6 +429,7 @@ function SpotlightLayout({
                             <ScreenShareTile
                                 share={share}
                                 onStopWatching={share.isLocal ? undefined : () => onStopWatching(share.participantIdentity)}
+                                onShareContextMenu={onShareContextMenu}
                             />
                         </div>
                     ))}
@@ -326,6 +478,7 @@ interface GridLayoutProps {
     unwatchedScreenShares: ScreenShareInfo[];
     onStartWatching: (id: string) => void;
     onStopWatching: (id: string) => void;
+    onShareContextMenu: (share: ScreenShareInfo, left: number, top: number) => void;
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
@@ -336,6 +489,7 @@ function GridLayout({
     unwatchedScreenShares,
     onStartWatching,
     onStopWatching,
+    onShareContextMenu,
     members,
     activeSpeakers,
     participantStates,
@@ -347,6 +501,7 @@ function GridLayout({
                     <ScreenShareTile
                         share={share}
                         onStopWatching={share.isLocal ? undefined : () => onStopWatching(share.participantIdentity)}
+                        onShareContextMenu={onShareContextMenu}
                     />
                 </div>
             ))}

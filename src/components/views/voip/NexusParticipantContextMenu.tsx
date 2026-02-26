@@ -10,7 +10,6 @@ import ReactDOM from "react-dom";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
-import type { ScreenShareInfo } from "../../../models/Call";
 
 /**
  * Close the menu when clicking/tapping outside.
@@ -100,76 +99,6 @@ export const NexusParticipantContextMenu = React.memo(function NexusParticipantC
         >
             <div className="nx_ParticipantContextMenu_label">
                 {member.name} の音量
-            </div>
-            <div className="nx_ParticipantContextMenu_sliderRow">
-                <input
-                    type="range"
-                    className="nx_ParticipantContextMenu_slider"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    defaultValue={initialVolume}
-                    onChange={onVolumeChange}
-                />
-                <span className="nx_ParticipantContextMenu_percent" ref={percentRef}>
-                    {Math.round(initialVolume * 100)}%
-                </span>
-            </div>
-        </div>,
-        document.body,
-    );
-});
-
-// ─── Screen share context menu ──────────────────────────────
-
-interface NexusScreenShareContextMenuProps {
-    share: ScreenShareInfo;
-    left: number;
-    top: number;
-    onFinished: () => void;
-}
-
-/**
- * Context menu with a volume slider for a remote screen share's audio.
- */
-export const NexusScreenShareContextMenu = React.memo(function NexusScreenShareContextMenu({
-    share,
-    left,
-    top,
-    onFinished,
-}: NexusScreenShareContextMenuProps): JSX.Element {
-    const conn = NexusVoiceStore.instance.getActiveConnection();
-    const initialVolume = conn?.getScreenShareVolume(share.participantIdentity) ?? 1;
-    const volumeRef = useRef(initialVolume);
-    const percentRef = useRef<HTMLSpanElement>(null);
-    const menuRef = useRef<HTMLDivElement>(null);
-
-    useClickOutside(menuRef, onFinished);
-    useEscapeKey(onFinished);
-
-    const onVolumeChange = useCallback(
-        (e: React.ChangeEvent<HTMLInputElement>) => {
-            const val = parseFloat(e.target.value);
-            volumeRef.current = val;
-            if (percentRef.current) {
-                percentRef.current.textContent = `${Math.round(val * 100)}%`;
-            }
-            conn?.setScreenShareVolume(share.participantIdentity, val);
-        },
-        [conn, share.participantIdentity],
-    );
-
-    return ReactDOM.createPortal(
-        <div
-            className="nx_ParticipantContextMenu"
-            ref={menuRef}
-            style={{ left, top, position: "fixed", zIndex: 5000 }}
-            onPointerDown={stopBubble}
-            onMouseDown={stopBubble}
-            onFocusCapture={stopBubble}
-        >
-            <div className="nx_ParticipantContextMenu_label">
-                {share.participantName} の配信音量
             </div>
             <div className="nx_ParticipantContextMenu_sliderRow">
                 <input
