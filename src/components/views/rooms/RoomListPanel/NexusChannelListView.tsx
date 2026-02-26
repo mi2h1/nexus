@@ -27,6 +27,7 @@ import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 import { ChatSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { Tooltip } from "@vector-im/compound-web";
 import RightPanelStore from "../../../../stores/right-panel/RightPanelStore";
 import { RightPanelPhases } from "../../../../stores/right-panel/RightPanelStorePhases";
 
@@ -328,10 +329,12 @@ function VoiceChannelItem({
             <div onClickCapture={onVoiceChannelClick} className="nx_VoiceChannelItem">
                 {renderItem(roomId, globalIndex, avatarRenderer)}
                 {elapsed && <span className="mx_NexusChannelIcon_elapsed">{elapsed}</span>}
-                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-                <div ref={chatButtonRef} className="nx_VoiceChannelItem_chatButton" onClick={onChatClick} title="チャットを表示">
-                    <ChatSolidIcon width={16} height={16} />
-                </div>
+                <Tooltip label="チャットを表示" placement="bottom">
+                    {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                    <div ref={chatButtonRef} className="nx_VoiceChannelItem_chatButton" onClick={onChatClick}>
+                        <ChatSolidIcon width={16} height={16} />
+                    </div>
+                </Tooltip>
             </div>
             <VoiceChannelParticipants roomId={roomId} />
         </div>
