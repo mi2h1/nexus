@@ -1519,8 +1519,14 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
                 logger.debug("showScreenAfterLogin: showing guest welcome page");
                 dis.dispatch({ action: "view_welcome_page" });
             } else {
-                logger.debug("showScreenAfterLogin: showing home page");
-                dis.dispatch({ action: Action.ViewHomePage });
+                // Set page type directly so the app exits the splash screen,
+                // but don't dispatch ViewHomePage to avoid selecting "Home" in the sidebar.
+                logger.debug("showScreenAfterLogin: showing home page (no focus)");
+                this.setStateForNewView({
+                    view: Views.LOGGED_IN,
+                    currentRoomId: null,
+                });
+                this.setPage(PageType.HomePage);
             }
         }
     }
