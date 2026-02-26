@@ -29,6 +29,7 @@ import { EchoChamber } from "../../stores/local-echo/EchoChamber";
 import { RoomNotifState as ElementRoomNotifState } from "../../RoomNotifs";
 import { shouldShowComponent } from "../../customisations/helpers/UIComponents";
 import { UIComponent } from "../../settings/UIFeature";
+import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
 import { CallStore, CallStoreEvent } from "../../stores/CallStore";
 import { clearRoomNotification, setMarkedUnreadState } from "../../utils/notifications";
 import { tagRoom } from "../../utils/room/tagRoom";
@@ -80,6 +81,11 @@ export class RoomListItemViewModel
         // Subscribe to call state changes
         this.disposables.trackListener(CallStore.instance, CallStoreEvent.ConnectedCalls, this.onCallStateChanged);
 
+        // Nexus: Subscribe to MatrixRTC membership changes so callStartedTs updates
+        // when participants join/leave (ConnectedCalls only fires for own connection changes)
+        const session = props.client.matrixRTC.getRoomSession(props.room);
+        this.disposables.trackListener(session, MatrixRTCSessionEvent.MembershipsChanged, this.onCallStateChanged);
+
         // Subscribe to room-specific events
         this.disposables.trackListener(props.room, RoomEvent.Name, this.onRoomChanged);
         this.disposables.trackListener(props.room, RoomEvent.Tags, this.onRoomChanged);
@@ -101,13 +107,18 @@ export class RoomListItemViewModel
     };
 
     private onCallStateChanged = (): void => {
-        // Only update if call state for this room actually changed
+        // Update when call type or participant presence changes
         const call = CallStore.instance.getCall(this.props.room.roomId);
         const currentCallType = this.snapshot.current.notification.callType;
         const newCallType =
             call && call.participants.size > 0 ? (call.callType === CallType.Voice ? "voice" : "video") : undefined;
 
-        if (currentCallType !== newCallType) {
+        // Nexus: Also check if callStartedTs changed (participants joined/left)
+        const currentTs = this.snapshot.current.notification.callStartedTs;
+        const session = this.props.client.matrixRTC.getRoomSession(this.props.room);
+        const hasMembers = session.memberships.length > 0;
+
+        if (currentCallType !== newCallType || (hasMembers && !currentTs) || (!hasMembers && currentTs)) {
             this.updateItem();
         }
     };
