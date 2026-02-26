@@ -35,7 +35,11 @@
 
 ### 未解決・次回やること
 
-1. **画面共有 A/V 同期** — 現状数十msのズレあり。LiveKit SFU の RTP 配信特性に起因。根本解決には SFU 側の設定（playout-delay RTP 拡張等）か、カスタムメディアエンジンが必要
+1. **画面共有 A/V 同期（再検証）** — 前回の試行時、受信側が旧バージョン（v0.2.0）のまま更新されていなかったため、変更が一切反映されていなかった可能性が高い。以下の方策を受信側も最新にした状態で再検証すべき:
+   - 映像+音声を同一 MediaStream に統合（`<video>` 1要素で再生）
+   - Web Audio 経由を廃止し `videoEl.volume` で直接制御（RTCP SR 同期を維持）
+   - トラック到着タイミング同期（映像到着時に音声を500ms待機）
+   - `requestVideoFrameCallback` でフリーズ検出→MediaStream 再構築
 2. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
 3. **システムトレイ常駐** — 閉じてもバックグラウンド動作
 4. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
