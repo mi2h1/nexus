@@ -219,6 +219,16 @@ export class RoomListItemViewModel
         const callType =
             call?.callType === CallType.Voice ? "voice" : call?.callType === CallType.Video ? "video" : undefined;
 
+        // Compute callStartedTs from the oldest MatrixRTC membership
+        let callStartedTs: number | null = null;
+        if (hasParticipantsInCall) {
+            const session = client.matrixRTC.getRoomSession(room);
+            for (const m of session.memberships) {
+                const ts = m.createdTs();
+                if (callStartedTs === null || ts < callStartedTs) callStartedTs = ts;
+            }
+        }
+
         return {
             id: room.roomId,
             room,
@@ -236,6 +246,7 @@ export class RoomListItemViewModel
                 count: notifState.count,
                 muted: isNotificationMute,
                 callType: hasParticipantsInCall ? callType : undefined,
+                callStartedTs: hasParticipantsInCall ? callStartedTs : undefined,
             },
             showMoreOptionsMenu,
             showNotificationMenu,

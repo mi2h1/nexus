@@ -5,7 +5,7 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
     MentionIcon,
     ErrorSolidIcon,
@@ -43,6 +43,8 @@ export interface NotificationDecorationData {
     muted: boolean;
     /** Optional call type indicator */
     callType?: "video" | "voice";
+    /** Timestamp (ms) when the first participant joined the current call */
+    callStartedTs?: number | null;
 }
 
 /**
@@ -51,12 +53,52 @@ export interface NotificationDecorationData {
 export interface NotificationDecorationProps extends NotificationDecorationData {}
 
 /**
+ * Format elapsed milliseconds as "H:MM:SS" or "M:SS".
+ */
+function formatElapsed(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/**
+ * Hook that returns a formatted elapsed-time string updated every second.
+ */
+function useElapsedTime(startTs: number | null | undefined): string | null {
+    const [elapsed, setElapsed] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (startTs == null) {
+            setElapsed(null);
+            return;
+        }
+
+        const update = (): void => {
+            const diff = Date.now() - startTs;
+            setElapsed(formatElapsed(Math.max(0, diff)));
+        };
+
+        update();
+        const id = window.setInterval(update, 1000);
+        return () => window.clearInterval(id);
+    }, [startTs]);
+
+    return elapsed;
+}
+
+/**
  * Renders notification badges and indicators for rooms/items
  */
 export const NotificationDecoration: React.FC<NotificationDecorationProps> = ({
     hasAnyNotificationOrActivity,
     muted,
     callType,
+    callStartedTs,
     isUnsentMessage,
     invited,
     isMention,
@@ -64,6 +106,8 @@ export const NotificationDecoration: React.FC<NotificationDecorationProps> = ({
     isActivityNotification,
     count,
 }) => {
+    const elapsed = useElapsedTime(callType ? callStartedTs : null);
+
     // Don't render anything if there's nothing to show
     if (!hasAnyNotificationOrActivity && !muted && !callType) {
         return null;
@@ -74,10 +118,13 @@ export const NotificationDecoration: React.FC<NotificationDecorationProps> = ({
             {isUnsentMessage && (
                 <ErrorSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-critical-primary)" />
             )}
-            {callType === "video" && (
+            {callType && elapsed && (
+                <span className="mx_NexusChannelIcon_elapsed">{elapsed}</span>
+            )}
+            {callType === "video" && !elapsed && (
                 <VideoCallSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />
             )}
-            {callType === "voice" && (
+            {callType === "voice" && !elapsed && (
                 <VoiceCallSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />
             )}
             {invited && <EmailSolidIcon width="20px" height="20px" fill="var(--cpd-color-icon-accent-primary)" />}
