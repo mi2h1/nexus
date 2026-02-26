@@ -167,6 +167,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private sourceNode: MediaStreamAudioSourceNode | null = null;
     private highPassFilter: BiquadFilterNode | null = null;
     private compressorNode: DynamicsCompressorNode | null = null;
+    private delayNode: DelayNode | null = null;
     // ─── RNNoise noise cancellation ───────────────────────────
     private rnnoiseNode: RnnoiseWorkletNode | null = null;
     private static rnnoiseWasmBinary: ArrayBuffer | null = null;
@@ -176,8 +177,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _voiceGateOpen = true;
     private voiceGateReleaseTimeout: ReturnType<typeof setTimeout> | null = null;
     private static readonly VOICE_GATE_RELEASE_MS = 300;
-    /** Gain ramp duration to avoid click/pop when voice gate opens/closes. */
-    private static readonly VOICE_GATE_RAMP_SEC = 0.02;
+    /** Gain ramp duration for voice gate close (fade-out). */
+    private static readonly VOICE_GATE_RAMP_SEC = 0.05;
+    /** DelayNode lookahead so analyser detects speech before audio reaches the gate. */
+    private static readonly VOICE_GATE_LOOKAHEAD_SEC = 0.05;
     private participantRetryTimer: ReturnType<typeof setInterval> | null = null;
 
     // ─── OpenID token cache ────────────────────────────────────
@@ -291,6 +294,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 createLocalAudioTrack({
                     echoCancellation: true,
                     noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 48000,
+                    channelCount: 1,
                 }),
                 // Preload RNNoise WASM binary in parallel (cached statically)
                 ncEnabled ? NexusVoiceConnection.preloadRnnoiseWasm() : Promise.resolve(),
@@ -318,7 +324,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // Publish with optimized Opus settings
             await this.livekitRoom.localParticipant.publishTrack(processedTrack, {
                 source: Track.Source.Microphone,
-                audioPreset: { maxBitrate: 64_000 }, // 64kbps (default ~32kbps)
+                audioPreset: { maxBitrate: 128_000 }, // 128kbps — ≤10人なので帯域問題なし
                 dtx: true, // Discontinuous Transmission — saves bandwidth in silence
                 red: true, // Redundant audio encoding — resilience to packet loss
             });
@@ -1072,11 +1078,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     /**
      * Connect the input audio pipeline chain:
-     *   source → [rnnoise] → HPF → compressor → analyser + inputGain
+     *   source → [rnnoise] → HPF → compressor → analyser (no delay)
+     *                                          → delayNode(50ms) → inputGain
      */
     private connectInputPipeline(): void {
         if (!this.sourceNode || !this.highPassFilter || !this.compressorNode
-            || !this.analyserNode || !this.inputGainNode) return;
+            || !this.analyserNode || !this.inputGainNode || !this.audioContext) return;
 
         if (this.rnnoiseNode) {
             this.sourceNode.connect(this.rnnoiseNode);
@@ -1085,8 +1092,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.sourceNode.connect(this.highPassFilter);
         }
         this.highPassFilter.connect(this.compressorNode);
+        // Analyser taps the signal before the delay so level detection is immediate
         this.compressorNode.connect(this.analyserNode);
-        this.compressorNode.connect(this.inputGainNode);
+        // DelayNode lookahead: speech is detected 50ms before it reaches the gate
+        this.delayNode = this.audioContext.createDelay(0.1);
+        this.delayNode.delayTime.value = NexusVoiceConnection.VOICE_GATE_LOOKAHEAD_SEC;
+        this.compressorNode.connect(this.delayNode);
+        this.delayNode.connect(this.inputGainNode);
     }
 
     /**
@@ -1098,6 +1110,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.rnnoiseNode?.disconnect();
         this.highPassFilter?.disconnect();
         this.compressorNode?.disconnect();
+        this.delayNode?.disconnect();
         // Don't disconnect analyserNode or inputGainNode — they connect to dest
     }
 
@@ -1224,13 +1237,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // Above threshold → open gate, reset release timer
             this._voiceGateOpen = true;
             if (this.inputGainNode && this.audioContext) {
-                // Use linearRamp to avoid click/pop noise from abrupt gain changes
+                // DelayNode lookahead lets us open instantly without clipping the onset
                 const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
                 this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-                this.inputGainNode.gain.linearRampToValueAtTime(
-                    targetVol,
-                    this.audioContext.currentTime + NexusVoiceConnection.VOICE_GATE_RAMP_SEC,
-                );
+                this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
             }
             if (this.voiceGateReleaseTimeout) {
                 clearTimeout(this.voiceGateReleaseTimeout);
@@ -1373,6 +1383,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.inputGainNode = null;
         this.highPassFilter = null;
         this.compressorNode = null;
+        if (this.delayNode) {
+            this.delayNode.disconnect();
+            this.delayNode = null;
+        }
         this._inputLevel = 0;
         this._voiceGateOpen = true;
 
