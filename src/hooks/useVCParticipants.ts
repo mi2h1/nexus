@@ -158,6 +158,19 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
             if (!conn?.connected) updateMembers();
         }, 30_000);
 
+        // マウント直後の高頻度ポーリング: 初回 sync 中は membership が段階的に
+        // 到着し、stale なエントリが一時的に表示されることがある。最初の 15 秒間
+        // だけ 3 秒間隔でポーリングし、sync 完了後の membership 変化を素早く反映。
+        const FAST_POLL_INTERVAL = 3_000;
+        const FAST_POLL_DURATION = 15_000;
+        const fastPollInterval = window.setInterval(() => {
+            const conn = NexusVoiceStore.instance.getConnection(roomId);
+            if (!conn?.connected) updateMembers();
+        }, FAST_POLL_INTERVAL);
+        const fastPollTimeout = window.setTimeout(() => {
+            clearInterval(fastPollInterval);
+        }, FAST_POLL_DURATION);
+
         return () => {
             session.off(MatrixRTCSessionEvent.MembershipsChanged, updateMembers);
             roomState.off(RoomStateEvent.Members, updateMembers);
@@ -165,6 +178,8 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
             currentConn?.off(CallEvent.Participants, onParticipants);
             currentConn?.off(CallEvent.ConnectionState, onConnectionState);
             clearInterval(pollInterval);
+            clearInterval(fastPollInterval);
+            clearTimeout(fastPollTimeout);
         };
     }, [client, roomId]);
 
