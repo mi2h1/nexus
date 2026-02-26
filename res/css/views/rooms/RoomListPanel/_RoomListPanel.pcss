@@ -9,4 +9,9 @@
     background-color: var(--cpd-color-bg-canvas-default);
     height: 100%;
     border-right: 1px solid var(--cpd-color-bg-subtle-primary);
+
+    /* Nexus: shared-components の RoomListHeaderView (min-height:60px) を上書き */
+    > header {
+        min-height: 55px;
+    }
 }
