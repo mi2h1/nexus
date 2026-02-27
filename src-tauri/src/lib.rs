@@ -14,10 +14,13 @@ pub fn run() {
             capture::switch_capture_target,
         ])
         .setup(|app| {
+            use tauri::utils::config::Color;
             use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
             use tauri::WebviewUrl;
 
             let app_handle = app.handle().clone();
+            // Dark theme background — matches --cpd-color-bg-canvas-default
+            let bg = Color(0x15, 0x19, 0x1E, 0xFF);
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Nexus")
@@ -31,6 +34,7 @@ pub fn run() {
                     )
                     .window_features(features)
                     .visible(false)
+                    .background_color(bg)
                     .title(url.as_str())
                     .on_document_title_changed(|window, title| {
                         let _ = window.set_title(&title);

@@ -69,6 +69,10 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
             if (closed) return;
             try {
                 child.document.title = "Nexus VC";
+                // Set dark background immediately to avoid white flash
+                child.document.documentElement.style.backgroundColor = "#15191E";
+                child.document.body.style.backgroundColor = "#15191E";
+                child.document.body.style.margin = "0";
                 const container = child.document.createElement("div");
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);

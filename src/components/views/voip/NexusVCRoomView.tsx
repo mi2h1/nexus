@@ -54,7 +54,13 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     useEffect(() => {
         if (!connected && popoutWindow) {
             setPopoutWindow(null);
-            // NexusVCPopout unmount will handle closing the native window
+            // Close the Tauri-managed window directly via API
+            import("@tauri-apps/api/webviewWindow").then(({ WebviewWindow }) => {
+                WebviewWindow.getByLabel("vc-popout")?.close();
+            }).catch(() => {
+                // Fallback: try DOM close
+                if (!popoutWindow.closed) popoutWindow.close();
+            });
         }
     }, [connected, popoutWindow]);
 
