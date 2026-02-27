@@ -89,7 +89,7 @@ export default class WebPlatform extends BasePlatform {
         });
     };
 
-    private onServiceWorkerPostMessage = (event: MessageEvent): void => {
+    protected onServiceWorkerPostMessage = (event: MessageEvent): void => {
         try {
             if (event.data?.["type"] === "userinfo" && event.data?.["responseKey"]) {
                 const userId = localStorage.getItem("mx_user_id");
