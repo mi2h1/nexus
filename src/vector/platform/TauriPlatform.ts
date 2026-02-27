@@ -26,7 +26,17 @@ const UPDATE_POLL_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
  */
 export default class TauriPlatform extends WebPlatform {
     protected async registerServiceWorker(): Promise<void> {
-        // No-op: Tauri native app doesn't need a service worker
+        // Tauri native app doesn't register a new service worker, but a stale
+        // one may still be running from a previous browser-mode session or
+        // WebView2 cache.  Unregister it so it stops intercepting media
+        // requests (which fail because the main-thread message handler is
+        // never set up in TauriPlatform).
+        if ("serviceWorker" in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+                await reg.unregister();
+            }
+        }
     }
 
     public async getAppVersion(): Promise<string> {
