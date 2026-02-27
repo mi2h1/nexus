@@ -1,5 +1,9 @@
 mod capture;
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static POPUP_COUNTER: AtomicU32 = AtomicU32::new(0);
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -14,13 +18,38 @@ pub fn run() {
             capture::switch_capture_target,
         ])
         .setup(|app| {
-            use tauri::webview::WebviewWindowBuilder;
+            use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
             use tauri::WebviewUrl;
+
+            let app_handle = app.handle().clone();
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Nexus")
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(960.0, 600.0)
+                .on_new_window(move |url, features| {
+                    let id = POPUP_COUNTER.fetch_add(1, Ordering::Relaxed);
+                    let label = format!("popup-{}", id);
+
+                    match WebviewWindowBuilder::new(
+                        &app_handle,
+                        &label,
+                        WebviewUrl::External("about:blank".parse().unwrap()),
+                    )
+                    .window_features(features)
+                    .title(url.as_str())
+                    .on_document_title_changed(|window, title| {
+                        let _ = window.set_title(&title);
+                    })
+                    .build()
+                    {
+                        Ok(window) => NewWindowResponse::Create { window },
+                        Err(e) => {
+                            eprintln!("Failed to create popup window: {e}");
+                            NewWindowResponse::Allow
+                        }
+                    }
+                })
                 .build()?;
             Ok(())
         })
