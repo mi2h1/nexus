@@ -23,7 +23,7 @@ import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
 import { VisibilityOffIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
-import { NexusVCPopout } from "./NexusVCPopout";
+import { NexusVCPopout, closeTauriPopout } from "./NexusVCPopout";
 
 interface NexusVCRoomViewProps {
     roomId: string;
@@ -54,13 +54,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     useEffect(() => {
         if (!connected && popoutWindow) {
             setPopoutWindow(null);
-            // Close the Tauri-managed window directly via API
-            import("@tauri-apps/api/webviewWindow").then(({ WebviewWindow }) => {
-                WebviewWindow.getByLabel("vc-popout")?.close();
-            }).catch(() => {
-                // Fallback: try DOM close
-                if (!popoutWindow.closed) popoutWindow.close();
-            });
+            closeTauriPopout();
         }
     }, [connected, popoutWindow]);
 

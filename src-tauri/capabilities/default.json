@@ -6,6 +6,8 @@
     "permissions": [
         "core:default",
         "core:window:default",
+        "core:window:allow-close",
+        "core:window:allow-show",
         "opener:default",
         {
             "identifier": "http:default",

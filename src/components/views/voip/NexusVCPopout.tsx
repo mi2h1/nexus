@@ -20,21 +20,21 @@ interface NexusVCPopoutProps {
     onClose: () => void;
 }
 
-/** Close the vc-popout window via Tauri API (works for Tauri-managed windows). */
-async function closeTauriPopout(): Promise<void> {
+/** Close the vc-popout window via Tauri invoke (bypasses WebviewWindow class). */
+export async function closeTauriPopout(): Promise<void> {
     try {
-        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-        await WebviewWindow.getByLabel("vc-popout")?.close();
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("plugin:window|close", { label: "vc-popout" });
     } catch {
         // Tauri API not available or window already gone
     }
 }
 
-/** Show the vc-popout window via Tauri API. */
+/** Show the vc-popout window via Tauri invoke. */
 async function showTauriPopout(): Promise<void> {
     try {
-        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-        await WebviewWindow.getByLabel("vc-popout")?.show();
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("plugin:window|show", { label: "vc-popout" });
     } catch {
         // Tauri API not available
     }
@@ -123,11 +123,7 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
             // Real unmounts: the timer fires and closes the window.
             // Strict Mode: the remount clears the timer before it fires.
             closeTimerRef.current = setTimeout(() => {
-                if (isTauri()) {
-                    closeTauriPopout();
-                } else if (!child.closed) {
-                    child.close();
-                }
+                closeTauriPopout();
             }, 0);
         };
     }, [childWindow]); // eslint-disable-line react-hooks/exhaustive-deps
