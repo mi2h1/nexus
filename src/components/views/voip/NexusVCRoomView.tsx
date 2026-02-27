@@ -15,7 +15,7 @@ import { useNexusScreenShares } from "../../../hooks/useNexusScreenShares";
 import { useNexusActiveSpeakers } from "../../../hooks/useNexusActiveSpeakers";
 import { useNexusParticipantStates } from "../../../hooks/useNexusParticipantStates";
 import { useNexusWatchingScreenShares } from "../../../hooks/useNexusWatchingScreenShares";
-import { ScreenShareTile } from "./NexusScreenShareView";
+import { ScreenShareTile, ScreenShareSnapshotTile } from "./NexusScreenShareView";
 import { ParticipantTile } from "./NexusVoiceParticipantGrid";
 import { NexusVCControlBar } from "./NexusVCControlBar";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../stores/NexusVoiceStore";
@@ -522,7 +522,7 @@ function SpotlightLayout({
                             className="nx_VCRoomView_spotlightBottomBar_item nx_VCRoomView_screenSharePreview"
                             onClick={() => onStartWatching(share.participantIdentity)}
                         >
-                            <ScreenShareTile share={share} />
+                            <ScreenShareSnapshotTile share={share} />
                             <div className="nx_VCRoomView_screenSharePreview_overlay">
                                 <div className="nx_VCRoomView_screenSharePreview_button">
                                     画面を視聴する
@@ -669,7 +669,7 @@ function GridLayout({
                             onClick={() => onStartWatching(share.participantIdentity)}
                         >
                             <div className="nx_VCRoomView_gridScreenShare nx_VCRoomView_gridScreenSharePreview">
-                                <ScreenShareTile share={share} />
+                                <ScreenShareSnapshotTile share={share} />
                                 <div className="nx_VCRoomView_screenSharePreview_overlay">
                                     <div className="nx_VCRoomView_screenSharePreview_button">
                                         画面を視聴する

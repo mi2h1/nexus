@@ -87,6 +87,7 @@ function VoiceChannelParticipantItem({
 
     const itemClass = classNames("mx_VoiceChannelParticipants_item", {
         "mx_VoiceChannelParticipants_item--transitioning": isTransitioning,
+        "mx_VoiceChannelParticipants_item--clickable": isScreenSharing && !isTransitioning,
     });
 
     const avatarClass = classNames("mx_VoiceChannelParticipants_avatar", {

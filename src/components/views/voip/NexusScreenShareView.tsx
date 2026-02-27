@@ -206,4 +206,60 @@ export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopW
     );
 };
 
+/**
+ * Snapshot tile for unwatched screen shares — captures a single frame
+ * from the track onto a <canvas> and releases the video decoder.
+ */
+export const ScreenShareSnapshotTile: React.FC<{ share: ScreenShareInfo }> = ({ share }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !share.track) return;
+
+        const video = document.createElement("video");
+        video.muted = true;
+        video.playsInline = true;
+        video.srcObject = new MediaStream([share.track.mediaStreamTrack]);
+
+        let cancelled = false;
+
+        const captureFrame = (): void => {
+            if (cancelled) return;
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            if (w === 0 || h === 0) return;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            if (ctx) ctx.drawImage(video, 0, 0, w, h);
+            // 描画完了、video 不要
+            video.pause();
+            video.srcObject = null;
+        };
+
+        if ("requestVideoFrameCallback" in video) {
+            (video as any).requestVideoFrameCallback(captureFrame);
+        } else {
+            (video as HTMLVideoElement).addEventListener("loadeddata", captureFrame, { once: true });
+        }
+        video.play().catch(() => {});
+
+        return () => {
+            cancelled = true;
+            video.pause();
+            video.srcObject = null;
+        };
+    }, [share.track]);
+
+    const label = `${share.participantName}の画面`;
+
+    return (
+        <div className="mx_NexusScreenShareTile">
+            <canvas ref={canvasRef} className="mx_NexusScreenShareTile_video" />
+            <div className="mx_NexusScreenShareTile_label">{label}</div>
+        </div>
+    );
+};
+
 export default NexusScreenShareView;
