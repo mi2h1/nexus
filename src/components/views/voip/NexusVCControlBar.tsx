@@ -14,6 +14,7 @@ import {
     SettingsSolidIcon,
     EndCallIcon,
     PopOutIcon,
+    CollapseIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { useNexusVoice } from "../../../hooks/useNexusVoice";
@@ -29,6 +30,8 @@ import { isTauri } from "../../../utils/tauriHttp";
 interface NexusVCControlBarProps {
     roomId: string;
     onPopout?: () => void;
+    /** Callback to restore the popout window back into the main window. */
+    onRestoreFromPopout?: () => void;
     /** When true, disables Compound tooltips (FloatingPortal targets the wrong document in popout windows). */
     isPopout?: boolean;
 }
@@ -36,6 +39,7 @@ interface NexusVCControlBarProps {
 export function NexusVCControlBar({
     roomId,
     onPopout,
+    onRestoreFromPopout,
     isPopout,
 }: NexusVCControlBarProps): JSX.Element {
     const { isMicMuted, isScreenSharing } = useNexusVoice();
@@ -131,6 +135,16 @@ export function NexusVCControlBar({
                         title="別ウィンドウで表示"
                     >
                         <PopOutIcon width={20} height={20} />
+                    </AccessibleButton>
+                )}
+                {onRestoreFromPopout && (
+                    <AccessibleButton
+                        className="nx_VCControlBar_layoutButton"
+                        onClick={onRestoreFromPopout}
+                        title="元に戻す"
+                        disableTooltip={isPopout}
+                    >
+                        <CollapseIcon width={20} height={20} />
                     </AccessibleButton>
                 )}
             </div>

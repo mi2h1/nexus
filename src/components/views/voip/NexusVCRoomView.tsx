@@ -259,6 +259,11 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                     const win = window.open("about:blank", "_blank", "width=480,height=640");
                     if (win) setPopoutWindow(win);
                 } : undefined}
+                onRestoreFromPopout={isPopout ? () => {
+                    import("@tauri-apps/api/core").then(({ invoke }) => {
+                        invoke("plugin:window|close", { label: "vc-popout" });
+                    }).catch(() => {});
+                } : undefined}
             />
             {viewContextMenu && (
                 <NexusVCViewContextMenu
@@ -528,7 +533,7 @@ function SpotlightLayout({
 // ─── Grid layout ──────────────────────────────────────────────
 
 const GRID_GAP = 16;
-const GRID_PADDING = 24;
+const GRID_PADDING = 12;
 const MIN_PANEL_W = 120;
 
 function calculateGridLayout(
