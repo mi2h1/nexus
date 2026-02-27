@@ -23,9 +23,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--cpd-space-2x);
-    width: 120px;
-    height: 120px;
+    position: relative;
+    width: 192px;
+    height: 108px;
     border-radius: var(--cpd-space-3x);
     background-color: var(--cpd-color-bg-subtle-secondary);
     border: 3px solid transparent;
@@ -42,19 +42,25 @@
     }
 
     &.mx_NexusVoiceParticipantTile--small {
-        width: 100px;
-        height: 100px;
-        gap: var(--cpd-space-1x);
+        width: 160px;
+        height: 90px;
+    }
+
+    &.mx_NexusVoiceParticipantTile--clickable {
+        cursor: pointer;
     }
 }
 
 .mx_NexusVoiceParticipantTile_nameRow {
+    position: absolute;
+    bottom: var(--cpd-space-1x);
+    left: var(--cpd-space-2x);
+    right: var(--cpd-space-2x);
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 4px;
-    max-width: 110px;
 }
 
 .mx_NexusVoiceParticipantTile_muteIcon {

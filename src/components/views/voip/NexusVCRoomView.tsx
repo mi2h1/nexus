@@ -17,7 +17,7 @@ import { useNexusParticipantStates } from "../../../hooks/useNexusParticipantSta
 import { useNexusWatchingScreenShares } from "../../../hooks/useNexusWatchingScreenShares";
 import { ScreenShareTile } from "./NexusScreenShareView";
 import { ParticipantTile } from "./NexusVoiceParticipantGrid";
-import { NexusVCControlBar, type VCLayoutMode } from "./NexusVCControlBar";
+import { NexusVCControlBar } from "./NexusVCControlBar";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
 import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
@@ -31,7 +31,11 @@ interface NexusVCRoomViewProps {
     isPopout?: boolean;
 }
 
-const SPEAKER_DEBOUNCE_MS = 2000;
+type VCLayoutMode = "spotlight" | "grid";
+
+type SpotlightTarget =
+    | { type: "screenshare"; share: ScreenShareInfo }
+    | { type: "member"; member: RoomMember };
 
 /**
  * Unified VC room view with spotlight/grid layout modes and a control bar.
@@ -60,7 +64,25 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
         }
     }, [connected, popoutWindow]);
 
-    const [layoutMode, setLayoutMode] = useState<VCLayoutMode>("spotlight");
+    const [layoutMode, setLayoutMode] = useState<VCLayoutMode>("grid");
+
+    // ─── Focus target (click-based spotlight) ────────────
+    const [focusTarget, setFocusTarget] = useState<SpotlightTarget | null>(null);
+
+    const handleFocusMember = useCallback((member: RoomMember) => {
+        setFocusTarget({ type: "member", member });
+        setLayoutMode("spotlight");
+    }, []);
+
+    const handleFocusScreenShare = useCallback((share: ScreenShareInfo) => {
+        setFocusTarget({ type: "screenshare", share });
+        setLayoutMode("spotlight");
+    }, []);
+
+    const handleUnfocus = useCallback(() => {
+        setFocusTarget(null);
+        setLayoutMode("grid");
+    }, []);
 
     // ─── Panel visibility (context menu) ────────────────
     const [hideNonScreenSharePanels, setHideNonScreenSharePanels] = useState(false);
@@ -130,8 +152,22 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
         NexusVoiceStore.instance.getActiveConnection()?.setScreenShareWatching(id, false);
     }, []);
 
-    // Debounced spotlight target based on active speaker (only watched screen shares)
-    const spotlightTarget = useSpotlightTarget(client.getUserId(), visibleMembers, watchedScreenShares, activeSpeakers);
+    // ─── Focus target cleanup ───────────────────────────
+    // When focused member leaves or focused screen share ends, return to grid
+    useEffect(() => {
+        if (!focusTarget) return;
+        if (focusTarget.type === "member") {
+            if (!visibleMembers.some((m) => m.userId === focusTarget.member.userId)) {
+                setFocusTarget(null);
+                setLayoutMode("grid");
+            }
+        } else if (focusTarget.type === "screenshare") {
+            if (!watchedScreenShares.some((s) => s.participantIdentity === focusTarget.share.participantIdentity)) {
+                setFocusTarget(null);
+                setLayoutMode("grid");
+            }
+        }
+    }, [focusTarget, visibleMembers, watchedScreenShares]);
 
     const onJoinCall = useCallback(() => {
         const room = client.getRoom(roomId);
@@ -188,7 +224,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
             <div className="nx_VCRoomView_content" onContextMenu={onViewContextMenu}>
                 {layoutMode === "spotlight" ? (
                     <SpotlightLayout
-                        spotlightTarget={spotlightTarget}
+                        focusTarget={focusTarget}
                         screenShares={watchedScreenShares}
                         unwatchedScreenShares={unwatchedScreenShares}
                         onStartWatching={startWatching}
@@ -197,8 +233,8 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                         members={visibleMembers}
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
-                        myUserId={client.getUserId()}
                         hideNonScreenSharePanels={hideNonScreenSharePanels}
+                        onUnfocus={handleUnfocus}
                     />
                 ) : (
                     <GridLayout
@@ -211,14 +247,13 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                         activeSpeakers={activeSpeakers}
                         participantStates={participantStates}
                         hideNonScreenSharePanels={hideNonScreenSharePanels}
+                        onFocusMember={handleFocusMember}
+                        onFocusScreenShare={handleFocusScreenShare}
                     />
                 )}
             </div>
             <NexusVCControlBar
                 roomId={roomId}
-                layoutMode={layoutMode}
-                onLayoutModeChange={setLayoutMode}
-                participantCount={members.length}
                 onPopout={!isPopout ? async () => {
                     const win = window.open("about:blank", "_blank", "width=480,height=640");
                     if (win) setPopoutWindow(win);
@@ -347,68 +382,10 @@ const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewConte
     },
 );
 
-// ─── Spotlight target resolution ─────────────────────────────
-
-type SpotlightTarget =
-    | { type: "screenshare"; share: ScreenShareInfo }
-    | { type: "member"; member: RoomMember };
-
-function useSpotlightTarget(
-    myUserId: string | null,
-    members: RoomMember[],
-    screenShares: ScreenShareInfo[],
-    activeSpeakers: Set<string>,
-): SpotlightTarget | null {
-    // Debounce speaker-based changes to avoid flickering
-    const [debouncedSpeaker, setDebouncedSpeaker] = useState<string | null>(null);
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    // Find first active speaker that isn't me
-    const otherSpeaker = useMemo(() => {
-        for (const userId of activeSpeakers) {
-            if (userId !== myUserId) return userId;
-        }
-        return null;
-    }, [activeSpeakers, myUserId]);
-
-    useEffect(() => {
-        if (otherSpeaker === debouncedSpeaker) return;
-
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => {
-            setDebouncedSpeaker(otherSpeaker);
-        }, SPEAKER_DEBOUNCE_MS);
-
-        return () => {
-            if (timerRef.current) clearTimeout(timerRef.current);
-        };
-    }, [otherSpeaker, debouncedSpeaker]);
-
-    // Priority 1: screen share
-    if (screenShares.length > 0) {
-        return { type: "screenshare", share: screenShares[0] };
-    }
-
-    // Priority 2: debounced active speaker (not me)
-    if (debouncedSpeaker) {
-        const member = members.find((m) => m.userId === debouncedSpeaker);
-        if (member) return { type: "member", member };
-    }
-
-    // Priority 3: first other member
-    const otherMember = members.find((m) => m.userId !== myUserId);
-    if (otherMember) return { type: "member", member: otherMember };
-
-    // Priority 4: myself
-    if (members.length > 0) return { type: "member", member: members[0] };
-
-    return null;
-}
-
 // ─── Spotlight layout ─────────────────────────────────────────
 
 interface SpotlightLayoutProps {
-    spotlightTarget: SpotlightTarget | null;
+    focusTarget: SpotlightTarget | null;
     screenShares: ScreenShareInfo[];
     unwatchedScreenShares: ScreenShareInfo[];
     onStartWatching: (id: string) => void;
@@ -417,13 +394,13 @@ interface SpotlightLayoutProps {
     members: RoomMember[];
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
-    myUserId: string | null;
     /** True when non-screen-share panels are hidden via context menu. */
     hideNonScreenSharePanels?: boolean;
+    onUnfocus: () => void;
 }
 
 function SpotlightLayout({
-    spotlightTarget,
+    focusTarget,
     screenShares,
     unwatchedScreenShares,
     onStartWatching,
@@ -432,10 +409,10 @@ function SpotlightLayout({
     members,
     activeSpeakers,
     participantStates,
-    myUserId,
     hideNonScreenSharePanels,
+    onUnfocus,
 }: SpotlightLayoutProps): JSX.Element {
-    // Manual screen share selection (null = auto from spotlightTarget)
+    // Manual screen share selection (null = auto from focusTarget)
     const [manualScreenShareId, setManualScreenShareId] = useState<string | null>(null);
 
     // Clear manual selection when the selected screen share disappears
@@ -452,8 +429,8 @@ function SpotlightLayout({
             const share = screenShares.find((s) => s.participantIdentity === manualScreenShareId);
             if (share) return { type: "screenshare", share };
         }
-        return spotlightTarget;
-    }, [manualScreenShareId, screenShares, spotlightTarget]);
+        return focusTarget;
+    }, [manualScreenShareId, screenShares, focusTarget]);
 
     // Bottom bar: screen shares NOT currently in the main spotlight
     const bottomBarScreenShares = useMemo(() => {
@@ -475,7 +452,7 @@ function SpotlightLayout({
 
     return (
         <div className="nx_VCRoomView_spotlight">
-            <div className="nx_VCRoomView_spotlightMain">
+            <div className="nx_VCRoomView_spotlightMain" onClick={onUnfocus} style={{ cursor: "pointer" }}>
                 {effectiveTarget?.type === "screenshare" ? (
                     <ScreenShareTile
                         share={effectiveTarget.share}
@@ -559,6 +536,8 @@ interface GridLayoutProps {
     activeSpeakers: Set<string>;
     participantStates: Map<string, { isMuted: boolean; isScreenSharing: boolean }>;
     hideNonScreenSharePanels?: boolean;
+    onFocusMember: (member: RoomMember) => void;
+    onFocusScreenShare: (share: ScreenShareInfo) => void;
 }
 
 function GridLayout({
@@ -571,6 +550,8 @@ function GridLayout({
     activeSpeakers,
     participantStates,
     hideNonScreenSharePanels,
+    onFocusMember,
+    onFocusScreenShare,
 }: GridLayoutProps): JSX.Element {
     const isEmpty = hideNonScreenSharePanels && screenShares.length === 0 && unwatchedScreenShares.length === 0;
 
@@ -582,7 +563,12 @@ function GridLayout({
                 </div>
             )}
             {screenShares.map((share) => (
-                <div key={`ss-${share.participantIdentity}`} className="nx_VCRoomView_gridScreenShare">
+                <div
+                    key={`ss-${share.participantIdentity}`}
+                    className="nx_VCRoomView_gridScreenShare"
+                    onClick={() => onFocusScreenShare(share)}
+                    style={{ cursor: "pointer" }}
+                >
                     <ScreenShareTile
                         share={share}
                         onStopWatching={share.isLocal ? undefined : () => onStopWatching(share.participantIdentity)}
@@ -613,6 +599,7 @@ function GridLayout({
                         isSpeaking={activeSpeakers.has(member.userId)}
                         isMuted={state?.isMuted ?? false}
                         isScreenSharing={state?.isScreenSharing ?? false}
+                        onClick={() => onFocusMember(member)}
                     />
                 );
             })}

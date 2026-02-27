@@ -98,16 +98,18 @@ interface ParticipantTileProps {
     isSpeaking: boolean;
     isMuted: boolean;
     isScreenSharing: boolean;
+    onClick?: () => void;
 }
 
-export function ParticipantTile({ member, isSpeaking, isMuted, isScreenSharing, size = "normal" }: ParticipantTileProps & { size?: "normal" | "small" }): JSX.Element {
+export function ParticipantTile({ member, isSpeaking, isMuted, isScreenSharing, size = "normal", onClick }: ParticipantTileProps & { size?: "normal" | "small" }): JSX.Element {
     const tileClass = classNames("mx_NexusVoiceParticipantTile", {
         "mx_NexusVoiceParticipantTile--speaking": isSpeaking,
         "mx_NexusVoiceParticipantTile--small": size === "small",
+        "mx_NexusVoiceParticipantTile--clickable": !!onClick,
     });
 
     return (
-        <div className={tileClass}>
+        <div className={tileClass} onClick={onClick}>
             <MemberAvatar member={member} size={size === "small" ? "48px" : "64px"} hideTitle />
             <div className="mx_NexusVoiceParticipantTile_nameRow">
                 {isMuted && (

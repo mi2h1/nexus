@@ -13,8 +13,6 @@ import {
     ShareScreenSolidIcon,
     SettingsSolidIcon,
     EndCallIcon,
-    SpotlightIcon,
-    GridIcon,
     PopOutIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
 
@@ -28,21 +26,13 @@ import AccessibleButton from "../elements/AccessibleButton";
 import { NexusScreenSharePanel } from "./NexusScreenSharePanel";
 import { isTauri } from "../../../utils/tauriHttp";
 
-export type VCLayoutMode = "spotlight" | "grid";
-
 interface NexusVCControlBarProps {
     roomId: string;
-    layoutMode: VCLayoutMode;
-    onLayoutModeChange: (mode: VCLayoutMode) => void;
-    participantCount: number;
     onPopout?: () => void;
 }
 
 export function NexusVCControlBar({
     roomId,
-    layoutMode,
-    onLayoutModeChange,
-    participantCount,
     onPopout,
 }: NexusVCControlBarProps): JSX.Element {
     const { isMicMuted, isScreenSharing } = useNexusVoice();
@@ -124,42 +114,18 @@ export function NexusVCControlBar({
                     <EndCallIcon width={22} height={22} />
                 </AccessibleButton>
 
-                {/* Popout */}
-                {onPopout && (
-                    <AccessibleButton
-                        className="nx_VCControlBar_button"
-                        onClick={onPopout}
-                        title="別ウィンドウで表示"
-                    >
-                        <PopOutIcon width={22} height={22} />
-                    </AccessibleButton>
-                )}
             </div>
 
             <div className="nx_VCControlBar_right">
-                {/* Spotlight view */}
-                <AccessibleButton
-                    className={classNames("nx_VCControlBar_layoutButton", {
-                        "nx_VCControlBar_layoutButton--active": layoutMode === "spotlight",
-                    })}
-                    onClick={() => onLayoutModeChange("spotlight")}
-                    title="スポットライト表示"
-                >
-                    <SpotlightIcon width={20} height={20} />
-                </AccessibleButton>
-
-                {/* Grid view */}
-                <AccessibleButton
-                    className={classNames("nx_VCControlBar_layoutButton", {
-                        "nx_VCControlBar_layoutButton--active": layoutMode === "grid",
-                    })}
-                    onClick={() => onLayoutModeChange("grid")}
-                    title="グリッド表示"
-                >
-                    <GridIcon width={20} height={20} />
-                </AccessibleButton>
-
-                <span className="nx_VCControlBar_participantCount">{participantCount}</span>
+                {onPopout && (
+                    <AccessibleButton
+                        className="nx_VCControlBar_layoutButton"
+                        onClick={onPopout}
+                        title="別ウィンドウで表示"
+                    >
+                        <PopOutIcon width={20} height={20} />
+                    </AccessibleButton>
+                )}
             </div>
 
             {showSharePanel && shareButtonRef.current && (() => {
