@@ -14,16 +14,13 @@ pub fn run() {
             capture::switch_capture_target,
         ])
         .setup(|app| {
-            use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
+            use tauri::webview::WebviewWindowBuilder;
             use tauri::WebviewUrl;
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Nexus")
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(960.0, 600.0)
-                .on_new_window(move |_url, _features| {
-                    NewWindowResponse::Allow
-                })
                 .build()?;
             Ok(())
         })
