@@ -16,7 +16,7 @@ import MemberAvatar from "../../avatars/MemberAvatar";
 import BaseAvatar from "../../avatars/BaseAvatar";
 import InlineSpinner from "../../elements/InlineSpinner";
 import { NexusParticipantContextMenu } from "../../voip/NexusParticipantContextMenu";
-import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
+import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
 
@@ -81,10 +81,7 @@ function VoiceChannelParticipantItem({
         const share = conn.screenShares.find((s) => s.participantIdentity === identity);
         if (!share) return;
         conn.setScreenShareWatching(share.participantIdentity, true);
-        NexusVoiceStore.instance.emit(
-            NexusVoiceStoreEvent.RequestSpotlight,
-            share.participantIdentity,
-        );
+        NexusVoiceStore.instance.requestSpotlight(share.participantIdentity);
         defaultDispatcher.dispatch({ action: Action.ViewRoom, room_id: roomId });
     }, [userId, isScreenSharing, isTransitioning, roomId]);
 

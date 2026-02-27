@@ -173,9 +173,10 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     }, [focusTarget, visibleMembers, watchedScreenShares]);
 
     // ─── External spotlight request (from sidebar double-click) ──
+    // Applies pending request on mount/reconnect, and listens for future requests.
     useEffect(() => {
         if (!connected) return;
-        const onRequestSpotlight = (participantIdentity: string): void => {
+        const applySpotlight = (participantIdentity: string): void => {
             const conn = NexusVoiceStore.instance.getActiveConnection();
             if (!conn) return;
             const share = conn.screenShares.find((s) => s.participantIdentity === participantIdentity);
@@ -183,9 +184,12 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
             setFocusTarget({ type: "screenshare", share });
             setLayoutMode("spotlight");
         };
-        NexusVoiceStore.instance.on(NexusVoiceStoreEvent.RequestSpotlight, onRequestSpotlight);
+        // Consume any pending request (set before this component mounted)
+        const pending = NexusVoiceStore.instance.consumePendingSpotlight();
+        if (pending) applySpotlight(pending);
+        NexusVoiceStore.instance.on(NexusVoiceStoreEvent.RequestSpotlight, applySpotlight);
         return () => {
-            NexusVoiceStore.instance.off(NexusVoiceStoreEvent.RequestSpotlight, onRequestSpotlight);
+            NexusVoiceStore.instance.off(NexusVoiceStoreEvent.RequestSpotlight, applySpotlight);
         };
     }, [connected]);
 

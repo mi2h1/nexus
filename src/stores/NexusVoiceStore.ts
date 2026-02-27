@@ -42,6 +42,7 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
     private activeConnection: NexusVoiceConnection | null = null;
     private connections = new Map<string, NexusVoiceConnection>();
     private _preMicMuted = false;
+    private _pendingSpotlight: string | null = null;
 
     private constructor() {
         super();
@@ -56,6 +57,23 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
      */
     public get preMicMuted(): boolean {
         return this._preMicMuted;
+    }
+
+    /**
+     * Request spotlight for a screen share. Consumed once by NexusVCRoomView on mount.
+     */
+    public requestSpotlight(participantIdentity: string): void {
+        this._pendingSpotlight = participantIdentity;
+        this.emit(NexusVoiceStoreEvent.RequestSpotlight, participantIdentity);
+    }
+
+    /**
+     * Consume and return the pending spotlight identity (returns null if none).
+     */
+    public consumePendingSpotlight(): string | null {
+        const id = this._pendingSpotlight;
+        this._pendingSpotlight = null;
+        return id;
     }
 
     /**
