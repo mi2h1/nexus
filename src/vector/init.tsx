@@ -103,6 +103,15 @@ export async function loadApp(fragParams: QueryDict): Promise<void> {
     const app = await module.loadApp(fragParams, setWindowMatrixChat);
     const root = createRoot(document.getElementById("matrixchat")!);
     root.render(app);
+
+    // Show the main window now that the app has rendered.
+    // The window starts hidden (visible: false) so that window-state can
+    // restore position/size before anything is visible to the user.
+    if (window.__TAURI_INTERNALS__) {
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+            invoke("plugin:window|show", { label: "main" });
+        }).catch(() => {});
+    }
 }
 
 export async function showError(title: string, messages?: string[]): Promise<void> {

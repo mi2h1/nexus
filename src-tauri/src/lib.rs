@@ -26,6 +26,8 @@ pub fn run() {
                 .title("Nexus")
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(960.0, 600.0)
+                .visible(false)
+                .background_color(bg)
                 .on_new_window(move |url, features| {
                     match WebviewWindowBuilder::new(
                         &app_handle,
