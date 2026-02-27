@@ -75,11 +75,27 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
                 child.document.documentElement.style.backgroundColor = bg;
                 child.document.body.style.backgroundColor = bg;
                 child.document.body.style.margin = "0";
+
+                // Full-screen overlay to hide unstyled content while
+                // stylesheets load (prevents FOUC)
+                const overlay = child.document.createElement("div");
+                overlay.id = "nx_popout_overlay";
+                overlay.style.cssText = `
+                    position: fixed; inset: 0; z-index: 999999;
+                    background-color: ${bg};
+                `;
+                child.document.body.appendChild(overlay);
+
                 const container = child.document.createElement("div");
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
-                // Copy styles (link tags added synchronously, load in background)
-                copyStylesToChild(child);
+
+                // Copy styles — remove overlay once all <link> stylesheets
+                // have loaded so React content appears fully styled.
+                copyStylesToChild(child).then(() => {
+                    if (!closed) overlay.remove();
+                });
+
                 setPortalContainer(container);
                 if (isTauri()) showTauriPopout();
             } catch {
