@@ -23,6 +23,7 @@
 | matrix-js-sdk | Element Web 同梱 | Matrix プロトコル通信（MatrixRTC シグナリング含む） |
 | matrix-react-sdk | Element Web に統合済み | UI コンポーネント群 |
 | livekit-client | Element Web 同梱 | VC・画面共有（LiveKit SFU 直接接続） |
+| @hello-pangea/dnd | ^18.0.0 | スペースパネルのドラッグ&ドロップ（react-beautiful-dnd の React 19 対応 fork） |
 | Web Audio API | ブラウザ標準 | 入力音量調整(GainNode)・入力レベル監視(AnalyserNode)・ボイスゲート |
 
 ## インフラ・サービス

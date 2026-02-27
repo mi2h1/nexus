@@ -26,9 +26,10 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | 視聴停止ボタン | Nexus (タイルホバーでオーバーレイ、PiP はバツアイコン) | 実装済み |
 | VC 右パネル状態保持 | Nexus (初回は Timeline 開く、2回目以降は保存状態を尊重) | 実装済み |
 | VC チャットボタン | Nexus (ホバーでチャットアイコン、クリックで VC 未参加のまま会話表示) | 実装済み |
-| E2E 暗号化 | matrix-js-sdk (Olm/Megolm) | 組み込み済み |
+| E2EE 強制無効化 | Nexus (`shouldForceDisableEncryption()` 常時 true) | 実装済み |
 | テキスト/VC チャンネル分離 | Nexus (NexusChannelListView) | 実装済み |
-| VC 参加者グリッド | Nexus (NexusVoiceParticipantGrid) | 実装済み |
+| VC 参加者グリッド | Nexus (JS 計算 + flexbox, 統一 16:9 パネル, 三角配置) | 実装済み |
+| VC ポップアウトウィンドウ | Nexus Tauri (`on_new_window` + `createPortal`, FOUC 防止, 戻すボタン) | 実装済み |
 | 個別音量調整 | Nexus (NexusParticipantContextMenu, localStorage 永続化) | 実装済み |
 | 画面共有個別音量調整 | Nexus (NexusScreenShareContextMenu, localStorage 永続化) | 実装済み |
 | 画面共有音声 Web Audio ルーティング | Nexus (MediaStreamAudioSourceNode → GainNode → masterGain) | 実装済み |
@@ -64,10 +65,9 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 │      │   └ User2    │                           │  ── User3  │
 │      │ 🔊 VC-2     │                           │            │
 │      ├──────────────┤                           │            │
-│      │ Call Status  ├──────────────────────────┤            │
+│      │ User Panel   ├──────────────────────────┤            │
 │      │ 🟢 通話中   │  [メッセージ入力欄]       │            │
-│      ├──────────────┤                           │            │
-│      │ User Panel   │                           │            │
+│      │ ──────────── │                           │            │
 │      │ 🎤 ⚙️       │                           │            │
 └──────┴──────────────┴──────────────────────────┴────────────┘
 ```
@@ -77,6 +77,7 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 #### Server Bar（左端）
 - **コンポーネント**: `SpacePanel`
 - Space = Discord の「サーバー」に対応
+- ドラッグ&ドロップでスペースの並び替えが可能（`@hello-pangea/dnd`）
 
 #### Channel List（左サイドバー）
 - **コンポーネント**: `NexusChannelListView`
@@ -84,24 +85,27 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 - VC チャンネルの下に参加者リストをリアルタイム表示（`VoiceChannelParticipants`）
 - 参加者がいる VC: スピーカーアイコン緑化 + 経過時間表示 + 左端に緑縦ライン
 - VC チャンネルホバー時: チャットアイコンボタン表示（クリックで VC 未参加のままルームビュー+チャットパネルを開く）
-- VC チャンネル名クリック: VC に参加（接続済み時は何もしない）
+- VC チャンネル名クリック: VC に参加（接続済み時はルームビューを開く）
 - VC 未参加時のルームビュー: 「ボイスチャンネルに参加していません」+「参加」ボタン
-
-#### Call Status Panel（左サイドバー下部）
-- **コンポーネント**: `NexusCallStatusPanel`
-- 接続中: 黄色パルスドット +「接続中…」
-- 通話中: 緑丸 + ルーム名 + 終話ボタン
-- 未接続: 非表示
 
 #### User Panel（左サイドバー最下部）
 - **コンポーネント**: `NexusUserPanel`
-- アバター + 表示名 + マイクミュートボタン + 設定ボタン
+- `mx_NexusUserPanel_content` 内に以下を縦方向に配置:
+  - **Call Status Panel** (`NexusCallStatusPanel`): 通話中のみ表示、ボーダー区切り線で分離
+    - 接続中: 黄色パルスドット +「接続中…」
+    - 通話中: 緑丸 + ルーム名 + 終話ボタン
+    - 未接続: 非表示
+  - **プロフィール行** (`mx_NexusUserPanel_row`): アバター + 表示名 + マイクミュートボタン + 設定ボタン
 
 #### Message Area / VC Room View（中央）
 - テキストチャンネル: `RoomView`（メッセージタイムライン）
 - VC チャンネル: `NexusVCRoomView`（参加者グリッド + コントロールバー + タイムライン）
   - spotlight/grid 切替対応
   - 画面共有時は自動で spotlight モードに切替
+  - グリッドモード: JS 計算（`calculateGridLayout`）+ flexbox で最適列数とパネルサイズを決定
+    - 全パネル統一 16:9（画面共有は黒余白で `object-fit: contain`）
+    - 縦に十分なスペースがあれば1列優先、奇数個は最終行中央寄せ（三角配置）
+  - ポップアウト: Tauri `on_new_window` で別ウィンドウ表示、「元に戻す」ボタンで復帰
 
 #### Member List（右サイドバー）
 - ロール別にグルーピング
@@ -314,7 +318,7 @@ MatrixRTC の `m.call.member` (MSC4143) は sticky state event であり、以�
 | ルームヘッダーの通話ボタン | コードで非表示 |
 | メンバーのステートイベント | setting_defaults で非表示 |
 | Element Call iframe | コードで完全排除（LiveKit 直接接続に移行） |
-| E2E 暗号化アイコン | CSS で非表示（`mx_EventTile_e2eIcon`） |
+| E2E 暗号化 | `shouldForceDisableEncryption()` で強制無効化 + アイコン要素完全削除 |
 
 ## Phase 別の実装計画
 

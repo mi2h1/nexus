@@ -2,57 +2,53 @@
 
 ## 現在の状態
 
-### 直近の作業（2026-02-27）
+### 直近の作業（2026-02-28）
 
-**SFU ただ乗り防止 + SE 修正 + TypeScript エラー全解消**
-- lk-jwt-service にユーザー ID ホワイトリスト追加（`LIVEKIT_ALLOWED_USER_IDS` 環境変数）
-  - カスタム Docker イメージ `nexus-lk-jwt-service:latest` をビルド・デプロイ
-  - ホワイトリスト外のユーザーには `403 M_FORBIDDEN` を返す
-  - 未設定時は全ユーザー許可（既存互換）
-  - ユーザー追加: `docker-compose.yml` の環境変数を編集 → `docker compose up -d lk-jwt-service`
-  - ロールバック: image を `ghcr.io/element-hq/lk-jwt-service:latest` に戻す
-- VC 他ユーザー入退室 SE が鳴らないバグを修正
-  - 原因: LiveKit `ParticipantConnected/Disconnected` が MatrixRTC `MembershipsChanged` より先に発火し、
-    参加者カウントが既に更新済みのため `onMembershipsChanged` でカウント変化を検出できなかった
-  - 修正: `onParticipantConnected` / `onParticipantDisconnected` に SE 再生ロジックを追加
-- TypeScript エラー 21 件を全て解消（型不一致修正 + 未使用コード整理）
+**VC グリッドレイアウト改修**
+- CSS Grid → JS 計算 + flexbox に変更
+- `ResizeObserver` でコンテナサイズ監視、`calculateGridLayout()` で最適列数を探索
+- 全パネル統一 16:9 サイズ（画面共有の余白は黒背景）
+- 奇数パネルの最終行は `justify-content: center` で中央寄せ（三角配置）
+- パネル最大サイズ上限なし、最小幅 120px
+- グリッド padding を 24px → 12px に縮小
 
-**v0.2.4: VC チャットボタン + UI 改善**
-- VC チャンネルホバー時にチャットアイコンボタンを表示（ChatSolidIcon + Tooltip「チャットを表示」）
-- クリックで VC 未参加のままルームビューを開き、`RightPanelStore.setCard(Timeline)` でチャットパネルを強制オープン
-- VC 未参加時の表示を「ボイスチャンネルに参加していません」+「参加」ボタンに変更
-- 既存ホバーメニュー（三点リーダー+ベル）は CSS `[class*="hoverMenu"]` で非表示
-- VC チャンネル名クリックは接続済み時は何もしない（ルームビューはチャットボタン専用に）
-- 視聴停止をボタンから右クリックメニュー項目に変更（赤テキスト+アイコン）
-- ログイン直後の VC 参加者リスト stale 表示を軽減
+**Service Worker 修正（Tauri メディア読み込み失敗）**
+- 原因: `TauriPlatform` が `registerServiceWorker()` を no-op にしていたため、
+  SW がメディアリクエストをインターセプトするが message handler が未登録 → postMessage タイムアウト → 404
+- 修正: override を削除し親の `WebPlatform.registerServiceWorker()` に委譲
+- `onServiceWorkerPostMessage` を `private` → `protected` に変更
 
-**v0.2.3: 音質改善**
-- Opus ビットレート 64kbps → 128kbps（明瞭さ向上）
-- getUserMedia 制約: `autoGainControl: true`, `sampleRate: 48000`, `channelCount: 1`
-- ボイスゲート「プツッ」修正: 50ms `DelayNode` ルックアヘッド導入
-  - 音声パスに遅延挿入、レベル検出は遅延前（= 50ms 先読み）
-  - ゲートオープン: `linearRamp` → `setValueAtTime`（即座に開く）
-  - ゲートクローズ: ramp 20ms → 50ms に延長
-- リリースビルドで DevTools 有効化（`tauri features = ["devtools"]`）
+**ポップアウトウィンドウ改善**
+- 「元に戻す」ボタン追加: コントロールバー右下に `CollapseIcon`（PopOutIcon と同じ位置）
+- FOUC 防止: スタイルシート読み込み完了までテーマ背景色のオーバーレイで覆う（500ms タイムアウトフォールバック付き）
+- 表示ラグ削減: Tauri invoke をモジュールロード時にプリキャッシュ + `showTauriPopout()` をオーバーレイ作成直後に移動
 
-**過去のマイルストーン（v0.2.2）**
-- 画面共有 A/V 同期再検証完了（100-300ms、許容範囲）
-- パネル非表示の空メッセージ
-- CI バージョン自動コミット
+**コンソール警告修正**
+- `MaxListenersExceededWarning`: `NexusVoiceStore.setMaxListeners(50)` + `RoomState.setMaxListeners(50)`
+- Avatar `loading="lazy"`: BaseAvatar の ref callback で compound-web 内部の img を `eager` に書き換え（WebView2 対策）
 
-**過去の主要マイルストーン**
-- 統合コンテキストメニュー（VC 背景右クリック）
-- ポップアウト機能（試行→断念→全削除 — WebView2 が Document PiP 未サポート）
-- 自前 LiveKit SFU (lche2.xvps.jp) 構築完了 + ユーザーホワイトリスト保護
-- VC 接続高速化（~600ms、切断即座）
-- ネイティブ画面キャプチャ（WGC + WASAPI）実装完了
+**前回セッションの作業**
+- VC ポップアウトウィンドウ実装（Tauri `on_new_window` + `ReactDOM.createPortal()`）
+- メインウィンドウ起動時フラッシュ修正
+- 循環参照修正（NexusVCRoomView ↔ NexusVCPopout）
+
+**v0.2.5: UI大幅改善・E2EE無効化・パフォーマンス向上**
+- E2EE 強制無効化（`shouldForceDisableEncryption()` を常に true に）
+  - 新規ルームは暗号化なしで作成、暗号化トグルも無効化
+  - MessageComposer の e2eIconWrapper 要素を完全削除
+- チャット初期読み込み高速化（`INITIAL_SIZE` 30 → 50）
+- `react-beautiful-dnd` → `@hello-pangea/dnd` に移行（React 19 + StrictMode 対応、スペースDnD修正）
+- NexusCallStatusPanel を NexusUserPanel_content 内に統合（ボーダー付き区切り線で分離）
+- VC 接続中のチャンネルクリックでルームビューを開くよう修正
+- UI/CSS 大幅調整（ヘッダー高さ統一、余白調整、フォントサイズ統一等）
 
 ### 未解決・次回やること
 
-1. **画面共有が出来ないユーザーがいる** — Tauri リリース版で1名報告。原因未特定。OS/ブラウザ/エラーメッセージを確認中
-2. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題（Firefox では動作する）。コード側の問題ではない
-3. **システムトレイ常駐** — 閉じてもバックグラウンド動作
-4. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等の高度な画面
+1. **RNNoise worklet 読み込み失敗（Tauri）** — `AbortError: Unable to load a worklet's module`。WebView2 で AudioWorklet のモジュールロードに制限がある可能性。フォールバック済み（ノイキャンなし）
+2. **Win10 画面共有テスト** — 1名が画面共有できない問題、Win10 環境での検証待ち
+3. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題
+4. **システムトレイ常駐** — 閉じてもバックグラウンド動作
+5. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等
 
 ---
 
@@ -122,17 +118,45 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 
 ### VC UI
 - `src/components/views/voip/NexusVC*.tsx` — VC ルームビュー関連
+- `src/components/views/voip/NexusVCPopout.tsx` — ポップアウトウィンドウ（createPortal）
 - `src/components/views/rooms/RoomListPanel/Nexus*.tsx` — チャンネルリスト・ユーザーパネル
 
 ### Tauri
-- `src-tauri/` — Rust バックエンド
-- `src/vector/platform/TauriPlatform.ts` — Tauri 2 プラットフォーム
+- `src-tauri/` — Rust バックエンド（`on_new_window` でポップアウトウィンドウ管理）
+- `src/vector/platform/TauriPlatform.ts` — Tauri 2 プラットフォーム（SW は親の WebPlatform に委譲）
 - `src/utils/tauriHttp.ts` — Tauri 判定 + CORS-free fetch
+- `src/utils/popoutStyles.ts` — ポップアウトウィンドウへの CSS 転送
 
 ### インフラ
 - `infra/livekit/docker-compose.yml` — LiveKit SFU Docker構成
 - `infra/livekit/livekit.yaml` — LiveKit SFU 設定
 - `infra/livekit/nginx.conf` — TLS 終端 + CORS
+
+---
+
+## VC ポップアウト設計（重要）
+
+### フロー
+```
+1. ユーザーがポップアウトボタンをクリック
+2. window.open("about:blank", "_blank", "width=480,height=640")
+3. Rust on_new_window → WebviewWindowBuilder("vc-popout") + .window_features(features) + .visible(false)
+4. NewWindowResponse::Create { window } → WebView2 が Tauri 管理ウィンドウを使用
+5. JS: setupChild() → 背景色設定 + FOUC 防止オーバーレイ作成
+6. JS: invoke("plugin:window|show") → ウィンドウ即座表示（オーバーレイが覆うので未スタイルは見えない）
+7. copyStylesToChild() + setPortalContainer() → ReactDOM.createPortal() で描画
+8. スタイルシート読み込み完了（or 500ms タイムアウト）→ オーバーレイ除去
+```
+
+### クローズ検出
+- `pagehide` イベント（メイン）
+- `unload` + `child.closed` ポーリング（フォールバック）
+- 通話切断時: `invoke("plugin:window|close", { label: "vc-popout" })`
+
+### Strict Mode 対策
+- cleanup で `setTimeout(0)` で deferred close（closeTimerRef に保存）
+- remount で `clearTimeout(closeTimerRef.current)` でキャンセル
+- 実際のアンマウント: timeout が発火しウィンドウを閉じる
 
 ---
 
@@ -152,27 +176,10 @@ getUserMedia → LocalAudioTrack
 - per-participant `<audio>` 要素 + Web Audio API で再生
 - ブラウザ: `audio.volume` で音量制御（0-1）
 - Tauri: `createMediaStreamSource(MediaStream)` → per-participant GainNode → outputMasterGain(0-2.0) → destination（>100% 増幅対応）
-  - `createMediaElementSource` は WebView2 で audio 要素の出力を正しくリダイレクトしないため不採用
-  - audio 要素は `volume=0` でシステム出力を抑制、`play()` で MediaStream を alive に保持
 
 ### 画面共有音声（受信側）
 - 映像+音声: 同一 `MediaStream` に統合し `<video>` 1要素で再生（ブラウザの A/V 同期に委任）
 - 音量制御: `videoEl.volume` で直接制御（Web Audio 経由ではない — RTCP SR 同期を維持）
-- `registerScreenShareVideoElement()` / `unregisterScreenShareVideoElement()` で NexusVoiceConnection に登録
-- トラック到着同期: 映像到着時に500ms待機し、音声到着で即座に React に通知（`pendingScreenShareTimers`）
-- フリーズ検出: `requestVideoFrameCallback` で500ms以上のギャップを検出 → MediaStream 再構築（3秒クールダウン）
-- 視聴オプトイン: `watchingScreenShares` セットで管理。未視聴時は `videoEl.volume=0`
-
-### 画面共有（ブラウザ送信側）
-- `getDisplayMedia()` 直接呼出し（createLocalScreenTracks だと音声失敗時に全体中止）
-- 音声なしでも映像のみで続行
-
-### ネイティブ画面キャプチャ（Tauri）
-- 映像: Windows Graphics Capture (WGC)、音声: WASAPI Process Loopback
-- ウィンドウ共有: INCLUDE モード（`target_process_id` = アプリの PID → そのアプリの音だけ）
-- モニター共有: EXCLUDE モード（`target_process_id` = 0 → 全システム音、Nexus 除く）
-- Initialize: `LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM` + PCM 16bit/48kHz/stereo
-- 制限: 同一プロセスの複数ウィンドウの音声は分離不可（Windows API の制約）
 
 ---
 
@@ -200,6 +207,7 @@ Phase 5: publishTrack(processedTrack)
 - Phase 2.5（通話機能内包）: ✅ 完了
 - Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.10）
 - 自前 SFU: ✅ 構築完了、ブラウザ版動作確認済み
+- VC ポップアウト: ✅ 実装完了（Tauri `NewWindowResponse::Create` 方式）
 
 ### ロードマップ
 詳細は `docs/progress.md` 参照。
@@ -208,6 +216,7 @@ Phase 5: publishTrack(processedTrack)
 
 ## 開発ルール
 
+- **コミットメッセージは日本語** — `docs/conventions.md` 参照
 - **ビルドは GitHub Actions** — VPS でビルドしない
 - **pnpm 10.x** — npm/yarn は使わない
 - **tsc --noEmit** には `NODE_OPTIONS="--max-old-space-size=4096"` 必要

@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-27
+> 最終更新: 2026-02-28
 
 ## リポジトリ情報
 
@@ -26,6 +26,9 @@ nexus/                          # element-web フォーク
 │   │   └── NexusVoiceConnection.ts  # LiveKit 直接接続クラス
 │   ├── stores/
 │   │   └── NexusVoiceStore.ts       # VC 接続管理シングルトン
+│   ├── utils/
+│   │   ├── tauriHttp.ts             # Tauri 判定 + CORS-free fetch
+│   │   └── popoutStyles.ts          # ポップアウトウィンドウへの CSS 転送
 │   ├── hooks/
 │   │   ├── useNexusVoice.ts         # VC 状態フック
 │   │   ├── useNexusActiveSpeakers.ts# 発話検出フック
@@ -47,6 +50,7 @@ nexus/                          # element-web フォーク
 │           ├── NexusScreenSharePip.tsx  # 画面共有 PiP
 │           ├── NexusScreenSharePanel.tsx # 画面共有設定パネル
 │           ├── NexusScreenSharePicker.tsx # ネイティブ画面共有ピッカー
+│           ├── NexusVCPopout.tsx        # VC ポップアウトウィンドウ（createPortal）
 │           └── NexusParticipantContextMenu.tsx # 参加者コンテキストメニュー
 ├── res/css/views/              # Nexus カスタム CSS
 │   ├── rooms/RoomListPanel/
@@ -58,6 +62,7 @@ nexus/                          # element-web フォーク
 │       ├── _NexusVCRoomView.pcss
 │       ├── _NexusVoiceParticipantGrid.pcss
 │       ├── _NexusVCControlBar.pcss
+│       ├── _NexusVCPopout.pcss
 │       ├── _NexusScreenShareView.pcss
 │       ├── _NexusScreenSharePip.pcss
 │       └── _NexusParticipantContextMenu.pcss
@@ -100,13 +105,76 @@ nexus/                          # element-web フォーク
 | SFU ユーザーホワイトリスト | lk-jwt-service カスタムビルド — `LIVEKIT_ALLOWED_USER_IDS` でJWT発行対象を制限 |
 | 起動画面統一 | LOADING〜同期完了まで単一のロゴ+スピナー画面 |
 | 起動時状態復元 | 前回のスペース・チャンネルを復元（初回はホーム表示） |
-| E2E アイコン非表示 | `mx_EventTile_e2eIcon` を CSS で非表示 |
+| E2EE 強制無効化 | `shouldForceDisableEncryption()` 常時 true、e2eIconWrapper 完全削除 |
+| スペース DnD | `@hello-pangea/dnd` で React 19 対応（`react-beautiful-dnd` から移行） |
+| CallStatusPanel 統合 | NexusUserPanel_content 内に配置（ボーダー付き区切り線で分離） |
 | タイムスタンプ常時表示 | sender 表示時のみ名前の右に常時表示（ホバー不要） |
+| VC ポップアウトウィンドウ | Tauri `on_new_window` + `NewWindowResponse::Create` + `ReactDOM.createPortal()` |
+| メインウィンドウ起動時フラッシュ防止 | `.visible(false)` + `.background_color()` → React 描画完了後 `show()` |
+| サービスワーカー Tauri 対応 | `TauriPlatform` は親の `WebPlatform.registerServiceWorker()` に委譲（SW は認証メディア取得に必須） |
 
 ### ロードマップ
 
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 2026-02-28 (v0.2.7: VC グリッドレイアウト改修 + ポップアウト改善 + SW 修正)
+- **VC グリッドレイアウト改修**: CSS Grid → JS 計算 + flexbox に変更
+  - `ResizeObserver` でコンテナサイズ監視、`calculateGridLayout()` で最適列数を探索
+  - 全パネル統一 16:9 サイズ（画面共有の余白は黒背景）
+  - 奇数パネルの最終行は `justify-content: center` で中央寄せ（三角配置）
+  - パネル最大サイズ上限なし、最小幅 120px
+  - グリッド padding を 24px → 12px に縮小
+- **Service Worker 修正（Tauri メディア読み込み失敗）**:
+  - 原因: `TauriPlatform` が `registerServiceWorker()` を no-op にしていたため、SW が認証メディアを取得できず 404
+  - 修正: override を削除し親の `WebPlatform.registerServiceWorker()` に委譲
+  - `onServiceWorkerPostMessage` を `private` → `protected` に変更
+- **ポップアウトウィンドウ改善**:
+  - 「元に戻す」ボタン追加: コントロールバー右下に `CollapseIcon`
+  - FOUC 防止: スタイルシート読み込み完了までテーマ背景色のオーバーレイで覆う（500ms タイムアウトフォールバック付き）
+  - 表示ラグ削減: Tauri invoke をモジュールロード時にプリキャッシュ + `showTauriPopout()` をオーバーレイ作成直後に移動
+- **コンソール警告修正**:
+  - `MaxListenersExceededWarning`: `NexusVoiceStore.setMaxListeners(50)` + `RoomState.setMaxListeners(50)`
+  - Avatar `loading="lazy"`: BaseAvatar の ref callback で compound-web 内部の img を `eager` に書き換え（WebView2 対策）
+
+#### 2026-02-28 (v0.2.6: VC ポップアウト + 起動フラッシュ修正 + 循環参照修正)
+- **VC ポップアウトウィンドウ実装**: Tauri `on_new_window` + `NewWindowResponse::Create` 方式
+  - `window.open()` → Rust `on_new_window` ハンドラ → `WebviewWindowBuilder("vc-popout")` で管理ウィンドウ作成
+  - `.window_features(features)` 必須（WebView2 環境共有 + `SetNewWindow` 正常動作）
+  - アドレスバーなし（`Create` は `SetHandled(true)` で default popup を抑制）
+  - `ReactDOM.createPortal()` で `<NexusVCRoomView isPopout>` を子ウィンドウに描画
+  - 固定ラベル `"vc-popout"` → `window-state` プラグインで位置・サイズ保持
+  - 通話切断時にポップアウトウィンドウ自動クローズ（`invoke("plugin:window|close")` 直接呼出し）
+  - CSS 転送: `copyStylesToChild()` で親ウィンドウのスタイルシートを子にコピー
+  - React Strict Mode 対策: `setTimeout(0)` deferred close + `clearTimeout` on remount
+- **メインウィンドウ起動時フラッシュ修正**: `.visible(false)` + `.background_color()` で作成 → React 描画完了後 `show()`
+  - `init.tsx` の `root.render(app)` 後に `invoke("plugin:window|show")` で表示
+- **白画面フラッシュ軽減**: Rust `.background_color(#15191E)` + JS で `getComputedStyle` からテーマ背景色を即時適用
+- **循環参照修正（ブラウザ版クラッシュ）**: `NexusVCRoomView` ↔ `NexusVCPopout` の循環 import 解消
+  - `closeTauriPopout` の export/import をやめ、`invoke()` をインラインに
+- **CSS 修正**: `.mx_EventTile[data-layout="group"] .mx_EventTile_senderRow` の margin-left を CSS 変数化
+
+#### 2026-02-27 (v0.2.5: UI大幅改善・E2EE無効化・パフォーマンス向上・DnD修正)
+- **E2EE 強制無効化**: `shouldForceDisableEncryption()` を常に `true` に変更
+  - 新規ルームは暗号化なしで作成される（matrix.org の `.well-known` は変更不可のためクライアント側で制御）
+  - MessageComposer の `e2eIconWrapper` 要素を完全削除（E2EIcon, LockOffIcon import 削除）
+  - compact モードの E2E padding 上書き CSS 削除
+- **チャット初期読み込み高速化**: `TimelinePanel.tsx` の `INITIAL_SIZE` を 30 → 50 に増加
+- **スペースDnD修正**: `react-beautiful-dnd` → `@hello-pangea/dnd` に移行
+  - React 19 + StrictMode の double-render で `react-beautiful-dnd` v13 の ref 追跡が壊れていた
+  - `@hello-pangea/dnd` は API 互換の maintained fork で React 19 対応済み
+- **NexusCallStatusPanel をユーザーパネル内に統合**: `mx_NexusUserPanel_content` 内の上部に配置
+  - `mx_NexusUserPanel_row` ラッパー追加、`mx_NexusUserPanel_separator` で区切り
+- **VC 接続中チャンネルクリック修正**: 接続済み VC チャンネルクリックでルームビューを開くよう復元
+- **UI/CSS 大幅調整**:
+  - ヘッダー高さ 55px 統一（RoomHeader + RoomListHeader `> header`）
+  - MessageComposer 余白・パディング調整
+  - ThreadPanel MessageComposer マージン・パディング調整
+  - NexusUserPanel ボーダー・余白改善
+  - MemberTileView userLabel 余白縮小（`--cpd-space-4x` → `--cpd-space-1x`）
+  - スペース名フォントサイズをルームヘッダーに統一（`heading-sm` → `body-lg-semibold`）
+  - VC 経過時間の位置調整（`right` 値変更）・ホバー時非表示（チャットボタンとの重なり解消）
+  - VC 経過時間テキスト `line-height: 1` で垂直中央揃え
 
 #### 2026-02-27 (SFU ホワイトリスト + SE 修正 + TS エラー全解消)
 - **lk-jwt-service ユーザーホワイトリスト**: フォーク等によるただ乗り防止
@@ -162,6 +230,7 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | ネイティブ画面キャプチャ Step 2 | 高 | 画面共有に音声追加 | ✅ 完了 | WASAPI ループバック |
 | 配信中ターゲット切替 | 中 | Discord 同等のウィンドウ切替 | ✅ 完了 | `switch_capture_target` — 映像+音声同時切替 |
 | プロセス単位オーディオキャプチャ | 高 | 共有アプリの音だけキャプチャ | ✅ 完了 | WASAPI INCLUDE モード（ウィンドウ共有時） |
+| VC ポップアウトウィンドウ | 中 | VC を別ウィンドウで表示 | ✅ 完了 | Tauri `NewWindowResponse::Create` + `createPortal` |
 | システムトレイ常駐 | 低 | 閉じてもバックグラウンド動作 | 未着手 | `TrayIconBuilder` API |
 | Windows 自動音量低下バイパス | 中 | 通話中に他アプリの音量が下がらない | 未着手 | Windows API auto-ducking 無効化 |
 
