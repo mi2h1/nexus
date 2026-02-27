@@ -11,6 +11,7 @@ import ReactDOM from "react-dom";
 import MatrixClientContext, { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
 import { NexusVCRoomView } from "./NexusVCRoomView";
 import { copyStylesToChild } from "../../../utils/popoutStyles";
+import { isTauri } from "../../../utils/tauriHttp";
 
 interface NexusVCPopoutProps {
     roomId: string;
@@ -54,6 +55,12 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
                 setPortalContainer(container);
+                // Show the window now that styles are applied (Tauri creates it hidden)
+                if (isTauri()) {
+                    import("@tauri-apps/api/webviewWindow").then(({ WebviewWindow }) => {
+                        WebviewWindow.getByLabel("vc-popout")?.show();
+                    }).catch(() => {});
+                }
             } catch {
                 // Document may not be ready immediately (e.g., window.open + Allow).
                 if (!closed) setTimeout(setupChild, 50);

@@ -30,6 +30,7 @@ pub fn run() {
                         WebviewUrl::External("about:blank".parse().unwrap()),
                     )
                     .window_features(features)
+                    .visible(false)
                     .title(url.as_str())
                     .on_document_title_changed(|window, title| {
                         let _ = window.set_title(&title);
