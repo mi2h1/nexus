@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useEffect, useState, type JSX } from "react";
+import React, { useEffect, useRef, useState, type JSX } from "react";
 import ReactDOM from "react-dom";
 
 import MatrixClientContext, { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
@@ -27,10 +27,22 @@ interface NexusVCPopoutProps {
 export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutProps): JSX.Element | null {
     const client = useMatrixClientContext();
     const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
+    // Timer ref for deferred window close — allows Strict Mode remount to cancel
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
     useEffect(() => {
+        // Cancel any pending close scheduled by a Strict Mode cleanup
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = undefined;
+
         const child = childWindow;
         let closed = false;
+
+        // If the window was already closed (shouldn't happen), bail out
+        if (child.closed) {
+            onClose();
+            return;
+        }
 
         // -- Set up the child document --
         const setupChild = (): void => {
@@ -78,8 +90,13 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
         return () => {
             clearInterval(pollId);
             closed = true;
-            if (!child.closed) child.close();
             setPortalContainer(null);
+            // Defer window close so Strict Mode remount can cancel it.
+            // Real unmounts: the timer fires and closes the window.
+            // Strict Mode: the remount clears the timer before it fires.
+            closeTimerRef.current = setTimeout(() => {
+                if (!child.closed) child.close();
+            }, 0);
         };
     }, [childWindow]); // eslint-disable-line react-hooks/exhaustive-deps
 
