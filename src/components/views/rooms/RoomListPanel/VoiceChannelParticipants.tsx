@@ -16,6 +16,9 @@ import MemberAvatar from "../../avatars/MemberAvatar";
 import BaseAvatar from "../../avatars/BaseAvatar";
 import InlineSpinner from "../../elements/InlineSpinner";
 import { NexusParticipantContextMenu } from "../../voip/NexusParticipantContextMenu";
+import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../../stores/NexusVoiceStore";
+import defaultDispatcher from "../../../../dispatcher/dispatcher";
+import { Action } from "../../../../dispatcher/actions";
 
 interface VoiceChannelParticipantsProps {
     roomId: string;
@@ -35,7 +38,7 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
     return (
         <div className="mx_VoiceChannelParticipants">
             {participants.map((p) => (
-                <VoiceChannelParticipantItem key={p.userId} participant={p} />
+                <VoiceChannelParticipantItem key={p.userId} participant={p} roomId={roomId} />
             ))}
         </div>
     );
@@ -43,8 +46,10 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
 
 function VoiceChannelParticipantItem({
     participant,
+    roomId,
 }: {
     participant: VCParticipantInfo;
+    roomId: string;
 }): JSX.Element {
     const client = useMatrixClientContext();
     const myUserId = client.getUserId();
@@ -66,6 +71,20 @@ function VoiceChannelParticipantItem({
         setMenuPos(null);
     }, []);
 
+    const onDoubleClick = useCallback((): void => {
+        if (!isScreenSharing || isTransitioning) return;
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        if (!conn) return;
+        const share = conn.screenShares.find((s) => s.participantIdentity === userId);
+        if (!share) return;
+        conn.setScreenShareWatching(share.participantIdentity, true);
+        NexusVoiceStore.instance.emit(
+            NexusVoiceStoreEvent.RequestSpotlight,
+            share.participantIdentity,
+        );
+        defaultDispatcher.dispatch({ action: Action.ViewRoom, room_id: roomId });
+    }, [userId, isScreenSharing, isTransitioning, roomId]);
+
     const itemClass = classNames("mx_VoiceChannelParticipants_item", {
         "mx_VoiceChannelParticipants_item--transitioning": isTransitioning,
     });
@@ -77,7 +96,7 @@ function VoiceChannelParticipantItem({
     const displayName = member?.name ?? userId;
 
     return (
-        <div className={itemClass} onContextMenu={onContextMenu}>
+        <div className={itemClass} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick}>
             <div className={avatarClass}>
                 {isTransitioning ? (
                     <InlineSpinner size={20} />

@@ -18,7 +18,7 @@ import { useNexusWatchingScreenShares } from "../../../hooks/useNexusWatchingScr
 import { ScreenShareTile } from "./NexusScreenShareView";
 import { ParticipantTile } from "./NexusVoiceParticipantGrid";
 import { NexusVCControlBar } from "./NexusVCControlBar";
-import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
+import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../stores/NexusVoiceStore";
 import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
@@ -171,6 +171,23 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
             }
         }
     }, [focusTarget, visibleMembers, watchedScreenShares]);
+
+    // ─── External spotlight request (from sidebar double-click) ──
+    useEffect(() => {
+        if (!connected) return;
+        const onRequestSpotlight = (participantIdentity: string): void => {
+            const conn = NexusVoiceStore.instance.getActiveConnection();
+            if (!conn) return;
+            const share = conn.screenShares.find((s) => s.participantIdentity === participantIdentity);
+            if (!share) return;
+            setFocusTarget({ type: "screenshare", share });
+            setLayoutMode("spotlight");
+        };
+        NexusVoiceStore.instance.on(NexusVoiceStoreEvent.RequestSpotlight, onRequestSpotlight);
+        return () => {
+            NexusVoiceStore.instance.off(NexusVoiceStoreEvent.RequestSpotlight, onRequestSpotlight);
+        };
+    }, [connected]);
 
     const onJoinCall = useCallback(() => {
         const room = client.getRoom(roomId);

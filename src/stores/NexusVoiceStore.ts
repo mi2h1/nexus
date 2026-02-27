@@ -17,11 +17,13 @@ import { MatrixClientPeg } from "../MatrixClientPeg";
 export enum NexusVoiceStoreEvent {
     ActiveConnection = "active_connection",
     PreMicMuted = "pre_mic_muted",
+    RequestSpotlight = "request_spotlight",
 }
 
 type NexusVoiceStoreEventHandlerMap = {
     [NexusVoiceStoreEvent.ActiveConnection]: (connection: NexusVoiceConnection | null) => void;
     [NexusVoiceStoreEvent.PreMicMuted]: (muted: boolean) => void;
+    [NexusVoiceStoreEvent.RequestSpotlight]: (participantIdentity: string) => void;
 };
 
 /**
