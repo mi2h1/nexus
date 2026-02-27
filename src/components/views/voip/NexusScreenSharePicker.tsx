@@ -45,6 +45,8 @@ interface NexusScreenSharePickerProps {
     mode?: "start" | "switch";
     /** Called when user clicks "共有を停止" (switch mode only) */
     onStop?: () => void;
+    /** Portal target — defaults to document.body; set to popout body when in a child window. */
+    portalContainer?: HTMLElement;
 }
 
 /**
@@ -59,6 +61,7 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
     onCancel,
     mode = "start",
     onStop,
+    portalContainer,
 }: NexusScreenSharePickerProps): JSX.Element {
     const overlayRef = useRef<HTMLDivElement>(null);
     const [targets, setTargets] = useState<CaptureTarget[]>([]);
@@ -120,12 +123,13 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
 
     // Close on Escape
     useEffect(() => {
+        const doc = portalContainer?.ownerDocument ?? document;
         const handler = (e: KeyboardEvent): void => {
             if (e.key === "Escape") onCancel();
         };
-        document.addEventListener("keydown", handler);
-        return () => document.removeEventListener("keydown", handler);
-    }, [onCancel]);
+        doc.addEventListener("keydown", handler);
+        return () => doc.removeEventListener("keydown", handler);
+    }, [onCancel, portalContainer]);
 
     // Close on overlay click
     const onOverlayClick = useCallback(
@@ -342,7 +346,7 @@ export const NexusScreenSharePicker = React.memo(function NexusScreenSharePicker
                 </div>
             </div>
         </div>,
-        document.body,
+        portalContainer ?? document.body,
     );
 });
 

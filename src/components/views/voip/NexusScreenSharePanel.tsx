@@ -26,29 +26,31 @@ const PRESET_KEYS: ScreenShareQuality[] = ["low", "standard", "high", "ultra"];
 /**
  * Close the panel when clicking/tapping outside.
  */
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void): void {
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void, portalContainer?: HTMLElement): void {
     useEffect(() => {
+        const doc = portalContainer?.ownerDocument ?? document;
         const handler = (e: PointerEvent): void => {
             if (ref.current && !ref.current.contains(e.target as Node)) {
                 onClose();
             }
         };
-        document.addEventListener("pointerdown", handler);
-        return () => document.removeEventListener("pointerdown", handler);
-    }, [ref, onClose]);
+        doc.addEventListener("pointerdown", handler);
+        return () => doc.removeEventListener("pointerdown", handler);
+    }, [ref, onClose, portalContainer]);
 }
 
 /**
  * Close the panel on Escape key.
  */
-function useEscapeKey(onClose: () => void): void {
+function useEscapeKey(onClose: () => void, portalContainer?: HTMLElement): void {
     useEffect(() => {
+        const doc = portalContainer?.ownerDocument ?? document;
         const handler = (e: KeyboardEvent): void => {
             if (e.key === "Escape") onClose();
         };
-        document.addEventListener("keydown", handler);
-        return () => document.removeEventListener("keydown", handler);
-    }, [onClose]);
+        doc.addEventListener("keydown", handler);
+        return () => doc.removeEventListener("keydown", handler);
+    }, [onClose, portalContainer]);
 }
 
 /** Stop pointer/mouse/focus events from bubbling to RovingTabIndex ancestors. */
@@ -62,6 +64,8 @@ interface NexusScreenSharePanelProps {
     anchorLeft: number;
     anchorBottom: number;
     onFinished: () => void;
+    /** Portal target — defaults to document.body; set to popout body when in a child window. */
+    portalContainer?: HTMLElement;
 }
 
 /**
@@ -78,13 +82,14 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
     anchorLeft,
     anchorBottom,
     onFinished,
+    portalContainer,
 }: NexusScreenSharePanelProps): JSX.Element {
     const panelRef = useRef<HTMLDivElement>(null);
     const currentKey = (SettingsStore.getValue("nexus_screen_share_quality") ?? "standard") as ScreenShareQuality;
     const [selected, setSelected] = useState<ScreenShareQuality>(currentKey);
 
-    useClickOutside(panelRef, onFinished);
-    useEscapeKey(onFinished);
+    useClickOutside(panelRef, onFinished, portalContainer);
+    useEscapeKey(onFinished, portalContainer);
 
     const onStartShare = useCallback(() => {
         SettingsStore.setValue("nexus_screen_share_quality", null, SettingLevel.DEVICE, selected);
@@ -130,6 +135,7 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
                 onCancel={onFinished}
                 onStop={onStopShare}
                 mode="switch"
+                portalContainer={portalContainer}
             />
         );
     }
@@ -140,6 +146,7 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
             <NexusScreenSharePicker
                 onSelect={onNativePickerSelect}
                 onCancel={onFinished}
+                portalContainer={portalContainer}
             />
         );
     }
@@ -205,6 +212,6 @@ export const NexusScreenSharePanel = React.memo(function NexusScreenSharePanel({
                 )}
             </div>
         </div>,
-        document.body,
+        portalContainer ?? document.body,
     );
 });

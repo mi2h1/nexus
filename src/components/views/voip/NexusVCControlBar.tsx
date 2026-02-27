@@ -34,6 +34,8 @@ interface NexusVCControlBarProps {
     onRestoreFromPopout?: () => void;
     /** When true, disables Compound tooltips (FloatingPortal targets the wrong document in popout windows). */
     isPopout?: boolean;
+    /** Portal target for screen share panel/picker — set to popout body when in a child window. */
+    portalContainer?: HTMLElement;
 }
 
 export function NexusVCControlBar({
@@ -41,6 +43,7 @@ export function NexusVCControlBar({
     onPopout,
     onRestoreFromPopout,
     isPopout,
+    portalContainer,
 }: NexusVCControlBarProps): JSX.Element {
     const { isMicMuted, isScreenSharing } = useNexusVoice();
     const [showSharePanel, setShowSharePanel] = useState(false);
@@ -151,12 +154,14 @@ export function NexusVCControlBar({
 
             {showSharePanel && shareButtonRef.current && (() => {
                 const rect = shareButtonRef.current!.getBoundingClientRect();
+                const win = shareButtonRef.current!.ownerDocument.defaultView ?? window;
                 return (
                     <NexusScreenSharePanel
                         isScreenSharing={isScreenSharing}
                         anchorLeft={rect.left + rect.width / 2}
-                        anchorBottom={window.innerHeight - rect.top + 8}
+                        anchorBottom={win.innerHeight - rect.top + 8}
                         onFinished={() => setShowSharePanel(false)}
+                        portalContainer={portalContainer}
                     />
                 );
             })()}

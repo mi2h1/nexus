@@ -279,6 +279,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
             <NexusVCControlBar
                 roomId={roomId}
                 isPopout={isPopout}
+                portalContainer={viewRef.current?.ownerDocument.body}
                 onPopout={!isPopout ? async () => {
                     const win = window.open("about:blank", "_blank", "width=480,height=640");
                     if (win) setPopoutWindow(win);
@@ -620,12 +621,19 @@ function GridLayout({
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
+        let rafId = 0;
         const observer = new ResizeObserver((entries) => {
-            const { width, height } = entries[0].contentRect;
-            setContainerSize({ width, height });
+            cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(() => {
+                const { width, height } = entries[0].contentRect;
+                setContainerSize({ width, height });
+            });
         });
         observer.observe(el);
-        return () => observer.disconnect();
+        return () => {
+            cancelAnimationFrame(rafId);
+            observer.disconnect();
+        };
     }, []);
 
     const isEmpty = hideNonScreenSharePanels && screenShares.length === 0 && unwatchedScreenShares.length === 0;
