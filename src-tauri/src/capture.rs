@@ -48,7 +48,7 @@ mod platform {
     use windows_capture::{
         capture::{CaptureControl, Context, GraphicsCaptureApiHandler},
         frame::Frame,
-        graphics_capture_api::InternalCaptureControl,
+        graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl},
         monitor::Monitor,
         settings::{
             ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
@@ -562,6 +562,14 @@ mod platform {
                 fps,
             };
 
+            // WithoutBorder requires Win11+ (IsBorderRequired API).
+            // Fall back to Default on older Windows to avoid BorderConfigUnsupported.
+            let border = if GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false) {
+                DrawBorderSettings::WithoutBorder
+            } else {
+                DrawBorderSettings::Default
+            };
+
             match target_type.as_str() {
                 "window" => {
                     let hwnd_val: isize = target_value
@@ -578,7 +586,7 @@ mod platform {
                     let settings = Settings::new(
                         target_window,
                         CursorCaptureSettings::WithCursor,
-                        DrawBorderSettings::WithoutBorder,
+                        border,
                         SecondaryWindowSettings::Exclude,
                         MinimumUpdateIntervalSettings::Default,
                         DirtyRegionSettings::Default,
@@ -609,7 +617,7 @@ mod platform {
                     let settings = Settings::new(
                         target_monitor,
                         CursorCaptureSettings::WithCursor,
-                        DrawBorderSettings::WithoutBorder,
+                        border,
                         SecondaryWindowSettings::Default,
                         MinimumUpdateIntervalSettings::Default,
                         DirtyRegionSettings::Default,
