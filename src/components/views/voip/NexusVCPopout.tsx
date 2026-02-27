@@ -21,7 +21,7 @@ interface NexusVCPopoutProps {
 }
 
 /** Close the vc-popout window via Tauri invoke (bypasses WebviewWindow class). */
-export async function closeTauriPopout(): Promise<void> {
+async function closeTauriPopout(): Promise<void> {
     try {
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("plugin:window|close", { label: "vc-popout" });

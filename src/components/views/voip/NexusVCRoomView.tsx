@@ -23,7 +23,7 @@ import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
 import { VisibilityOffIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
-import { NexusVCPopout, closeTauriPopout } from "./NexusVCPopout";
+import { NexusVCPopout } from "./NexusVCPopout";
 
 interface NexusVCRoomViewProps {
     roomId: string;
@@ -54,7 +54,9 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     useEffect(() => {
         if (!connected && popoutWindow) {
             setPopoutWindow(null);
-            closeTauriPopout();
+            import("@tauri-apps/api/core").then(({ invoke }) => {
+                invoke("plugin:window|close", { label: "vc-popout" });
+            }).catch(() => {});
         }
     }, [connected, popoutWindow]);
 
