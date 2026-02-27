@@ -14,6 +14,25 @@ import { copyStylesToChild } from "../../../utils/popoutStyles";
 
 const POPOUT_GEOMETRY_KEY = "nx_vc_popout_geometry";
 
+// Temporary test: call window.__testDocPiP() from DevTools console
+(window as any).__testDocPiP = async (): Promise<void> => {
+    try {
+        const pip = await (window as any).documentPictureInPicture.requestWindow({
+            width: 480,
+            height: 640,
+        });
+        console.log("PiP window:", pip);
+        console.log("PiP document:", pip.document);
+        const h1 = pip.document.createElement("h1");
+        h1.textContent = "Document PiP Works!";
+        h1.style.cssText = "color:white;font-family:sans-serif;background:#1a1a2e;margin:0;height:100vh;display:flex;align-items:center;justify-content:center";
+        pip.document.body.appendChild(h1);
+        console.log("SUCCESS: Document PiP is fully functional");
+    } catch (e) {
+        console.error("Document PiP FAILED:", e);
+    }
+};
+
 interface PopoutGeometry {
     width: number;
     height: number;
