@@ -29,11 +29,14 @@ import { isTauri } from "../../../utils/tauriHttp";
 interface NexusVCControlBarProps {
     roomId: string;
     onPopout?: () => void;
+    /** When true, disables Compound tooltips (FloatingPortal targets the wrong document in popout windows). */
+    isPopout?: boolean;
 }
 
 export function NexusVCControlBar({
     roomId,
     onPopout,
+    isPopout,
 }: NexusVCControlBarProps): JSX.Element {
     const { isMicMuted, isScreenSharing } = useNexusVoice();
     const [showSharePanel, setShowSharePanel] = useState(false);
@@ -75,6 +78,7 @@ export function NexusVCControlBar({
                     })}
                     onClick={onToggleMic}
                     title={isMicMuted ? "マイクをオンにする" : "マイクをミュートする"}
+                    disableTooltip={isPopout}
                 >
                     {isMicMuted ? (
                         <MicOffSolidIcon width={22} height={22} />
@@ -92,6 +96,7 @@ export function NexusVCControlBar({
                     onClick={onScreenShareClick}
                     ref={shareButtonRef}
                     title={isScreenSharing ? (isTauri() ? "配信設定" : "共有を停止") : "画面を共有"}
+                    disableTooltip={isPopout}
                 >
                     <ShareScreenSolidIcon width={22} height={22} />
                 </AccessibleButton>
@@ -101,6 +106,7 @@ export function NexusVCControlBar({
                     className="nx_VCControlBar_button"
                     onClick={onSettings}
                     title="設定"
+                    disableTooltip={isPopout}
                 >
                     <SettingsSolidIcon width={22} height={22} />
                 </AccessibleButton>
@@ -110,6 +116,7 @@ export function NexusVCControlBar({
                     className="nx_VCControlBar_button nx_VCControlBar_button--endCall"
                     onClick={onEndCall}
                     title="通話を終了"
+                    disableTooltip={isPopout}
                 >
                     <EndCallIcon width={22} height={22} />
                 </AccessibleButton>

@@ -254,6 +254,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
             </div>
             <NexusVCControlBar
                 roomId={roomId}
+                isPopout={isPopout}
                 onPopout={!isPopout ? async () => {
                     const win = window.open("about:blank", "_blank", "width=480,height=640");
                     if (win) setPopoutWindow(win);
