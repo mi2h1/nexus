@@ -527,6 +527,37 @@ function SpotlightLayout({
 
 // ─── Grid layout ──────────────────────────────────────────────
 
+const GRID_GAP = 16;
+const GRID_PADDING = 24;
+const MIN_PANEL_W = 120;
+
+function calculateGridLayout(
+    itemCount: number,
+    containerW: number,
+    containerH: number,
+): { panelWidth: number; panelHeight: number } {
+    if (itemCount === 0) return { panelWidth: 0, panelHeight: 0 };
+
+    const availW = containerW - 2 * GRID_PADDING;
+    const availH = containerH - 2 * GRID_PADDING;
+
+    for (let cols = 1; cols <= itemCount; cols++) {
+        const rows = Math.ceil(itemCount / cols);
+        const panelW = (availW - (cols - 1) * GRID_GAP) / cols;
+        const panelH = panelW * 9 / 16;
+        const totalH = rows * panelH + (rows - 1) * GRID_GAP;
+
+        if (totalH <= availH && panelW >= MIN_PANEL_W) {
+            return { panelWidth: panelW, panelHeight: panelH };
+        }
+    }
+
+    // フォールバック: 全アイテム1行
+    const cols = itemCount;
+    const panelW = Math.max((availW - (cols - 1) * GRID_GAP) / cols, MIN_PANEL_W);
+    return { panelWidth: panelW, panelHeight: panelW * 9 / 16 };
+}
+
 interface GridLayoutProps {
     screenShares: ScreenShareInfo[];
     unwatchedScreenShares: ScreenShareInfo[];
@@ -554,56 +585,90 @@ function GridLayout({
     onFocusMember,
     onFocusScreenShare,
 }: GridLayoutProps): JSX.Element {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const observer = new ResizeObserver((entries) => {
+            const { width, height } = entries[0].contentRect;
+            setContainerSize({ width, height });
+        });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, []);
+
     const isEmpty = hideNonScreenSharePanels && screenShares.length === 0 && unwatchedScreenShares.length === 0;
+    const totalItems = screenShares.length + unwatchedScreenShares.length
+        + (hideNonScreenSharePanels ? 0 : members.length);
+    const { panelWidth, panelHeight } = calculateGridLayout(
+        totalItems, containerSize.width, containerSize.height,
+    );
+    const panelStyle = { width: panelWidth, height: panelHeight };
 
     return (
-        <div className="nx_VCRoomView_grid">
-            {isEmpty && (
-                <div className="nx_VCRoomView_gridEmpty">
-                    画面を共有しているユーザーはいません
-                </div>
-            )}
-            {screenShares.map((share) => (
-                <div
-                    key={`ss-${share.participantIdentity}`}
-                    className="nx_VCRoomView_gridScreenShare"
-                    onClick={() => onFocusScreenShare(share)}
-                    style={{ cursor: "pointer" }}
-                >
-                    <ScreenShareTile
-                        share={share}
-                        onStopWatching={share.isLocal ? undefined : () => onStopWatching(share.participantIdentity)}
-                        onShareContextMenu={onShareContextMenu}
-                    />
-                </div>
-            ))}
-            {unwatchedScreenShares.map((share) => (
-                <div
-                    key={`preview-${share.participantIdentity}`}
-                    className="nx_VCRoomView_gridScreenShare nx_VCRoomView_gridScreenSharePreview"
-                    onClick={() => onStartWatching(share.participantIdentity)}
-                >
-                    <ScreenShareTile share={share} />
-                    <div className="nx_VCRoomView_screenSharePreview_overlay">
-                        <div className="nx_VCRoomView_screenSharePreview_button">
-                            画面を視聴する
+        <div ref={containerRef} className="nx_VCRoomView_grid">
+            {containerSize.width > 0 && (
+                <>
+                    {isEmpty && (
+                        <div className="nx_VCRoomView_gridEmpty">
+                            画面を共有しているユーザーはいません
                         </div>
-                    </div>
-                </div>
-            ))}
-            {members.map((member) => {
-                const state = participantStates.get(member.userId);
-                return (
-                    <ParticipantTile
-                        key={member.userId}
-                        member={member}
-                        isSpeaking={activeSpeakers.has(member.userId)}
-                        isMuted={state?.isMuted ?? false}
-                        isScreenSharing={state?.isScreenSharing ?? false}
-                        onClick={() => onFocusMember(member)}
-                    />
-                );
-            })}
+                    )}
+                    {screenShares.map((share) => (
+                        <div
+                            key={`ss-${share.participantIdentity}`}
+                            className="nx_VCRoomView_gridPanel"
+                            style={panelStyle}
+                            onClick={() => onFocusScreenShare(share)}
+                        >
+                            <div className="nx_VCRoomView_gridScreenShare">
+                                <ScreenShareTile
+                                    share={share}
+                                    onStopWatching={share.isLocal ? undefined : () => onStopWatching(share.participantIdentity)}
+                                    onShareContextMenu={onShareContextMenu}
+                                />
+                            </div>
+                        </div>
+                    ))}
+                    {unwatchedScreenShares.map((share) => (
+                        <div
+                            key={`preview-${share.participantIdentity}`}
+                            className="nx_VCRoomView_gridPanel"
+                            style={panelStyle}
+                            onClick={() => onStartWatching(share.participantIdentity)}
+                        >
+                            <div className="nx_VCRoomView_gridScreenShare nx_VCRoomView_gridScreenSharePreview">
+                                <ScreenShareTile share={share} />
+                                <div className="nx_VCRoomView_screenSharePreview_overlay">
+                                    <div className="nx_VCRoomView_screenSharePreview_button">
+                                        画面を視聴する
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    {members.map((member) => {
+                        const state = participantStates.get(member.userId);
+                        return (
+                            <div
+                                key={member.userId}
+                                className="nx_VCRoomView_gridPanel"
+                                style={panelStyle}
+                                onClick={() => onFocusMember(member)}
+                            >
+                                <ParticipantTile
+                                    member={member}
+                                    isSpeaking={activeSpeakers.has(member.userId)}
+                                    isMuted={state?.isMuted ?? false}
+                                    isScreenSharing={state?.isScreenSharing ?? false}
+                                />
+                            </div>
+                        );
+                    })}
+                </>
+            )}
         </div>
     );
 }
