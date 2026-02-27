@@ -90,11 +90,16 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
 
-                // Copy styles — remove overlay once all <link> stylesheets
-                // have loaded so React content appears fully styled.
+                // Copy styles — remove overlay once stylesheets are ready.
+                // WebView2 may not fire <link> onload reliably, so also use
+                // a timeout fallback.
+                const removeOverlay = (): void => {
+                    if (overlay.parentNode) overlay.remove();
+                };
                 copyStylesToChild(child).then(() => {
-                    if (!closed) overlay.remove();
+                    if (!closed) removeOverlay();
                 });
+                setTimeout(removeOverlay, 500);
 
                 setPortalContainer(container);
                 if (isTauri()) showTauriPopout();
