@@ -12,6 +12,43 @@ import MatrixClientContext, { useMatrixClientContext } from "../../../contexts/M
 import { NexusVCRoomView } from "./NexusVCRoomView";
 import { copyStylesToChild } from "../../../utils/popoutStyles";
 
+const POPOUT_GEOMETRY_KEY = "nx_vc_popout_geometry";
+
+interface PopoutGeometry {
+    width: number;
+    height: number;
+    left: number;
+    top: number;
+}
+
+function getPopoutFeatures(): string {
+    try {
+        const saved = localStorage.getItem(POPOUT_GEOMETRY_KEY);
+        if (saved) {
+            const g: PopoutGeometry = JSON.parse(saved);
+            if (g.width > 0 && g.height > 0) {
+                return `width=${g.width},height=${g.height},left=${g.left},top=${g.top}`;
+            }
+        }
+    } catch { /* ignore */ }
+    return "width=480,height=640";
+}
+
+function savePopoutGeometry(child: Window): void {
+    try {
+        if (child.closed) return;
+        const geometry: PopoutGeometry = {
+            width: child.outerWidth,
+            height: child.outerHeight,
+            left: child.screenX,
+            top: child.screenY,
+        };
+        if (geometry.width > 0 && geometry.height > 0) {
+            localStorage.setItem(POPOUT_GEOMETRY_KEY, JSON.stringify(geometry));
+        }
+    } catch { /* ignore */ }
+}
+
 interface NexusVCPopoutProps {
     roomId: string;
     onClose: () => void;
@@ -21,11 +58,10 @@ interface NexusVCPopoutProps {
  * Opens a popout window via window.open() and renders NexusVCRoomView
  * into it using ReactDOM.createPortal().
  *
- * The child window shares the same origin (about:blank), so MediaStream
+ * On Tauri, on_new_window intercepts the window.open() call and creates
+ * a Tauri-managed window via NewWindowResponse::Create (no address bar).
+ * The child window shares the same WebView2 environment, so MediaStream
  * objects and React portals work seamlessly.
- *
- * On Tauri, on_new_window intercepts the window.open() call and allows
- * it via NewWindowResponse::Allow.
  */
 export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Element | null {
     const client = useMatrixClientContext();
@@ -35,11 +71,8 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
 
     // Open child window on mount
     useEffect(() => {
-        const child = window.open(
-            "about:blank",
-            "_blank",
-            "width=480,height=640",
-        );
+        const features = getPopoutFeatures();
+        const child = window.open("about:blank", "_blank", features);
 
         if (!child) {
             console.error("NexusVCPopout: window.open() returned null");
@@ -49,29 +82,64 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
 
         childRef.current = child;
 
-        // Set up the child document
-        child.document.title = "Nexus VC";
+        // -- Close detection --
+        const handleClose = (): void => {
+            if (closedRef.current) return;
+            savePopoutGeometry(child);
+            closedRef.current = true;
+            onClose();
+        };
 
-        // Copy parent styles to child
-        copyStylesToChild(child);
+        // Event-based detection (fires before the child window fully closes)
+        try {
+            child.addEventListener("beforeunload", () => savePopoutGeometry(child));
+            child.addEventListener("unload", () => {
+                // unload fires when the document unloads; check after a tick
+                setTimeout(() => {
+                    if (!closedRef.current && child.closed) handleClose();
+                }, 100);
+            });
+        } catch { /* cross-origin fallback: rely on polling */ }
 
-        // Create a mount point for the React portal
-        const container = child.document.createElement("div");
-        container.id = "nx_popout_root";
-        child.document.body.appendChild(container);
-        setPortalContainer(container);
-
-        // Poll for child window closed
+        // Polling fallback (500ms)
         const pollId = setInterval(() => {
-            if (child.closed && !closedRef.current) {
-                closedRef.current = true;
+            if (child.closed) {
                 clearInterval(pollId);
-                onClose();
+                handleClose();
             }
         }, 500);
 
+        // -- Geometry persistence --
+        try {
+            child.addEventListener("resize", () => savePopoutGeometry(child));
+        } catch { /* ignore */ }
+        // Periodic save to capture window moves (no "move" event in browsers)
+        const geometrySaveId = setInterval(() => savePopoutGeometry(child), 2000);
+
+        // -- Set up the child document (with retry for Create mode) --
+        const setupChild = (): void => {
+            if (closedRef.current) return;
+            try {
+                child.document.title = "Nexus VC";
+                copyStylesToChild(child);
+                const container = child.document.createElement("div");
+                container.id = "nx_popout_root";
+                child.document.body.appendChild(container);
+                setPortalContainer(container);
+            } catch {
+                // With NewWindowResponse::Create, the document may not be
+                // ready immediately. Retry after a short delay.
+                if (!closedRef.current) {
+                    setTimeout(setupChild, 50);
+                }
+            }
+        };
+        setupChild();
+
         return () => {
             clearInterval(pollId);
+            clearInterval(geometrySaveId);
+            savePopoutGeometry(child);
             closedRef.current = true;
             if (!child.closed) {
                 child.close();
