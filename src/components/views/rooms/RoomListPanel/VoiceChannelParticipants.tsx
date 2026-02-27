@@ -75,7 +75,10 @@ function VoiceChannelParticipantItem({
         if (!isScreenSharing || isTransitioning) return;
         const conn = NexusVoiceStore.instance.getActiveConnection();
         if (!conn) return;
-        const share = conn.screenShares.find((s) => s.participantIdentity === userId);
+        // participantIdentity is "userId:deviceId", so resolve via findIdentityForUserId
+        const identity = conn.findIdentityForUserId(userId);
+        if (!identity) return;
+        const share = conn.screenShares.find((s) => s.participantIdentity === identity);
         if (!share) return;
         conn.setScreenShareWatching(share.participantIdentity, true);
         NexusVoiceStore.instance.emit(
