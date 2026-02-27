@@ -72,6 +72,9 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
 
     // Open child window on mount
     useEffect(() => {
+        // Reset on remount (React Strict Mode unmounts + remounts effects)
+        closedRef.current = false;
+
         const features = getPopoutFeatures();
         console.log("[NexusVCPopout] Opening child window with features:", features);
         const child = window.open("about:blank", "_blank", features);
