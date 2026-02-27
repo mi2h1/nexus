@@ -1,9 +1,5 @@
 mod capture;
 
-use std::sync::atomic::{AtomicU32, Ordering};
-
-static POPUP_COUNTER: AtomicU32 = AtomicU32::new(0);
-
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -28,12 +24,9 @@ pub fn run() {
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(960.0, 600.0)
                 .on_new_window(move |url, features| {
-                    let id = POPUP_COUNTER.fetch_add(1, Ordering::Relaxed);
-                    let label = format!("popup-{}", id);
-
                     match WebviewWindowBuilder::new(
                         &app_handle,
-                        &label,
+                        "vc-popout",
                         WebviewUrl::External("about:blank".parse().unwrap()),
                     )
                     .window_features(features)
