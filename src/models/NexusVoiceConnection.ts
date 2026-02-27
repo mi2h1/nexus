@@ -293,7 +293,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 createLocalAudioTrack({
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true,
+                    autoGainControl: false,
                     sampleRate: 48000,
                     channelCount: 1,
                 }),
