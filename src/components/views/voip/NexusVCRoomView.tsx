@@ -40,6 +40,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     const client = useMatrixClientContext();
     const { members: rawParticipants, connected } = useVCParticipants(roomId);
     const [poppedOut, setPoppedOut] = useState(false);
+    const viewRef = useRef<HTMLDivElement>(null);
     // Filter to resolved RoomMembers for layout components
     const members = useMemo(
         () => rawParticipants.filter((p) => p.member !== null).map((p) => p.member!),
@@ -75,6 +76,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     // Close context menu on click outside or Escape
     useEffect(() => {
         if (!viewContextMenu) return;
+        const doc = viewRef.current?.ownerDocument ?? document;
         const onPointerDown = (e: PointerEvent): void => {
             if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
                 setViewContextMenu(null);
@@ -83,11 +85,11 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
         const onKeyDown = (e: KeyboardEvent): void => {
             if (e.key === "Escape") setViewContextMenu(null);
         };
-        document.addEventListener("pointerdown", onPointerDown);
-        document.addEventListener("keydown", onKeyDown);
+        doc.addEventListener("pointerdown", onPointerDown);
+        doc.addEventListener("keydown", onKeyDown);
         return () => {
-            document.removeEventListener("pointerdown", onPointerDown);
-            document.removeEventListener("keydown", onKeyDown);
+            doc.removeEventListener("pointerdown", onPointerDown);
+            doc.removeEventListener("keydown", onKeyDown);
         };
     }, [viewContextMenu]);
 
@@ -165,7 +167,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     }
 
     return (
-        <div className="nx_VCRoomView">
+        <div className="nx_VCRoomView" ref={viewRef}>
             <div className="nx_VCRoomView_content" onContextMenu={onViewContextMenu}>
                 {layoutMode === "spotlight" ? (
                     <SpotlightLayout
@@ -212,6 +214,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                     onHideNonScreenSharePanelsChange={setHideNonScreenSharePanels}
                     onStopWatching={stopWatching}
                     onClose={() => setViewContextMenu(null)}
+                    portalContainer={viewRef.current?.ownerDocument.body}
                 />
             )}
         </div>
@@ -229,11 +232,13 @@ interface NexusVCViewContextMenuProps {
     onHideNonScreenSharePanelsChange: (value: boolean) => void;
     onStopWatching?: (id: string) => void;
     onClose: () => void;
+    /** Portal target — defaults to document.body, but should be the popout's body when isPopout. */
+    portalContainer?: HTMLElement;
 }
 
 const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewContextMenuProps>(
     function NexusVCViewContextMenu(
-        { left, top, share, hideNonScreenSharePanels, onHideNonScreenSharePanelsChange, onStopWatching, onClose },
+        { left, top, share, hideNonScreenSharePanels, onHideNonScreenSharePanelsChange, onStopWatching, onClose, portalContainer },
         ref,
     ) {
         const conn = NexusVoiceStore.instance.getActiveConnection();
@@ -317,7 +322,7 @@ const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewConte
                     <span>画面共有ではないパネルを非表示</span>
                 </label>
             </div>,
-            document.body,
+            portalContainer ?? document.body,
         );
     },
 );
