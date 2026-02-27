@@ -58,10 +58,11 @@ interface NexusVCPopoutProps {
  * Opens a popout window via window.open() and renders NexusVCRoomView
  * into it using ReactDOM.createPortal().
  *
- * On Tauri, on_new_window intercepts the window.open() call and creates
- * a Tauri-managed window via NewWindowResponse::Create (no address bar).
- * The child window shares the same WebView2 environment, so MediaStream
+ * The child window shares the same origin (about:blank), so MediaStream
  * objects and React portals work seamlessly.
+ *
+ * On Tauri, on_new_window intercepts the window.open() call and allows
+ * it via NewWindowResponse::Allow.
  */
 export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Element | null {
     const client = useMatrixClientContext();
