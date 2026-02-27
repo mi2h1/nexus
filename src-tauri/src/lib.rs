@@ -19,7 +19,7 @@ pub fn run() {
             use tauri::WebviewUrl;
 
             let app_handle = app.handle().clone();
-            // Dark theme background — matches --cpd-color-bg-canvas-default
+            // Fallback background before JS applies the actual theme color
             let bg = Color(0x15, 0x19, 0x1E, 0xFF);
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
