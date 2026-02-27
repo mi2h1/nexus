@@ -68,19 +68,19 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
     const client = useMatrixClientContext();
     const childRef = useRef<Window | null>(null);
     const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
-    const closedRef = useRef(false);
 
     // Open child window on mount
     useEffect(() => {
-        // Reset on remount (React Strict Mode unmounts + remounts effects)
-        closedRef.current = false;
+        // Local flag scoped to THIS effect run. Each Strict Mode mount/remount
+        // gets its own `closed` variable, so stale unload events from a
+        // previously-closed child cannot trigger handleClose on a new child.
+        let closed = false;
 
         const features = getPopoutFeatures();
         console.log("[NexusVCPopout] Opening child window with features:", features);
         const child = window.open("about:blank", "_blank", features);
 
         console.log("[NexusVCPopout] window.open() returned:", child);
-        console.log("[NexusVCPopout] child === null:", child === null);
 
         if (!child) {
             console.error("[NexusVCPopout] window.open() returned null — aborting");
@@ -90,22 +90,12 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
 
         childRef.current = child;
 
-        // -- Probe child window capabilities --
-        try {
-            console.log("[NexusVCPopout] child.closed:", child.closed);
-            console.log("[NexusVCPopout] child.document:", child.document);
-            console.log("[NexusVCPopout] child.document.readyState:", child.document?.readyState);
-            console.log("[NexusVCPopout] child.location:", String(child.location));
-        } catch (e) {
-            console.warn("[NexusVCPopout] Error probing child:", e);
-        }
-
         // -- Close detection --
         const handleClose = (): void => {
-            if (closedRef.current) return;
+            if (closed) return;
             console.log("[NexusVCPopout] handleClose() called");
             savePopoutGeometry(child);
-            closedRef.current = true;
+            closed = true;
             onClose();
         };
 
@@ -118,33 +108,22 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
             child.addEventListener("unload", () => {
                 console.log("[NexusVCPopout] child unload fired, child.closed:", child.closed);
                 setTimeout(() => {
-                    console.log("[NexusVCPopout] unload timeout — child.closed:", child.closed);
-                    if (!closedRef.current && child.closed) handleClose();
+                    console.log("[NexusVCPopout] unload timeout — closed:", closed, "child.closed:", child.closed);
+                    if (!closed && child.closed) handleClose();
                 }, 100);
             });
-            console.log("[NexusVCPopout] Event listeners attached successfully");
         } catch (e) {
             console.warn("[NexusVCPopout] Failed to attach event listeners:", e);
         }
 
-        // Polling fallback (500ms) — also log child.closed state
+        // Polling fallback (500ms)
         let pollCount = 0;
         const pollId = setInterval(() => {
             pollCount++;
-            // Log every 10th poll (every 5 seconds) to avoid spam
             if (pollCount % 10 === 1) {
-                try {
-                    console.log(`[NexusVCPopout] poll #${pollCount} — child.closed:`, child.closed);
-                    // Also try accessing document to detect broken reference
-                    void child.document;
-                } catch (e) {
-                    console.log(`[NexusVCPopout] poll #${pollCount} — child.document access error:`, e);
-                    clearInterval(pollId);
-                    handleClose();
-                    return;
-                }
+                console.log(`[NexusVCPopout] poll #${pollCount} — closed: ${closed}, child.closed:`, child.closed);
             }
-            if (child.closed) {
+            if (child.closed && !closed) {
                 console.log("[NexusVCPopout] poll detected child.closed === true");
                 clearInterval(pollId);
                 handleClose();
@@ -159,7 +138,7 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
 
         // -- Set up the child document --
         const setupChild = (): void => {
-            if (closedRef.current) return;
+            if (closed) return;
             try {
                 child.document.title = "Nexus VC";
                 copyStylesToChild(child);
@@ -170,7 +149,7 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
                 console.log("[NexusVCPopout] setupChild() succeeded — portal container set");
             } catch (e) {
                 console.warn("[NexusVCPopout] setupChild() failed, retrying in 50ms:", e);
-                if (!closedRef.current) {
+                if (!closed) {
                     setTimeout(setupChild, 50);
                 }
             }
@@ -182,7 +161,7 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
             clearInterval(pollId);
             clearInterval(geometrySaveId);
             savePopoutGeometry(child);
-            closedRef.current = true;
+            closed = true;
             if (!child.closed) {
                 child.close();
             }
