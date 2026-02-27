@@ -15,6 +15,7 @@ import {
     EndCallIcon,
     SpotlightIcon,
     GridIcon,
+    PopOutIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { useNexusVoice } from "../../../hooks/useNexusVoice";
@@ -34,6 +35,7 @@ interface NexusVCControlBarProps {
     layoutMode: VCLayoutMode;
     onLayoutModeChange: (mode: VCLayoutMode) => void;
     participantCount: number;
+    onPopout?: () => void;
 }
 
 export function NexusVCControlBar({
@@ -41,6 +43,7 @@ export function NexusVCControlBar({
     layoutMode,
     onLayoutModeChange,
     participantCount,
+    onPopout,
 }: NexusVCControlBarProps): JSX.Element {
     const { isMicMuted, isScreenSharing } = useNexusVoice();
     const [showSharePanel, setShowSharePanel] = useState(false);
@@ -120,6 +123,17 @@ export function NexusVCControlBar({
                 >
                     <EndCallIcon width={22} height={22} />
                 </AccessibleButton>
+
+                {/* Popout (Tauri only) */}
+                {onPopout && isTauri() && (
+                    <AccessibleButton
+                        className="nx_VCControlBar_button"
+                        onClick={onPopout}
+                        title="別ウィンドウで表示"
+                    >
+                        <PopOutIcon width={22} height={22} />
+                    </AccessibleButton>
+                )}
             </div>
 
             <div className="nx_VCControlBar_right">

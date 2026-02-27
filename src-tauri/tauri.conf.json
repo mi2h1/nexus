@@ -10,15 +10,7 @@
     "frontendDist": "../webapp"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Nexus",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 600
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

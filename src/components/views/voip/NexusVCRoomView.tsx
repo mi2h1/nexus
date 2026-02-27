@@ -23,9 +23,12 @@ import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
 import { VisibilityOffIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { NexusVCPopout } from "./NexusVCPopout";
 
 interface NexusVCRoomViewProps {
     roomId: string;
+    /** True when rendered inside a popout window via createPortal. */
+    isPopout?: boolean;
 }
 
 const SPEAKER_DEBOUNCE_MS = 2000;
@@ -33,9 +36,10 @@ const SPEAKER_DEBOUNCE_MS = 2000;
 /**
  * Unified VC room view with spotlight/grid layout modes and a control bar.
  */
-export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element | null {
+export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewProps): JSX.Element | null {
     const client = useMatrixClientContext();
     const { members: rawParticipants, connected } = useVCParticipants(roomId);
+    const [poppedOut, setPoppedOut] = useState(false);
     // Filter to resolved RoomMembers for layout components
     const members = useMemo(
         () => rawParticipants.filter((p) => p.member !== null).map((p) => p.member!),
@@ -140,6 +144,26 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
         );
     }
 
+    // Popout: show placeholder in main window, render VC in child window
+    if (poppedOut && !isPopout) {
+        return (
+            <div className="nx_VCRoomView">
+                <div className="nx_VCRoomView_popoutPlaceholder">
+                    <div className="nx_VCRoomView_popoutPlaceholderText">
+                        VC は別ウィンドウで表示中
+                    </div>
+                    <AccessibleButton
+                        className="nx_VCRoomView_popoutRestoreButton"
+                        onClick={() => setPoppedOut(false)}
+                    >
+                        元に戻す
+                    </AccessibleButton>
+                </div>
+                <NexusVCPopout roomId={roomId} onClose={() => setPoppedOut(false)} />
+            </div>
+        );
+    }
+
     return (
         <div className="nx_VCRoomView">
             <div className="nx_VCRoomView_content" onContextMenu={onViewContextMenu}>
@@ -176,6 +200,7 @@ export function NexusVCRoomView({ roomId }: NexusVCRoomViewProps): JSX.Element |
                 layoutMode={layoutMode}
                 onLayoutModeChange={setLayoutMode}
                 participantCount={members.length}
+                onPopout={!isPopout ? () => setPoppedOut(true) : undefined}
             />
             {viewContextMenu && (
                 <NexusVCViewContextMenu
