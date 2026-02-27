@@ -212,18 +212,23 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                 onPopout={!isPopout ? async () => {
                     let win: Window | null = null;
                     // Try Document Picture-in-Picture first (no address bar, always-on-top)
-                    if ("documentPictureInPicture" in window) {
+                    const hasPiP = "documentPictureInPicture" in window;
+                    console.log("[Popout] documentPictureInPicture available:", hasPiP);
+                    if (hasPiP) {
                         try {
+                            console.log("[Popout] Calling requestWindow()...");
                             win = await (window as any).documentPictureInPicture.requestWindow({
                                 width: 480,
                                 height: 640,
                             });
+                            console.log("[Popout] PiP window opened:", win);
                         } catch (e) {
-                            console.warn("[NexusVCPopout] Document PiP failed, falling back:", e);
+                            console.warn("[Popout] Document PiP failed, falling back:", e);
                         }
                     }
                     // Fallback to window.open
                     if (!win) {
+                        console.log("[Popout] Using window.open() fallback");
                         win = window.open("about:blank", "_blank", "width=480,height=640");
                     }
                     if (win) setPopoutWindow(win);
