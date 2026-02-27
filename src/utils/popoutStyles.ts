@@ -11,10 +11,14 @@ Please see LICENSE files in the repository root for full details.
  *
  * This is needed because child windows created by window.open('about:blank')
  * share the same origin but do NOT inherit any styles.
+ *
+ * Returns a Promise that resolves when all <link> stylesheets have loaded.
  */
-export function copyStylesToChild(child: Window): void {
+export function copyStylesToChild(child: Window): Promise<void> {
     const parentDoc = document;
     const childDoc = child.document;
+
+    const linkPromises: Promise<void>[] = [];
 
     // Copy <link rel="stylesheet"> tags
     parentDoc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((link) => {
@@ -24,6 +28,12 @@ export function copyStylesToChild(child: Window): void {
         if (link.type) clone.type = link.type;
         if (link.media) clone.media = link.media;
         childDoc.head.appendChild(clone);
+        linkPromises.push(
+            new Promise<void>((resolve) => {
+                clone.onload = () => resolve();
+                clone.onerror = () => resolve(); // Don't block on failed loads
+            }),
+        );
     });
 
     // Copy <style> tags
@@ -50,4 +60,6 @@ export function copyStylesToChild(child: Window): void {
             childDoc.body.setAttribute(attr.name, attr.value);
         }
     }
+
+    return Promise.all(linkPromises).then(() => {});
 }

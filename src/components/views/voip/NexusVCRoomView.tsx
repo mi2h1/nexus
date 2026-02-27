@@ -53,8 +53,8 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     // Close popout window when disconnecting from VC
     useEffect(() => {
         if (!connected && popoutWindow) {
-            if (!popoutWindow.closed) popoutWindow.close();
             setPopoutWindow(null);
+            // NexusVCPopout unmount will handle closing the native window
         }
     }, [connected, popoutWindow]);
 

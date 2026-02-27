@@ -20,10 +20,29 @@ interface NexusVCPopoutProps {
     onClose: () => void;
 }
 
+/** Close the vc-popout window via Tauri API (works for Tauri-managed windows). */
+async function closeTauriPopout(): Promise<void> {
+    try {
+        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+        await WebviewWindow.getByLabel("vc-popout")?.close();
+    } catch {
+        // Tauri API not available or window already gone
+    }
+}
+
+/** Show the vc-popout window via Tauri API. */
+async function showTauriPopout(): Promise<void> {
+    try {
+        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+        await WebviewWindow.getByLabel("vc-popout")?.show();
+    } catch {
+        // Tauri API not available
+    }
+}
+
 /**
  * Renders NexusVCRoomView into a pre-opened child window using
- * ReactDOM.createPortal(). The child window is opened by the caller
- * (Document PiP preferred, window.open fallback).
+ * ReactDOM.createPortal(). The child window is opened by the caller.
  */
 export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutProps): JSX.Element | null {
     const client = useMatrixClientContext();
@@ -50,17 +69,15 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
             if (closed) return;
             try {
                 child.document.title = "Nexus VC";
-                copyStylesToChild(child);
                 const container = child.document.createElement("div");
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
-                setPortalContainer(container);
-                // Show the window now that styles are applied (Tauri creates it hidden)
-                if (isTauri()) {
-                    import("@tauri-apps/api/webviewWindow").then(({ WebviewWindow }) => {
-                        WebviewWindow.getByLabel("vc-popout")?.show();
-                    }).catch(() => {});
-                }
+                // Copy styles and wait for stylesheets to load before showing
+                copyStylesToChild(child).then(() => {
+                    if (closed) return;
+                    setPortalContainer(container);
+                    if (isTauri()) showTauriPopout();
+                });
             } catch {
                 // Document may not be ready immediately (e.g., window.open + Allow).
                 if (!closed) setTimeout(setupChild, 50);
@@ -102,7 +119,11 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
             // Real unmounts: the timer fires and closes the window.
             // Strict Mode: the remount clears the timer before it fires.
             closeTimerRef.current = setTimeout(() => {
-                if (!child.closed) child.close();
+                if (isTauri()) {
+                    closeTauriPopout();
+                } else if (!child.closed) {
+                    child.close();
+                }
             }, 0);
         };
     }, [childWindow]); // eslint-disable-line react-hooks/exhaustive-deps
