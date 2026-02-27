@@ -5,155 +5,32 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useEffect, useRef, useState, type JSX } from "react";
+import React, { useEffect, useState, type JSX } from "react";
 import ReactDOM from "react-dom";
 
 import MatrixClientContext, { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
 import { NexusVCRoomView } from "./NexusVCRoomView";
 import { copyStylesToChild } from "../../../utils/popoutStyles";
 
-const POPOUT_GEOMETRY_KEY = "nx_vc_popout_geometry";
-
-// Temporary test: call window.__testDocPiP() from DevTools console
-(window as any).__testDocPiP = async (): Promise<void> => {
-    try {
-        const pip = await (window as any).documentPictureInPicture.requestWindow({
-            width: 480,
-            height: 640,
-        });
-        console.log("PiP window:", pip);
-        console.log("PiP document:", pip.document);
-        const h1 = pip.document.createElement("h1");
-        h1.textContent = "Document PiP Works!";
-        h1.style.cssText = "color:white;font-family:sans-serif;background:#1a1a2e;margin:0;height:100vh;display:flex;align-items:center;justify-content:center";
-        pip.document.body.appendChild(h1);
-        console.log("SUCCESS: Document PiP is fully functional");
-    } catch (e) {
-        console.error("Document PiP FAILED:", e);
-    }
-};
-
-interface PopoutGeometry {
-    width: number;
-    height: number;
-    left: number;
-    top: number;
-}
-
-function getPopoutFeatures(): string {
-    try {
-        const saved = localStorage.getItem(POPOUT_GEOMETRY_KEY);
-        if (saved) {
-            const g: PopoutGeometry = JSON.parse(saved);
-            if (g.width > 0 && g.height > 0) {
-                return `width=${g.width},height=${g.height},left=${g.left},top=${g.top}`;
-            }
-        }
-    } catch { /* ignore */ }
-    return "width=480,height=640";
-}
-
-function savePopoutGeometry(child: Window): void {
-    try {
-        if (child.closed) return;
-        const geometry: PopoutGeometry = {
-            width: child.outerWidth,
-            height: child.outerHeight,
-            left: child.screenX,
-            top: child.screenY,
-        };
-        if (geometry.width > 0 && geometry.height > 0) {
-            localStorage.setItem(POPOUT_GEOMETRY_KEY, JSON.stringify(geometry));
-        }
-    } catch { /* ignore */ }
-}
-
 interface NexusVCPopoutProps {
     roomId: string;
+    /** Pre-opened child window (Document PiP or window.open fallback). */
+    childWindow: Window;
     onClose: () => void;
 }
 
 /**
- * Opens a popout window via window.open() and renders NexusVCRoomView
- * into it using ReactDOM.createPortal().
- *
- * The child window shares the same origin (about:blank), so MediaStream
- * objects and React portals work seamlessly.
- *
- * On Tauri, on_new_window intercepts the window.open() call and allows
- * it via NewWindowResponse::Allow.
+ * Renders NexusVCRoomView into a pre-opened child window using
+ * ReactDOM.createPortal(). The child window is opened by the caller
+ * (Document PiP preferred, window.open fallback).
  */
-export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Element | null {
+export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutProps): JSX.Element | null {
     const client = useMatrixClientContext();
-    const childRef = useRef<Window | null>(null);
     const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
 
-    // Open child window on mount
     useEffect(() => {
-        // Local flag scoped to THIS effect run. Each Strict Mode mount/remount
-        // gets its own `closed` variable, so stale unload events from a
-        // previously-closed child cannot trigger handleClose on a new child.
+        const child = childWindow;
         let closed = false;
-
-        const features = getPopoutFeatures();
-        console.log("[NexusVCPopout] Opening child window with features:", features);
-        const child = window.open("about:blank", "_blank", features);
-
-        console.log("[NexusVCPopout] window.open() returned:", child);
-
-        if (!child) {
-            console.error("[NexusVCPopout] window.open() returned null — aborting");
-            onClose();
-            return;
-        }
-
-        childRef.current = child;
-
-        // -- Close detection --
-        const handleClose = (): void => {
-            if (closed) return;
-            console.log("[NexusVCPopout] handleClose() called");
-            savePopoutGeometry(child);
-            closed = true;
-            onClose();
-        };
-
-        // Event-based detection
-        try {
-            child.addEventListener("beforeunload", () => {
-                console.log("[NexusVCPopout] child beforeunload fired");
-                savePopoutGeometry(child);
-            });
-            child.addEventListener("unload", () => {
-                console.log("[NexusVCPopout] child unload fired, child.closed:", child.closed);
-                setTimeout(() => {
-                    console.log("[NexusVCPopout] unload timeout — closed:", closed, "child.closed:", child.closed);
-                    if (!closed && child.closed) handleClose();
-                }, 100);
-            });
-        } catch (e) {
-            console.warn("[NexusVCPopout] Failed to attach event listeners:", e);
-        }
-
-        // Polling fallback (500ms)
-        let pollCount = 0;
-        const pollId = setInterval(() => {
-            pollCount++;
-            if (pollCount % 10 === 1) {
-                console.log(`[NexusVCPopout] poll #${pollCount} — closed: ${closed}, child.closed:`, child.closed);
-            }
-            if (child.closed && !closed) {
-                console.log("[NexusVCPopout] poll detected child.closed === true");
-                clearInterval(pollId);
-                handleClose();
-            }
-        }, 500);
-
-        // -- Geometry persistence --
-        try {
-            child.addEventListener("resize", () => savePopoutGeometry(child));
-        } catch { /* ignore */ }
-        const geometrySaveId = setInterval(() => savePopoutGeometry(child), 2000);
 
         // -- Set up the child document --
         const setupChild = (): void => {
@@ -165,31 +42,46 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
                 setPortalContainer(container);
-                console.log("[NexusVCPopout] setupChild() succeeded — portal container set");
-            } catch (e) {
-                console.warn("[NexusVCPopout] setupChild() failed, retrying in 50ms:", e);
-                if (!closed) {
-                    setTimeout(setupChild, 50);
-                }
+            } catch {
+                // Document may not be ready immediately (e.g., window.open + Allow).
+                if (!closed) setTimeout(setupChild, 50);
             }
         };
         setupChild();
 
-        return () => {
-            console.log("[NexusVCPopout] cleanup — closing child window");
-            clearInterval(pollId);
-            clearInterval(geometrySaveId);
-            savePopoutGeometry(child);
+        // -- Close detection --
+        const handleClose = (): void => {
+            if (closed) return;
             closed = true;
-            if (!child.closed) {
-                child.close();
+            onClose();
+        };
+
+        // pagehide: reliable for Document PiP; also fires for window.open
+        child.addEventListener("pagehide", handleClose);
+
+        // unload: additional signal for window.open popups
+        const onUnload = (): void => {
+            setTimeout(() => {
+                if (!closed && child.closed) handleClose();
+            }, 100);
+        };
+        child.addEventListener("unload", onUnload);
+
+        // Polling fallback for window.open (child.closed may not flip on all platforms)
+        const pollId = setInterval(() => {
+            if (child.closed && !closed) {
+                clearInterval(pollId);
+                handleClose();
             }
-            childRef.current = null;
+        }, 500);
+
+        return () => {
+            clearInterval(pollId);
+            closed = true;
+            if (!child.closed) child.close();
             setPortalContainer(null);
         };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-    console.log("[NexusVCPopout] render — portalContainer:", portalContainer ? "set" : "null");
+    }, [childWindow]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!portalContainer) return null;
 

@@ -39,7 +39,7 @@ const SPEAKER_DEBOUNCE_MS = 2000;
 export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewProps): JSX.Element | null {
     const client = useMatrixClientContext();
     const { members: rawParticipants, connected } = useVCParticipants(roomId);
-    const [poppedOut, setPoppedOut] = useState(false);
+    const [popoutWindow, setPopoutWindow] = useState<Window | null>(null);
     const viewRef = useRef<HTMLDivElement>(null);
     // Filter to resolved RoomMembers for layout components
     const members = useMemo(
@@ -147,7 +147,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     }
 
     // Popout: show placeholder in main window, render VC in child window
-    if (poppedOut && !isPopout) {
+    if (popoutWindow && !isPopout) {
         return (
             <div className="nx_VCRoomView">
                 <div className="nx_VCRoomView_popoutPlaceholder">
@@ -156,12 +156,19 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                     </div>
                     <AccessibleButton
                         className="nx_VCRoomView_popoutRestoreButton"
-                        onClick={() => setPoppedOut(false)}
+                        onClick={() => {
+                            if (!popoutWindow.closed) popoutWindow.close();
+                            setPopoutWindow(null);
+                        }}
                     >
                         元に戻す
                     </AccessibleButton>
                 </div>
-                <NexusVCPopout roomId={roomId} onClose={() => setPoppedOut(false)} />
+                <NexusVCPopout
+                    roomId={roomId}
+                    childWindow={popoutWindow}
+                    onClose={() => setPopoutWindow(null)}
+                />
             </div>
         );
     }
@@ -202,7 +209,25 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                 layoutMode={layoutMode}
                 onLayoutModeChange={setLayoutMode}
                 participantCount={members.length}
-                onPopout={!isPopout ? () => setPoppedOut(true) : undefined}
+                onPopout={!isPopout ? async () => {
+                    let win: Window | null = null;
+                    // Try Document Picture-in-Picture first (no address bar, always-on-top)
+                    if ("documentPictureInPicture" in window) {
+                        try {
+                            win = await (window as any).documentPictureInPicture.requestWindow({
+                                width: 480,
+                                height: 640,
+                            });
+                        } catch (e) {
+                            console.warn("[NexusVCPopout] Document PiP failed, falling back:", e);
+                        }
+                    }
+                    // Fallback to window.open
+                    if (!win) {
+                        win = window.open("about:blank", "_blank", "width=480,height=640");
+                    }
+                    if (win) setPopoutWindow(win);
+                } : undefined}
             />
             {viewContextMenu && (
                 <NexusVCViewContextMenu

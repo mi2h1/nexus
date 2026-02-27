@@ -124,8 +124,8 @@ export function NexusVCControlBar({
                     <EndCallIcon width={22} height={22} />
                 </AccessibleButton>
 
-                {/* Popout (Tauri only) */}
-                {onPopout && isTauri() && (
+                {/* Popout */}
+                {onPopout && (
                     <AccessibleButton
                         className="nx_VCControlBar_button"
                         onClick={onPopout}
