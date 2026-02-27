@@ -78,12 +78,10 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
                 const container = child.document.createElement("div");
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
-                // Copy styles and wait for stylesheets to load before showing
-                copyStylesToChild(child).then(() => {
-                    if (closed) return;
-                    setPortalContainer(container);
-                    if (isTauri()) showTauriPopout();
-                });
+                // Copy styles (link tags added synchronously, load in background)
+                copyStylesToChild(child);
+                setPortalContainer(container);
+                if (isTauri()) showTauriPopout();
             } catch {
                 // Document may not be ready immediately (e.g., window.open + Allow).
                 if (!closed) setTimeout(setupChild, 50);
