@@ -13,6 +13,19 @@ import { NexusVCRoomView } from "./NexusVCRoomView";
 import { copyStylesToChild } from "../../../utils/popoutStyles";
 import { isTauri } from "../../../utils/tauriHttp";
 
+// Pre-cache the Tauri invoke function so popout show/close don't pay
+// the dynamic import cost on the hot path.
+let _invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
+function getTauriInvoke(): Promise<typeof _invoke> {
+    if (_invoke) return Promise.resolve(_invoke);
+    return import("@tauri-apps/api/core").then(({ invoke }) => {
+        _invoke = invoke;
+        return invoke;
+    }).catch(() => null);
+}
+// Kick off the preload immediately at module load time
+if (isTauri()) getTauriInvoke();
+
 interface NexusVCPopoutProps {
     roomId: string;
     /** Pre-opened child window (Document PiP or window.open fallback). */
@@ -22,22 +35,14 @@ interface NexusVCPopoutProps {
 
 /** Close the vc-popout window via Tauri invoke (bypasses WebviewWindow class). */
 async function closeTauriPopout(): Promise<void> {
-    try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("plugin:window|close", { label: "vc-popout" });
-    } catch {
-        // Tauri API not available or window already gone
-    }
+    const invoke = await getTauriInvoke();
+    invoke?.("plugin:window|close", { label: "vc-popout" }).catch(() => {});
 }
 
 /** Show the vc-popout window via Tauri invoke. */
 async function showTauriPopout(): Promise<void> {
-    try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("plugin:window|show", { label: "vc-popout" });
-    } catch {
-        // Tauri API not available
-    }
+    const invoke = await getTauriInvoke();
+    invoke?.("plugin:window|show", { label: "vc-popout" }).catch(() => {});
 }
 
 /**
@@ -86,6 +91,9 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
                 `;
                 child.document.body.appendChild(overlay);
 
+                // Show the window immediately — overlay hides unstyled content
+                if (isTauri()) showTauriPopout();
+
                 const container = child.document.createElement("div");
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
@@ -102,7 +110,6 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
                 setTimeout(removeOverlay, 500);
 
                 setPortalContainer(container);
-                if (isTauri()) showTauriPopout();
             } catch {
                 // Document may not be ready immediately (e.g., window.open + Allow).
                 if (!closed) setTimeout(setupChild, 50);
