@@ -73,38 +73,76 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
     // Open child window on mount
     useEffect(() => {
         const features = getPopoutFeatures();
+        console.log("[NexusVCPopout] Opening child window with features:", features);
         const child = window.open("about:blank", "_blank", features);
 
+        console.log("[NexusVCPopout] window.open() returned:", child);
+        console.log("[NexusVCPopout] child === null:", child === null);
+
         if (!child) {
-            console.error("NexusVCPopout: window.open() returned null");
+            console.error("[NexusVCPopout] window.open() returned null — aborting");
             onClose();
             return;
         }
 
         childRef.current = child;
 
+        // -- Probe child window capabilities --
+        try {
+            console.log("[NexusVCPopout] child.closed:", child.closed);
+            console.log("[NexusVCPopout] child.document:", child.document);
+            console.log("[NexusVCPopout] child.document.readyState:", child.document?.readyState);
+            console.log("[NexusVCPopout] child.location:", String(child.location));
+        } catch (e) {
+            console.warn("[NexusVCPopout] Error probing child:", e);
+        }
+
         // -- Close detection --
         const handleClose = (): void => {
             if (closedRef.current) return;
+            console.log("[NexusVCPopout] handleClose() called");
             savePopoutGeometry(child);
             closedRef.current = true;
             onClose();
         };
 
-        // Event-based detection (fires before the child window fully closes)
+        // Event-based detection
         try {
-            child.addEventListener("beforeunload", () => savePopoutGeometry(child));
+            child.addEventListener("beforeunload", () => {
+                console.log("[NexusVCPopout] child beforeunload fired");
+                savePopoutGeometry(child);
+            });
             child.addEventListener("unload", () => {
-                // unload fires when the document unloads; check after a tick
+                console.log("[NexusVCPopout] child unload fired, child.closed:", child.closed);
                 setTimeout(() => {
+                    console.log("[NexusVCPopout] unload timeout — child.closed:", child.closed);
                     if (!closedRef.current && child.closed) handleClose();
                 }, 100);
             });
-        } catch { /* cross-origin fallback: rely on polling */ }
+            console.log("[NexusVCPopout] Event listeners attached successfully");
+        } catch (e) {
+            console.warn("[NexusVCPopout] Failed to attach event listeners:", e);
+        }
 
-        // Polling fallback (500ms)
+        // Polling fallback (500ms) — also log child.closed state
+        let pollCount = 0;
         const pollId = setInterval(() => {
+            pollCount++;
+            // Log every 10th poll (every 5 seconds) to avoid spam
+            if (pollCount % 10 === 1) {
+                try {
+                    console.log(`[NexusVCPopout] poll #${pollCount} — child.closed:`, child.closed);
+                    // Also try accessing document to detect broken reference
+                    void child.document;
+                } catch (e) {
+                    console.log(`[NexusVCPopout] poll #${pollCount} — child.document access error:`, e);
+                    clearInterval(pollId);
+                    handleClose();
+                    return;
+                }
+            }
             if (child.closed) {
+                console.log("[NexusVCPopout] poll detected child.closed === true");
                 clearInterval(pollId);
                 handleClose();
             }
@@ -114,10 +152,9 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
         try {
             child.addEventListener("resize", () => savePopoutGeometry(child));
         } catch { /* ignore */ }
-        // Periodic save to capture window moves (no "move" event in browsers)
         const geometrySaveId = setInterval(() => savePopoutGeometry(child), 2000);
 
-        // -- Set up the child document (with retry for Create mode) --
+        // -- Set up the child document --
         const setupChild = (): void => {
             if (closedRef.current) return;
             try {
@@ -127,9 +164,9 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
                 setPortalContainer(container);
-            } catch {
-                // With NewWindowResponse::Create, the document may not be
-                // ready immediately. Retry after a short delay.
+                console.log("[NexusVCPopout] setupChild() succeeded — portal container set");
+            } catch (e) {
+                console.warn("[NexusVCPopout] setupChild() failed, retrying in 50ms:", e);
                 if (!closedRef.current) {
                     setTimeout(setupChild, 50);
                 }
@@ -138,6 +175,7 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
         setupChild();
 
         return () => {
+            console.log("[NexusVCPopout] cleanup — closing child window");
             clearInterval(pollId);
             clearInterval(geometrySaveId);
             savePopoutGeometry(child);
@@ -149,6 +187,8 @@ export function NexusVCPopout({ roomId, onClose }: NexusVCPopoutProps): JSX.Elem
             setPortalContainer(null);
         };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    console.log("[NexusVCPopout] render — portalContainer:", portalContainer ? "set" : "null");
 
     if (!portalContainer) return null;
 
