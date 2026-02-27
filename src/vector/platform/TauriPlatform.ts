@@ -25,6 +25,10 @@ const UPDATE_POLL_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
  *   - No service worker registration (native app doesn't need it)
  */
 export default class TauriPlatform extends WebPlatform {
+    protected async registerServiceWorker(): Promise<void> {
+        // No-op: Tauri native app doesn't need a service worker
+    }
+
     public async getAppVersion(): Promise<string> {
         const { getVersion } = await import("@tauri-apps/api/app");
         return getVersion();
