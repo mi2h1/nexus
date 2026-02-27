@@ -25,23 +25,9 @@ const UPDATE_POLL_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
  *   - No service worker registration (native app doesn't need it)
  */
 export default class TauriPlatform extends WebPlatform {
-    protected async registerServiceWorker(): Promise<void> {
-        // Tauri doesn't register a new SW, but a stale one may already be
-        // running in WebView2 cache.  unregister() only takes effect on the
-        // NEXT navigation, so for the current session we must also add the
-        // message handler — otherwise the SW can't get auth data and all
-        // media requests fail with 404.
-        if ("serviceWorker" in navigator) {
-            // Let the active SW communicate for this session
-            navigator.serviceWorker.addEventListener("message", this.onServiceWorkerPostMessage);
-
-            // Remove stale registrations so future launches are clean
-            const registrations = await navigator.serviceWorker.getRegistrations();
-            for (const reg of registrations) {
-                await reg.unregister();
-            }
-        }
-    }
+    // Service worker IS needed in Tauri — it intercepts media requests and
+    // adds authentication headers (MSC3916).  The parent WebPlatform handles
+    // registration + message handler setup; no override needed.
 
     public async getAppVersion(): Promise<string> {
         const { getVersion } = await import("@tauri-apps/api/app");

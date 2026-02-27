@@ -43,6 +43,10 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
 
     private constructor() {
         super();
+        // Multiple hooks (useVCParticipants, useNexusParticipantStates, etc.)
+        // subscribe per-component.  With several VC channels in the room list,
+        // 10+ listeners are expected.
+        this.setMaxListeners(50);
     }
 
     /**

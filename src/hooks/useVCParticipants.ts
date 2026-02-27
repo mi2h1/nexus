@@ -130,6 +130,9 @@ export function useVCParticipants(roomId: string): VCParticipantsResult {
 
         // Room state listener: re-resolve RoomMember when member data arrives from /sync
         const roomState = room.currentState;
+        // Multiple hook instances (room list, VC view, channel icon) subscribe
+        // to the same RoomState — raise the limit to avoid spurious warnings.
+        if (roomState.getMaxListeners() < 50) roomState.setMaxListeners(50);
         roomState.on(RoomStateEvent.Members, updateMembers);
 
         // 接続中は CallEvent.Participants と ConnectionState も購読

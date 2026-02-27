@@ -9,7 +9,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type AriaRole, type JSX, type Ref, useCallback, useContext, useEffect, useState } from "react";
+import React, { type AriaRole, type JSX, type Ref, useCallback, useContext, useEffect, useRef, useState } from "react";
 import classNames from "classnames";
 import { ClientEvent, type SyncState } from "matrix-js-sdk/src/matrix";
 import { Avatar } from "@vector-im/compound-web";
@@ -106,6 +106,23 @@ const BaseAvatar = (props: IProps): JSX.Element => {
 
     const [imageUrl, onError] = useImageUrl({ url, urls });
 
+    // compound-web Avatar hard-codes loading="lazy" on its inner <img>.
+    // WebView2 (Tauri) aggressively defers these images, causing avatars to
+    // never appear.  Override to "eager" via a ref callback.
+    const internalRef = useRef<HTMLElement | null>(null);
+    const mergedRef = useCallback(
+        (node: HTMLElement | null) => {
+            internalRef.current = node;
+            if (typeof ref === "function") ref(node);
+            else if (ref) (ref as React.MutableRefObject<HTMLElement | null>).current = node;
+            if (node) {
+                const img = node.querySelector("img[loading='lazy']");
+                if (img) (img as HTMLImageElement).loading = "eager";
+            }
+        },
+        [ref],
+    );
+
     const extraProps: Partial<React.ComponentProps<typeof Avatar>> = {};
 
     if (onClick) {
@@ -120,7 +137,7 @@ const BaseAvatar = (props: IProps): JSX.Element => {
 
     return (
         <Avatar
-            ref={ref}
+            ref={mergedRef}
             src={imageUrl}
             id={idName ?? ""}
             name={name ?? ""}
