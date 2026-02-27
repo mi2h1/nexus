@@ -570,6 +570,14 @@ mod platform {
                 DrawBorderSettings::Default
             };
 
+            // Exclude requires Win11 23H2+ (IncludeSecondaryWindows API).
+            // Fall back to Default on older Windows to avoid SecondaryWindowsUnsupported.
+            let secondary = if GraphicsCaptureApi::is_secondary_windows_supported().unwrap_or(false) {
+                SecondaryWindowSettings::Exclude
+            } else {
+                SecondaryWindowSettings::Default
+            };
+
             match target_type.as_str() {
                 "window" => {
                     let hwnd_val: isize = target_value
@@ -587,7 +595,7 @@ mod platform {
                         target_window,
                         CursorCaptureSettings::WithCursor,
                         border,
-                        SecondaryWindowSettings::Exclude,
+                        secondary,
                         MinimumUpdateIntervalSettings::Default,
                         DirtyRegionSettings::Default,
                         ColorFormat::Bgra8,
