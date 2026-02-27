@@ -1224,6 +1224,22 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._inputLevel = Math.min(100, Math.round(rms * 300));
         this.emit(CallEvent.InputLevel, this._inputLevel);
 
+        // ── ローカル発話状態の即時更新（高速パス）──
+        // pollActiveSpeakers() の 250ms ポーリングを待たずに、ローカルユーザーの
+        // speaking 状態変化を 50ms 間隔（pollInputLevel の周期）で即座に emit する。
+        const myUserId = this.client.getUserId();
+        if (myUserId) {
+            const localSpeaking = !this._isMicMuted && this._inputLevel > 5;
+            const wasSpeaking = this._activeSpeakers.has(myUserId);
+            if (localSpeaking !== wasSpeaking) {
+                const updated = new Set(this._activeSpeakers);
+                if (localSpeaking) updated.add(myUserId);
+                else updated.delete(myUserId);
+                this._activeSpeakers = updated;
+                this.emit(CallEvent.ActiveSpeakers, updated);
+            }
+        }
+
         // Voice gate check
         const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
         if (!gateEnabled || this._isMicMuted) {

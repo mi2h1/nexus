@@ -11,9 +11,7 @@ import classNames from "classnames";
 import { MicOffSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
-import { useNexusActiveSpeakers } from "../../../../hooks/useNexusActiveSpeakers";
-import { useNexusParticipantStates } from "../../../../hooks/useNexusParticipantStates";
-import { useVCParticipants, type VCParticipant } from "../../../../hooks/useVCParticipants";
+import { useVCParticipants, type VCParticipantInfo } from "../../../../hooks/useVCParticipants";
 import MemberAvatar from "../../avatars/MemberAvatar";
 import BaseAvatar from "../../avatars/BaseAvatar";
 import InlineSpinner from "../../elements/InlineSpinner";
@@ -27,32 +25,17 @@ interface VoiceChannelParticipantsProps {
  * Displays the list of participants currently in a voice channel,
  * shown below the channel name in Discord style.
  *
- * Reads MatrixRTC session memberships directly instead of depending
- * on a local NexusVoiceConnection — so participants remain visible
- * even when the local user is not in the VC.
- *
  * Speaking participants get a green border on their avatar.
  */
 export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsProps): JSX.Element | null {
-    const client = useMatrixClientContext();
-    const { members, transitioningIds } = useVCParticipants(roomId);
-    const activeSpeakers = useNexusActiveSpeakers();
-    const participantStates = useNexusParticipantStates();
-    const myUserId = client.getUserId();
+    const { participants } = useVCParticipants(roomId);
 
-    if (members.length === 0) return null;
+    if (participants.length === 0) return null;
 
     return (
         <div className="mx_VoiceChannelParticipants">
-            {members.map((participant) => (
-                <VoiceChannelParticipantItem
-                    key={participant.userId}
-                    participant={participant}
-                    isSpeaking={activeSpeakers.has(participant.userId)}
-                    isTransitioning={transitioningIds.has(participant.userId)}
-                    participantState={participantStates.get(participant.userId)}
-                    myUserId={myUserId}
-                />
+            {participants.map((p) => (
+                <VoiceChannelParticipantItem key={p.userId} participant={p} />
             ))}
         </div>
     );
@@ -60,18 +43,12 @@ export function VoiceChannelParticipants({ roomId }: VoiceChannelParticipantsPro
 
 function VoiceChannelParticipantItem({
     participant,
-    isSpeaking,
-    isTransitioning,
-    participantState,
-    myUserId,
 }: {
-    participant: VCParticipant;
-    isSpeaking: boolean;
-    isTransitioning: boolean;
-    participantState?: { isMuted: boolean; isScreenSharing: boolean };
-    myUserId: string | null;
+    participant: VCParticipantInfo;
 }): JSX.Element {
-    const { userId, member } = participant;
+    const client = useMatrixClientContext();
+    const myUserId = client.getUserId();
+    const { userId, member, isSpeaking, isMuted, isScreenSharing, isTransitioning } = participant;
     const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
 
     const onContextMenu = useCallback(
@@ -111,14 +88,14 @@ function VoiceChannelParticipantItem({
                 )}
             </div>
             <span className="mx_VoiceChannelParticipants_name">{displayName}</span>
-            {!isTransitioning && participantState?.isMuted && (
+            {!isTransitioning && isMuted && (
                 <MicOffSolidIcon
                     className="mx_VoiceChannelParticipants_muteIcon"
                     width={14}
                     height={14}
                 />
             )}
-            {!isTransitioning && participantState?.isScreenSharing && (
+            {!isTransitioning && isScreenSharing && (
                 <span className="mx_VoiceChannelParticipants_sharingBadge">配信中</span>
             )}
             {menuPos && member && (

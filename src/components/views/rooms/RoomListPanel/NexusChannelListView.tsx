@@ -213,8 +213,8 @@ function VoiceChannelItem({
     matrixClient: ReturnType<typeof useMatrixClientContext>;
 }): JSX.Element {
     const [isTransitioning, setIsTransitioning] = useState(false);
-    const { members, callStartedTs } = useVCParticipants(roomId);
-    const hasParticipants = members.length > 0;
+    const { participants, callStartedTs } = useVCParticipants(roomId);
+    const hasParticipants = participants.length > 0;
     const elapsed = useElapsedTime(hasParticipants ? callStartedTs : null);
 
     useEffect(() => {

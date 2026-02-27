@@ -26,8 +26,8 @@ export function TextChannelIcon(): JSX.Element {
  * Green when anyone is in the call, grey otherwise.
  */
 export function VoiceChannelIcon({ roomId }: { roomId: string }): JSX.Element {
-    const { members } = useVCParticipants(roomId);
-    const hasParticipants = members.length > 0;
+    const { participants } = useVCParticipants(roomId);
+    const hasParticipants = participants.length > 0;
 
     const color = hasParticipants
         ? "var(--cpd-color-icon-success-primary)" // green

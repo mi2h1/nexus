@@ -42,12 +42,15 @@ type SpotlightTarget =
  */
 export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewProps): JSX.Element | null {
     const client = useMatrixClientContext();
-    const { members: rawParticipants, connected } = useVCParticipants(roomId);
+    const { participants: rawParticipants, connected } = useVCParticipants(roomId);
     const [popoutWindow, setPopoutWindow] = useState<Window | null>(null);
     const viewRef = useRef<HTMLDivElement>(null);
     // Filter to resolved RoomMembers for layout components
     const members = useMemo(
-        () => rawParticipants.filter((p) => p.member !== null).map((p) => p.member!),
+        () =>
+            rawParticipants
+                .filter((p): p is typeof p & { member: RoomMember } => p.member !== null)
+                .map((p) => p.member),
         [rawParticipants],
     );
     const screenShares = useNexusScreenShares(roomId);

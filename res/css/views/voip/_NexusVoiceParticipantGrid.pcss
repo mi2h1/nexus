@@ -31,7 +31,7 @@
     border: 3px solid transparent;
     transition:
         background-color 0.15s ease,
-        border-color 0.15s ease;
+        border-color 0.2s ease; /* オフセット: ゆっくり消える */
 
     &:hover {
         background-color: var(--cpd-color-bg-subtle-primary);
@@ -39,6 +39,9 @@
 
     &.mx_NexusVoiceParticipantTile--speaking {
         border-color: var(--cpd-color-icon-success-primary);
+        transition:
+            background-color 0.15s ease,
+            border-color 0.05s ease; /* オンセット: 即座に光る */
     }
 
     &.mx_NexusVoiceParticipantTile--small {

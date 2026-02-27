@@ -172,10 +172,11 @@
     flex-shrink: 0;
     border-radius: 50%;
     border: 2px solid transparent;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.2s ease; /* オフセット: ゆっくり消える */
 
     &.mx_VoiceChannelParticipants_avatar--speaking {
         border-color: var(--cpd-color-icon-success-primary);
+        transition: border-color 0.05s ease; /* オンセット: 即座に光る */
     }
 
     /* Reset InlineSpinner margins inside avatar container */
