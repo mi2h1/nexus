@@ -7,6 +7,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { useState, useRef, useEffect, useCallback, type JSX, useMemo } from "react";
 import ReactDOM from "react-dom";
+import classNames from "classnames";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 
 import { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
@@ -68,6 +69,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     }, [connected, popoutWindow]);
 
     const [layoutMode, setLayoutMode] = useState<VCLayoutMode>("grid");
+    const [focusMode, setFocusMode] = useState(false);
 
     // ─── Focus target (click-based spotlight) ────────────
     const [focusTarget, setFocusTarget] = useState<SpotlightTarget | null>(null);
@@ -85,6 +87,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     const handleUnfocus = useCallback(() => {
         setFocusTarget(null);
         setLayoutMode("grid");
+        setFocusMode(false);
     }, []);
 
     // ─── Panel visibility (context menu) ────────────────
@@ -243,6 +246,23 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
         );
     }
 
+    const controlBar = (
+        <NexusVCControlBar
+            roomId={roomId}
+            isPopout={isPopout}
+            portalContainer={viewRef.current?.ownerDocument.body}
+            onPopout={!isPopout ? async () => {
+                const win = window.open("about:blank", "_blank", "width=480,height=640");
+                if (win) setPopoutWindow(win);
+            } : undefined}
+            onRestoreFromPopout={isPopout ? () => {
+                import("@tauri-apps/api/core").then(({ invoke }) => {
+                    invoke("plugin:window|close", { label: "vc-popout" });
+                }).catch(() => {});
+            } : undefined}
+        />
+    );
+
     return (
         <div className="nx_VCRoomView" ref={viewRef}>
             <div className="nx_VCRoomView_content" onContextMenu={onViewContextMenu}>
@@ -259,6 +279,9 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                         participantStates={participantStates}
                         hideNonScreenSharePanels={hideNonScreenSharePanels}
                         onUnfocus={handleUnfocus}
+                        focusMode={focusMode}
+                        onToggleFocusMode={() => setFocusMode((prev) => !prev)}
+                        controlBar={focusMode ? controlBar : undefined}
                     />
                 ) : (
                     <GridLayout
@@ -276,20 +299,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                     />
                 )}
             </div>
-            <NexusVCControlBar
-                roomId={roomId}
-                isPopout={isPopout}
-                portalContainer={viewRef.current?.ownerDocument.body}
-                onPopout={!isPopout ? async () => {
-                    const win = window.open("about:blank", "_blank", "width=480,height=640");
-                    if (win) setPopoutWindow(win);
-                } : undefined}
-                onRestoreFromPopout={isPopout ? () => {
-                    import("@tauri-apps/api/core").then(({ invoke }) => {
-                        invoke("plugin:window|close", { label: "vc-popout" });
-                    }).catch(() => {});
-                } : undefined}
-            />
+            {!(layoutMode === "spotlight" && focusMode) && controlBar}
             {viewContextMenu && (
                 <NexusVCViewContextMenu
                     ref={contextMenuRef}
@@ -428,6 +438,10 @@ interface SpotlightLayoutProps {
     /** True when non-screen-share panels are hidden via context menu. */
     hideNonScreenSharePanels?: boolean;
     onUnfocus: () => void;
+    focusMode?: boolean;
+    onToggleFocusMode?: () => void;
+    /** ControlBar element passed when focusMode is active (rendered in focus overlay). */
+    controlBar?: React.ReactNode;
 }
 
 function SpotlightLayout({
@@ -442,6 +456,9 @@ function SpotlightLayout({
     participantStates,
     hideNonScreenSharePanels,
     onUnfocus,
+    focusMode,
+    onToggleFocusMode,
+    controlBar,
 }: SpotlightLayoutProps): JSX.Element {
     // Manual screen share selection (null = auto from focusTarget)
     const [manualScreenShareId, setManualScreenShareId] = useState<string | null>(null);
@@ -482,7 +499,9 @@ function SpotlightLayout({
         bottomBarScreenShares.length > 0 || unwatchedScreenShares.length > 0 || bottomBarMembers.length > 0;
 
     return (
-        <div className="nx_VCRoomView_spotlight">
+        <div className={classNames("nx_VCRoomView_spotlight", {
+            "nx_VCRoomView_spotlight--focusMode": focusMode,
+        })}>
             <div className="nx_VCRoomView_spotlightMain" onClick={onUnfocus} style={{ cursor: "pointer" }}>
                 {effectiveTarget?.type === "screenshare" ? (
                     <ScreenShareTile
@@ -502,9 +521,24 @@ function SpotlightLayout({
                         画面を共有しているユーザーはいません
                     </div>
                 ) : null}
+
+                {/* フォーカスオーバーレイ（ホバー時表示） */}
+                <div className="nx_VCRoomView_focusOverlay" onClick={(e) => e.stopPropagation()}>
+                    {focusMode && controlBar}
+                    {(focusMode || hasBottomBar) && (
+                        <button
+                            className="nx_VCRoomView_focusToggleButton"
+                            onClick={(e) => { e.stopPropagation(); onToggleFocusMode?.(); }}
+                        >
+                            {focusMode ? "メンバーを表示" : "メンバーを非表示"}
+                        </button>
+                    )}
+                </div>
             </div>
             {hasBottomBar && (
-                <div className="nx_VCRoomView_spotlightBottomBar">
+                <div className={classNames("nx_VCRoomView_spotlightBottomBar", {
+                    "nx_VCRoomView_spotlightBottomBar--hidden": focusMode,
+                })}>
                     {bottomBarScreenShares.map((share) => (
                         <div
                             key={`ss-${share.participantIdentity}`}
