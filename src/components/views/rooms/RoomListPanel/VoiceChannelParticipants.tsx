@@ -8,7 +8,7 @@
 import React, { type JSX, useCallback, useState } from "react";
 
 import classNames from "classnames";
-import { MicOffSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { MicOff } from "lucide-react";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { useVCParticipants, type VCParticipantInfo } from "../../../../hooks/useVCParticipants";
@@ -109,10 +109,9 @@ function VoiceChannelParticipantItem({
             </div>
             <span className="mx_VoiceChannelParticipants_name">{displayName}</span>
             {!isTransitioning && isMuted && (
-                <MicOffSolidIcon
+                <MicOff
                     className="mx_VoiceChannelParticipants_muteIcon"
-                    width={14}
-                    height={14}
+                    size={14}
                 />
             )}
             {!isTransitioning && isScreenSharing && (

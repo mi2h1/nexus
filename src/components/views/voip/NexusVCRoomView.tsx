@@ -23,7 +23,7 @@ import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../stores/NexusVoic
 import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
-import { VisibilityOffIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { EyeOff } from "lucide-react";
 import { NexusVCPopout } from "./NexusVCPopout";
 
 interface NexusVCRoomViewProps {
@@ -408,7 +408,7 @@ const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewConte
                                 onClose();
                             }}
                         >
-                            <VisibilityOffIcon width={18} height={18} />
+                            <EyeOff size={18} />
                             <span>視聴を停止</span>
                         </div>
                         <div className="nx_VCViewContextMenu_separator" />

@@ -6,8 +6,7 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { useCallback, useRef, useState } from "react";
-import { EndCallIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
-import ShareScreenIcon from "@vector-im/compound-design-tokens/assets/web/icons/share-screen";
+import { PhoneOff, ScreenShare } from "lucide-react";
 
 import { type Call, ConnectionState } from "../../../../models/Call";
 import type { NexusVoiceConnection } from "../../../../models/NexusVoiceConnection";
@@ -102,7 +101,7 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
                 ref={shareButtonRef}
                 title={isScreenSharing ? "画面共有を停止" : "画面を共有"}
             >
-                <ShareScreenIcon width={20} height={20} />
+                <ScreenShare size={20} />
             </AccessibleButton>
             {showSharePanel && shareButtonRef.current && (() => {
                 const rect = shareButtonRef.current!.getBoundingClientRect();
@@ -120,7 +119,7 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
                 onClick={onDisconnect}
                 title="通話を終了"
             >
-                <EndCallIcon width={20} height={20} />
+                <PhoneOff size={20} />
             </AccessibleButton>
         </div>
     );

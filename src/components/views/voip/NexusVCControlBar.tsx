@@ -7,16 +7,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { useCallback, useRef, useState, type JSX } from "react";
 import classNames from "classnames";
-import {
-    MicOnSolidIcon,
-    MicOffSolidIcon,
-    ShareScreenSolidIcon,
-    SettingsSolidIcon,
-    EndCallIcon,
-    PopOutIcon,
-    CollapseIcon,
-} from "@vector-im/compound-design-tokens/assets/web/icons";
-import { MonitorOff } from "lucide-react";
+import { Mic, MicOff, ScreenShare, Settings, PhoneOff, ExternalLink, Minimize2, MonitorOff } from "lucide-react";
 
 import { useNexusVoice } from "../../../hooks/useNexusVoice";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
@@ -108,9 +99,9 @@ export function NexusVCControlBar({
                     disableTooltip={isPopout}
                 >
                     {isMicMuted ? (
-                        <MicOffSolidIcon width={22} height={22} />
+                        <MicOff size={22} />
                     ) : (
-                        <MicOnSolidIcon width={22} height={22} />
+                        <Mic size={22} />
                     )}
                 </AccessibleButton>
 
@@ -125,7 +116,7 @@ export function NexusVCControlBar({
                     title={isScreenSharing ? (isTauri() ? "配信設定" : "共有を停止") : "画面を共有"}
                     disableTooltip={isPopout}
                 >
-                    <ShareScreenSolidIcon width={22} height={22} />
+                    <ScreenShare size={22} />
                 </AccessibleButton>
 
                 {/* Settings */}
@@ -135,7 +126,7 @@ export function NexusVCControlBar({
                     title="設定"
                     disableTooltip={isPopout}
                 >
-                    <SettingsSolidIcon width={22} height={22} />
+                    <Settings size={22} />
                 </AccessibleButton>
 
                 {/* End call */}
@@ -145,7 +136,7 @@ export function NexusVCControlBar({
                     title="通話を終了"
                     disableTooltip={isPopout}
                 >
-                    <EndCallIcon width={22} height={22} />
+                    <PhoneOff size={22} />
                 </AccessibleButton>
 
                 {/* Stop watching screen share */}
@@ -169,7 +160,7 @@ export function NexusVCControlBar({
                         onClick={onPopout}
                         title="別ウィンドウで表示"
                     >
-                        <PopOutIcon width={20} height={20} />
+                        <ExternalLink size={20} />
                     </AccessibleButton>
                 )}
                 {onRestoreFromPopout && (
@@ -179,7 +170,7 @@ export function NexusVCControlBar({
                         title="元に戻す"
                         disableTooltip={isPopout}
                     >
-                        <CollapseIcon width={20} height={20} />
+                        <Minimize2 size={20} />
                     </AccessibleButton>
                 )}
             </div>
