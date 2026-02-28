@@ -758,10 +758,11 @@ function GridLayout({
                     ))}
                     {members.map((member) => {
                         const state = participantStates.get(member.userId);
+                        const speaking = activeSpeakers.has(member.userId);
                         return (
                             <div
                                 key={member.userId}
-                                className="nx_VCRoomView_gridPanel"
+                                className={`nx_VCRoomView_gridPanel${speaking ? " nx_VCRoomView_gridPanel--speaking" : ""}`}
                                 onClick={() => onFocusMember(member)}
                             >
                                 <ParticipantTile
