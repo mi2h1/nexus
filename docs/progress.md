@@ -113,11 +113,19 @@ nexus/                          # element-web フォーク
 | VC ポップアウトウィンドウ | Tauri `on_new_window` + `NewWindowResponse::Create` + `ReactDOM.createPortal()` |
 | メインウィンドウ起動時フラッシュ防止 | `.visible(false)` + `.background_color()` → React 描画完了後 `show()` |
 | サービスワーカー Tauri 対応 | `TauriPlatform` は親の `WebPlatform.registerServiceWorker()` に委譲（SW は認証メディア取得に必須） |
+| 画面共有ピッカー サムネイルキャッシュ | WGC キャプチャ中は前回のサムネイルキャッシュを返す（GDI がビデオメモリを読み取る問題を回避） |
 
 ### ロードマップ
 
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 2026-03-01 (v0.2.10: 画面共有ピッカー サムネイルキャッシュ)
+- **画面共有ピッカー: キャプチャ中サムネイルキャッシュ**: WGC キャプチャ中に GDI `StretchBlt` が同じビデオメモリを読み取り、サムネイルが共有画面そのものになる問題を修正
+  - `THUMBNAIL_CACHE` static 変数を追加（`Mutex<Option<HashMap<String, (String, u32, u32)>>>`）
+  - キャプチャ非実行時: 通常通りサムネイル取得 → キャッシュに保存
+  - キャプチャ中: キャッシュから前回のサムネイルを返す（ウィンドウリストの追加/削除検出はそのまま動作）
+  - `stop_capture()` でキャッシュクリア → 停止直後の次ポーリングで最新サムネイルを再取得
 
 #### 2026-03-01 (VC 音声品質改善 + ポップアウト堅牢化)
 - **画面共有音声 Web Audio パイプライン（Tauri）**: 画面共有の受信音声を Web Audio 経由に変更（>100% 音量対応）
