@@ -129,16 +129,16 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
             onClose();
         };
 
-        // pagehide: reliable for Document PiP; also fires for window.open
-        child.addEventListener("pagehide", handleClose);
-
-        // unload: additional signal for window.open popups
-        const onUnload = (): void => {
+        // pagehide / unload: detect window close.
+        // Both events also fire during page navigation (about:blank → popout.html),
+        // so we defer and check child.closed to distinguish real close from navigation.
+        const onPageEvent = (): void => {
             setTimeout(() => {
                 if (!closed && child.closed) handleClose();
             }, 100);
         };
-        child.addEventListener("unload", onUnload);
+        child.addEventListener("pagehide", onPageEvent);
+        child.addEventListener("unload", onPageEvent);
 
         // Polling fallback for window.open (child.closed may not flip on all platforms)
         const pollId = setInterval(() => {
