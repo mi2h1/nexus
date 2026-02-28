@@ -606,15 +606,33 @@ function calculateGridLayout(
     const availW = containerW - 2 * GRID_PADDING;
     const availH = containerH - 2 * GRID_PADDING;
 
+    let best: { panelWidth: number; panelHeight: number; area: number } | null = null;
+
     for (let cols = 1; cols <= itemCount; cols++) {
         const rows = Math.ceil(itemCount / cols);
-        const panelW = (availW - (cols - 1) * GRID_GAP) / cols;
-        const panelH = panelW * 9 / 16;
-        const totalH = rows * panelH + (rows - 1) * GRID_GAP;
 
-        if (totalH <= availH && panelW >= MIN_PANEL_W) {
-            return { panelWidth: panelW, panelHeight: panelH };
+        // 幅基準: パネル幅をコンテナ幅から決定し、高さを 9:16 で計算
+        const panelWFromWidth = (availW - (cols - 1) * GRID_GAP) / cols;
+        const panelHFromWidth = panelWFromWidth * 9 / 16;
+
+        // 高さ基準: パネル高さをコンテナ高さから決定し、幅を 16:9 で計算
+        const panelHFromHeight = (availH - (rows - 1) * GRID_GAP) / rows;
+        const panelWFromHeight = panelHFromHeight * 16 / 9;
+
+        // 両方の制約を満たす方（小さい方）を採用
+        const panelW = Math.min(panelWFromWidth, panelWFromHeight);
+        const panelH = panelW * 9 / 16;
+
+        if (panelW >= MIN_PANEL_W) {
+            const area = panelW * panelH;
+            if (!best || area > best.area) {
+                best = { panelWidth: panelW, panelHeight: panelH, area };
+            }
         }
+    }
+
+    if (best) {
+        return { panelWidth: best.panelWidth, panelHeight: best.panelHeight };
     }
 
     // フォールバック: 全アイテム1行
