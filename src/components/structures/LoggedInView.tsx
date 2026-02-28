@@ -65,6 +65,7 @@ import { type SwitchSpacePayload } from "../../dispatcher/payloads/SwitchSpacePa
 import LeftPanelLiveShareWarning from "../views/beacon/LeftPanelLiveShareWarning";
 import HomePage from "./HomePage";
 import { PipContainer } from "./PipContainer";
+import { NexusVCPopoutContainer } from "../views/voip/NexusVCPopoutContainer";
 import { monitorSyncedPushRules } from "../../utils/pushRules/monitorSyncedPushRules";
 import { type ConfigOptions } from "../../SdkConfig";
 import { MatrixClientContextProvider } from "./MatrixClientContextProvider";
@@ -797,6 +798,7 @@ class LoggedInView extends React.Component<IProps, IState> {
                     </div>
                 </div>
                 <PipContainer />
+                <NexusVCPopoutContainer />
                 <NonUrgentToastContainer />
                 {audioFeedArraysForCalls}
             </MatrixClientContextProvider>

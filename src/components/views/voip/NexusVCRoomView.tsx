@@ -24,7 +24,6 @@ import type { ScreenShareInfo } from "../../../models/Call";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
 import { IconEyeOff } from "@tabler/icons-react";
-import { NexusVCPopout } from "./NexusVCPopout";
 
 interface NexusVCRoomViewProps {
     roomId: string;
@@ -44,7 +43,9 @@ type SpotlightTarget =
 export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewProps): JSX.Element | null {
     const client = useMatrixClientContext();
     const { participants: rawParticipants, connected } = useVCParticipants(roomId);
-    const [popoutWindow, setPopoutWindow] = useState<Window | null>(null);
+    const [popoutWindow, setPopoutWindow] = useState<Window | null>(() =>
+        NexusVoiceStore.instance.getPopoutWindow(),
+    );
     const [viewEl, setViewEl] = useState<HTMLDivElement | null>(null);
     // Filter to resolved RoomMembers for layout components
     const members = useMemo(
@@ -58,15 +59,14 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     const activeSpeakers = useNexusActiveSpeakers();
     const participantStates = useNexusParticipantStates();
 
-    // Close popout window when disconnecting from VC
+    // Sync popout state from store (store is the source of truth)
     useEffect(() => {
-        if (!connected && popoutWindow) {
-            setPopoutWindow(null);
-            import("@tauri-apps/api/core").then(({ invoke }) => {
-                invoke("plugin:window|close", { label: "vc-popout" });
-            }).catch(() => {});
-        }
-    }, [connected, popoutWindow]);
+        const onPopoutChanged = (win: Window | null): void => setPopoutWindow(win);
+        NexusVoiceStore.instance.on(NexusVoiceStoreEvent.PopoutChanged, onPopoutChanged);
+        return () => {
+            NexusVoiceStore.instance.off(NexusVoiceStoreEvent.PopoutChanged, onPopoutChanged);
+        };
+    }, []);
 
     const [layoutMode, setLayoutMode] = useState<VCLayoutMode>("grid");
     const [focusMode, setFocusMode] = useState(false);
@@ -219,7 +219,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
         );
     }
 
-    // Popout: show placeholder in main window, render VC in child window
+    // Popout: show placeholder in main window (NexusVCPopout is rendered by LoggedInView)
     if (popoutWindow && !isPopout) {
         return (
             <div className="nx_VCRoomView">
@@ -230,18 +230,13 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                     <AccessibleButton
                         className="nx_VCRoomView_popoutRestoreButton"
                         onClick={() => {
+                            NexusVoiceStore.instance.setPopoutWindow(null);
                             if (!popoutWindow.closed) popoutWindow.close();
-                            setPopoutWindow(null);
                         }}
                     >
                         元に戻す
                     </AccessibleButton>
                 </div>
-                <NexusVCPopout
-                    roomId={roomId}
-                    childWindow={popoutWindow}
-                    onClose={() => setPopoutWindow(null)}
-                />
             </div>
         );
     }
@@ -253,9 +248,10 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
             portalContainer={viewEl?.ownerDocument.body}
             onPopout={!isPopout ? async () => {
                 const win = window.open("about:blank", "_blank", "width=480,height=640");
-                if (win) setPopoutWindow(win);
+                if (win) NexusVoiceStore.instance.setPopoutWindow(win);
             } : undefined}
             onRestoreFromPopout={isPopout ? () => {
+                NexusVoiceStore.instance.setPopoutWindow(null);
                 import("@tauri-apps/api/core").then(({ invoke }) => {
                     invoke("plugin:window|close", { label: "vc-popout" });
                 }).catch(() => {});

@@ -140,6 +140,7 @@ class PipContainerInner extends React.Component<IProps, IState> {
 
         // Nexus: track voice connection changes for PiP
         NexusVoiceStore.instance.on(NexusVoiceStoreEvent.ActiveConnection, this.onNexusActiveConnection);
+        NexusVoiceStore.instance.on(NexusVoiceStoreEvent.PopoutChanged, this.onNexusPopoutChanged);
         this.attachNexusConnectionListeners(NexusVoiceStore.instance.getActiveConnection());
     }
 
@@ -159,6 +160,7 @@ class PipContainerInner extends React.Component<IProps, IState> {
 
         // Nexus: cleanup
         NexusVoiceStore.instance.off(NexusVoiceStoreEvent.ActiveConnection, this.onNexusActiveConnection);
+        NexusVoiceStore.instance.off(NexusVoiceStoreEvent.PopoutChanged, this.onNexusPopoutChanged);
         this.detachNexusConnectionListeners();
     }
 
@@ -191,6 +193,10 @@ class PipContainerInner extends React.Component<IProps, IState> {
         this.updateNexusPipScreenShare();
     };
 
+    private onNexusPopoutChanged = (): void => {
+        this.updateNexusPipScreenShare();
+    };
+
     private updateNexusPipScreenShare(viewedRoomId?: string): void {
         const currentViewedRoomId = viewedRoomId ?? this.state.viewedRoomId;
         const conn = NexusVoiceStore.instance.getActiveConnection();
@@ -201,6 +207,11 @@ class PipContainerInner extends React.Component<IProps, IState> {
         const vcRoomId = conn.roomId;
         // If viewing the VC room, the inline view handles display — no PiP
         if (currentViewedRoomId === vcRoomId) {
+            this.setState({ nexusPipScreenShare: null });
+            return;
+        }
+        // If popout window is active, it handles screen share display — no PiP
+        if (NexusVoiceStore.instance.getPopoutWindow()) {
             this.setState({ nexusPipScreenShare: null });
             return;
         }

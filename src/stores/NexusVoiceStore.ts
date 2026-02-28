@@ -10,6 +10,7 @@ import { type Room } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
 import { NexusVoiceConnection, playVcSound, VC_STANDBY_SOUND, VC_JOIN_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
+import { isTauri } from "../utils/tauriHttp";
 import { CallStore, CallStoreEvent } from "./CallStore";
 import { ConnectionState } from "../models/Call";
 import { MatrixClientPeg } from "../MatrixClientPeg";
@@ -18,12 +19,14 @@ export enum NexusVoiceStoreEvent {
     ActiveConnection = "active_connection",
     PreMicMuted = "pre_mic_muted",
     RequestSpotlight = "request_spotlight",
+    PopoutChanged = "popout_changed",
 }
 
 type NexusVoiceStoreEventHandlerMap = {
     [NexusVoiceStoreEvent.ActiveConnection]: (connection: NexusVoiceConnection | null) => void;
     [NexusVoiceStoreEvent.PreMicMuted]: (muted: boolean) => void;
     [NexusVoiceStoreEvent.RequestSpotlight]: (participantIdentity: string) => void;
+    [NexusVoiceStoreEvent.PopoutChanged]: (popoutWindow: Window | null) => void;
 };
 
 /**
@@ -43,6 +46,7 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
     private connections = new Map<string, NexusVoiceConnection>();
     private _preMicMuted = false;
     private _pendingSpotlight: string | null = null;
+    private _popoutWindow: Window | null = null;
 
     private constructor() {
         super();
@@ -194,6 +198,18 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
         this._preMicMuted = connection.isMicMuted;
         this.emit(NexusVoiceStoreEvent.PreMicMuted, this._preMicMuted);
 
+        // Close popout window if open
+        if (this._popoutWindow) {
+            if (isTauri()) {
+                import("@tauri-apps/api/core").then(({ invoke }) => {
+                    invoke("plugin:window|close", { label: "vc-popout" });
+                }).catch(() => {});
+            } else if (!this._popoutWindow.closed) {
+                this._popoutWindow.close();
+            }
+            this.setPopoutWindow(null);
+        }
+
         // Play leave SE immediately for instant feedback
         playVcSound(VC_LEAVE_SOUND);
 
@@ -225,5 +241,22 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
      */
     public getActiveConnection(): NexusVoiceConnection | null {
         return this.activeConnection;
+    }
+
+    // ─── Popout window management ──────────────────────────
+
+    /**
+     * Get the current popout window reference.
+     */
+    public getPopoutWindow(): Window | null {
+        return this._popoutWindow;
+    }
+
+    /**
+     * Set or clear the popout window. Emits PopoutChanged.
+     */
+    public setPopoutWindow(win: Window | null): void {
+        this._popoutWindow = win;
+        this.emit(NexusVoiceStoreEvent.PopoutChanged, win);
     }
 }
