@@ -118,7 +118,15 @@ nexus/                          # element-web フォーク
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
 
-#### 2026-02-28 (v0.2.8: Discord 風フォーカスビュー + GridLayout 空白フレーム修正)
+#### 2026-02-28 (v0.2.7: フォーカスビュー + グリッド改修 + メディアキャッシュ)
+- **Service Worker メディアキャッシュ**: Cache API でメディアレスポンスをキャッシュ
+  - MXC メディア（アバター・スペースアイコン等）を `nexus-media-v1` キャッシュストアに保存
+  - 同一 URL への同時リクエスト重複排除（ログイン直後の並列リクエスト対策）
+  - 2000 エントリ上限、FIFO eviction（fire-and-forget）
+  - activate イベントで旧バージョンキャッシュを自動削除
+- **アイコンライブラリ移行**: lucide-react → @tabler/icons-react に全面移行
+  - Nexus 独自コンポーネントのアイコンを統一（ポップアウト、チャット、画面共有等）
+  - VC チャットボタンを `IconMessageCircleFilled` に変更
 - **Discord 風フォーカスビュー（メンバー非表示 / 大画面最大化）**:
   - SpotlightLayout に `focusMode` state を追加
   - 非表示: ボトムバーが `height: 0` + `opacity: 0` アニメーションで消え、大画面がコントロールバーの下に潜り込む形で全体に拡大
@@ -133,8 +141,6 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 - **GridLayout マウント時の空白フレーム解消**:
   - `useLayoutEffect` で `getBoundingClientRect()` を使い初期コンテナサイズを同期読み取り
   - スポットライト → グリッド切替時のちらつきを解消
-
-#### 2026-02-28 (v0.2.7: VC グリッドレイアウト改修 + ポップアウト改善 + SW 修正)
 - **VC グリッドレイアウト改修**: CSS Grid → JS 計算 + flexbox に変更
   - `ResizeObserver` でコンテナサイズ監視、`calculateGridLayout()` で最適列数を探索
   - 全パネル統一 16:9 サイズ（画面共有の余白は黒背景）

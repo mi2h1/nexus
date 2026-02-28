@@ -2,7 +2,17 @@
 
 ## 現在の状態
 
-### 直近の作業（2026-02-28）
+### 直近の作業（2026-02-28、v0.2.7 リリース）
+
+**Service Worker メディアキャッシュ**
+- Cache API でメディアレスポンス（アバター・スペースアイコン等）をキャッシュ
+- 同一 URL への同時リクエスト重複排除（ログイン直後の並列リクエスト対策）
+- 2000 エントリ上限、FIFO eviction（fire-and-forget）
+- activate イベントで旧バージョンキャッシュを自動削除
+
+**アイコンライブラリ移行**
+- lucide-react → @tabler/icons-react に全面移行
+- VC チャットボタンを `IconMessageCircleFilled` に変更
 
 **Discord 風フォーカスビュー（メンバー非表示 / 大画面最大化）**
 - SpotlightLayout にフォーカスモードを追加（Discord の Focus ビュー相当）
@@ -16,39 +26,11 @@
 - CSS Grid → JS 計算 + flexbox に変更
 - `ResizeObserver` でコンテナサイズ監視、`calculateGridLayout()` で最適列数を探索
 - 全パネル統一 16:9 サイズ（画面共有の余白は黒背景）
-- 奇数パネルの最終行は `justify-content: center` で中央寄せ（三角配置）
-- パネル最大サイズ上限なし、最小幅 120px
-- グリッド padding を 24px → 12px に縮小
 
-**Service Worker 修正（Tauri メディア読み込み失敗）**
-- 原因: `TauriPlatform` が `registerServiceWorker()` を no-op にしていたため、
-  SW がメディアリクエストをインターセプトするが message handler が未登録 → postMessage タイムアウト → 404
-- 修正: override を削除し親の `WebPlatform.registerServiceWorker()` に委譲
-- `onServiceWorkerPostMessage` を `private` → `protected` に変更
-
-**ポップアウトウィンドウ改善**
-- 「元に戻す」ボタン追加: コントロールバー右下に `CollapseIcon`（PopOutIcon と同じ位置）
-- FOUC 防止: スタイルシート読み込み完了までテーマ背景色のオーバーレイで覆う（500ms タイムアウトフォールバック付き）
-- 表示ラグ削減: Tauri invoke をモジュールロード時にプリキャッシュ + `showTauriPopout()` をオーバーレイ作成直後に移動
-
-**コンソール警告修正**
-- `MaxListenersExceededWarning`: `NexusVoiceStore.setMaxListeners(50)` + `RoomState.setMaxListeners(50)`
-- Avatar `loading="lazy"`: BaseAvatar の ref callback で compound-web 内部の img を `eager` に書き換え（WebView2 対策）
-
-**前回セッションの作業**
-- VC ポップアウトウィンドウ実装（Tauri `on_new_window` + `ReactDOM.createPortal()`）
-- メインウィンドウ起動時フラッシュ修正
-- 循環参照修正（NexusVCRoomView ↔ NexusVCPopout）
-
-**v0.2.5: UI大幅改善・E2EE無効化・パフォーマンス向上**
-- E2EE 強制無効化（`shouldForceDisableEncryption()` を常に true に）
-  - 新規ルームは暗号化なしで作成、暗号化トグルも無効化
-  - MessageComposer の e2eIconWrapper 要素を完全削除
-- チャット初期読み込み高速化（`INITIAL_SIZE` 30 → 50）
-- `react-beautiful-dnd` → `@hello-pangea/dnd` に移行（React 19 + StrictMode 対応、スペースDnD修正）
-- NexusCallStatusPanel を NexusUserPanel_content 内に統合（ボーダー付き区切り線で分離）
-- VC 接続中のチャンネルクリックでルームビューを開くよう修正
-- UI/CSS 大幅調整（ヘッダー高さ統一、余白調整、フォントサイズ統一等）
+**その他**
+- Service Worker Tauri メディア読み込み修正（`WebPlatform.registerServiceWorker()` に委譲）
+- ポップアウトウィンドウ改善（FOUC 防止、表示ラグ削減、「元に戻す」ボタン）
+- コンソール警告修正（MaxListenersExceeded、Avatar loading）
 
 ### 未解決・次回やること
 
