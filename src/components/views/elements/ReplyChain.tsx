@@ -17,6 +17,7 @@ import { makeUserPermalink, type RoomPermalinkCreator } from "../../../utils/per
 import SettingsStore from "../../../settings/SettingsStore";
 import { type Layout } from "../../../settings/enums/Layout";
 import { getUserNameColorClass, getUserNameColorStyle } from "../../../utils/FormattingUtils";
+import { NexusUserColorStore, NexusUserColorStoreEvent } from "../../../stores/NexusUserColorStore";
 import { Action } from "../../../dispatcher/actions";
 import Spinner from "./Spinner";
 import ReplyTile from "../rooms/ReplyTile";
@@ -90,6 +91,7 @@ export default class ReplyChain extends React.Component<IProps, IState> {
         this.unmounted = false;
         this.initialize();
         this.trySetExpandableQuotes();
+        NexusUserColorStore.instance.on(NexusUserColorStoreEvent.ColorsChanged, this.onColorsChanged);
     }
 
     public componentDidUpdate(): void {
@@ -98,7 +100,12 @@ export default class ReplyChain extends React.Component<IProps, IState> {
 
     public componentWillUnmount(): void {
         this.unmounted = true;
+        NexusUserColorStore.instance.off(NexusUserColorStoreEvent.ColorsChanged, this.onColorsChanged);
     }
+
+    private onColorsChanged = (): void => {
+        if (!this.unmounted) this.forceUpdate();
+    };
 
     private trySetExpandableQuotes(): void {
         if (this.props.isQuoteExpanded === undefined && this.blockquoteRef.current) {

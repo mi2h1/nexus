@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX, useCallback, useId, useState } from "react";
+import React, { type JSX, useCallback, useEffect, useId, useReducer, useState } from "react";
 import { EventTimeline, EventType, type MatrixEvent, type Room } from "matrix-js-sdk/src/matrix";
 import { IconButton, Menu, MenuItem, Separator, Tooltip } from "@vector-im/compound-web";
 import ViewIcon from "@vector-im/compound-design-tokens/assets/web/icons/visibility-on";
@@ -24,6 +24,7 @@ import MessageEvent from "../messages/MessageEvent";
 import MemberAvatar from "../avatars/MemberAvatar";
 import { _t } from "../../../languageHandler";
 import { getUserNameColorClass, getUserNameColorStyle } from "../../../utils/FormattingUtils";
+import { NexusUserColorStore, NexusUserColorStoreEvent } from "../../../stores/NexusUserColorStore";
 import { type ViewRoomPayload } from "../../../dispatcher/payloads/ViewRoomPayload";
 import { type RoomPermalinkCreator } from "../../../utils/permalinks/Permalinks";
 import { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
@@ -64,6 +65,14 @@ export function PinnedEventTile({ event, room, permalinkCreator }: PinnedEventTi
     if (!sender) {
         throw new Error("Pinned event unexpectedly has no sender");
     }
+
+    // Re-render when custom user colors change
+    const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+    useEffect(() => {
+        const store = NexusUserColorStore.instance;
+        store.on(NexusUserColorStoreEvent.ColorsChanged, forceUpdate);
+        return () => { store.off(NexusUserColorStoreEvent.ColorsChanged, forceUpdate); };
+    }, []);
 
     const isInThread = Boolean(event.threadRootId);
     const displayThreadInfo = !event.isThreadRoot && isInThread;

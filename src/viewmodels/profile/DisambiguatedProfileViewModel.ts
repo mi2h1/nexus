@@ -15,6 +15,7 @@ import React, { type MouseEvent } from "react";
 import { _t } from "../../languageHandler";
 import { getUserNameColorClass, getUserNameColorStyle } from "../../utils/FormattingUtils";
 import UserIdentifier from "../../customisations/UserIdentifier";
+import { NexusUserColorStore, NexusUserColorStoreEvent } from "../../stores/NexusUserColorStore";
 
 /**
  * Information about a member for disambiguation purposes.
@@ -137,6 +138,17 @@ export class DisambiguatedProfileViewModel
 
     public constructor(props: DisambiguatedProfileViewModelProps) {
         super(props, DisambiguatedProfileViewModel.computeSnapshot(props));
+
+        // Re-compute snapshot when custom user colors change
+        const onColorsChanged = (): void => {
+            if (!this.isDisposed) {
+                this.snapshot.set(DisambiguatedProfileViewModel.computeSnapshot(this.props));
+            }
+        };
+        NexusUserColorStore.instance.on(NexusUserColorStoreEvent.ColorsChanged, onColorsChanged);
+        this.disposables.track(() => {
+            NexusUserColorStore.instance.off(NexusUserColorStoreEvent.ColorsChanged, onColorsChanged);
+        });
     }
 
     public setMember(fallbackName: string, member?: MemberInfo | null): void {
