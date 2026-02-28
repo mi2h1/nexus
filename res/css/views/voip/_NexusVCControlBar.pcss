@@ -18,6 +18,25 @@
 
     .nx_VCRoomView--focusMode & {
         background-color: transparent;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+
+        &:hover {
+            opacity: 1;
+        }
+
+        /* 下部に暗いフェード */
+        &::before {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: calc(100% + var(--cpd-space-8x));
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+            pointer-events: none;
+            z-index: -1;
+        }
     }
 }
 
@@ -140,14 +159,7 @@
     cursor: pointer;
     white-space: nowrap;
     z-index: 2;
-    opacity: 0;
-    transition: opacity 0.15s ease, background-color 0.15s ease;
-
-    /* コントロールバーまたはボタン自身のホバーで表示 */
-    .nx_VCControlBar:hover &,
-    &:hover {
-        opacity: 1;
-    }
+    transition: background-color 0.15s ease;
 
     &:hover {
         background-color: rgba(0, 0, 0, 0.7);
