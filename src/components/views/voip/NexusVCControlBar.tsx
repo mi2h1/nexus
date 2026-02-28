@@ -86,13 +86,13 @@ export function NexusVCControlBar({
 
     return (
         <div className="nx_VCControlBar">
-            {/* Focus toggle — spotlight mode only, positioned above the bar */}
-            {layoutMode === "spotlight" && onToggleFocusMode && (
+            {/* Focus mode only: 「メンバーを表示」positioned above the bar */}
+            {layoutMode === "spotlight" && focusMode && onToggleFocusMode && (
                 <button
                     className="nx_VCControlBar_focusToggle"
                     onClick={onToggleFocusMode}
                 >
-                    {focusMode ? "メンバーを表示" : "メンバーを非表示"}
+                    メンバーを表示
                 </button>
             )}
 

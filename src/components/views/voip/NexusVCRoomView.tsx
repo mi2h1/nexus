@@ -289,6 +289,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                         hideNonScreenSharePanels={hideNonScreenSharePanels}
                         onUnfocus={handleUnfocus}
                         focusMode={focusMode}
+                        onToggleFocusMode={() => setFocusMode((prev) => !prev)}
                     />
                 ) : (
                     <GridLayout
@@ -445,6 +446,7 @@ interface SpotlightLayoutProps {
     hideNonScreenSharePanels?: boolean;
     onUnfocus: () => void;
     focusMode?: boolean;
+    onToggleFocusMode?: () => void;
 }
 
 function SpotlightLayout({
@@ -459,6 +461,7 @@ function SpotlightLayout({
     hideNonScreenSharePanels,
     onUnfocus,
     focusMode,
+    onToggleFocusMode,
 }: SpotlightLayoutProps): JSX.Element {
     // Manual screen share selection (null = auto from focusTarget)
     const [manualScreenShareId, setManualScreenShareId] = useState<string | null>(null);
@@ -520,6 +523,18 @@ function SpotlightLayout({
                         画面を共有しているユーザーはいません
                     </div>
                 ) : null}
+
+                {/* 非フォーカス時: 大画面ホバーで「メンバーを非表示」 */}
+                {!focusMode && hasBottomBar && (
+                    <div className="nx_VCRoomView_focusOverlay" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            className="nx_VCRoomView_focusToggleButton"
+                            onClick={(e) => { e.stopPropagation(); onToggleFocusMode?.(); }}
+                        >
+                            メンバーを非表示
+                        </button>
+                    </div>
+                )}
             </div>
             {hasBottomBar && (
                 <div className={classNames("nx_VCRoomView_spotlightBottomBar", {

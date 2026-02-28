@@ -128,8 +128,7 @@
 
 .nx_VCControlBar_focusToggle {
     position: absolute;
-    /* Bottom bar (100px) + gap (16px) above the control bar = bottom of main screen */
-    bottom: calc(100% + 116px);
+    bottom: calc(100% + var(--cpd-space-4x));
     left: 50%;
     transform: translateX(-50%);
     padding: var(--cpd-space-2x) var(--cpd-space-4x);
@@ -144,21 +143,13 @@
     opacity: 0;
     transition: opacity 0.15s ease, background-color 0.15s ease;
 
-    /* 大画面ホバーで表示（ボタン自身のホバーでも維持） */
-    .nx_VCRoomView:has(.nx_VCRoomView_content:hover) &,
+    /* コントロールバーまたはボタン自身のホバーで表示 */
+    .nx_VCControlBar:hover &,
     &:hover {
         opacity: 1;
     }
 
     &:hover {
         background-color: rgba(0, 0, 0, 0.7);
-    }
-
-    /* In focus mode, position just above the control bar */
-    .nx_VCRoomView--focusMode & {
-        bottom: calc(100% + var(--cpd-space-4x));
-        /* Always visible in focus mode */
-        opacity: 1;
-        pointer-events: auto;
     }
 }
