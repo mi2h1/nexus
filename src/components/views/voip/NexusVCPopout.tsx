@@ -103,6 +103,24 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
                 container.id = "nx_popout_root";
                 child.document.body.appendChild(container);
 
+                // WebView2 workaround: compound-web Avatar uses loading="lazy"
+                // which WebView2 never triggers. Radix Avatar adds <img> to the
+                // DOM after an async preload, so BaseAvatar's ref callback misses
+                // it. Watch for dynamically added <img> and force eager loading.
+                if (isTauri()) {
+                    const imgObserver = new MutationObserver((mutations) => {
+                        for (const m of mutations) {
+                            for (const node of m.addedNodes) {
+                                if (node instanceof Element) {
+                                    node.querySelectorAll<HTMLImageElement>("img[loading='lazy']")
+                                        .forEach((img) => { img.loading = "eager"; });
+                                }
+                            }
+                        }
+                    });
+                    imgObserver.observe(container, { childList: true, subtree: true });
+                }
+
                 // Copy styles — remove overlay once stylesheets are ready.
                 // WebView2 may not fire <link> onload reliably, so also use
                 // a timeout fallback.
