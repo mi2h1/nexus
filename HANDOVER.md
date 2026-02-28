@@ -2,35 +2,20 @@
 
 ## 現在の状態
 
-### 直近の作業（2026-02-28、v0.2.7 リリース）
+### 直近の作業（2026-03-01）
 
-**Service Worker メディアキャッシュ**
-- Cache API でメディアレスポンス（アバター・スペースアイコン等）をキャッシュ
-- 同一 URL への同時リクエスト重複排除（ログイン直後の並列リクエスト対策）
-- 2000 エントリ上限、FIFO eviction（fire-and-forget）
-- activate イベントで旧バージョンキャッシュを自動削除
+**VC 音声・画面共有の品質改善**
+- 画面共有音声を Web Audio パイプライン経由に変更（Tauri で >100% 音量対応）
+  - `createMediaStreamSource` → per-share GainNode → `outputMasterGain` で統一
+- LiveKit PLI throttle 短縮（`high_quality: 3s → 1s`）— 画面共有フリーズからの復帰を高速化
+- Opus DTX 無効化 — 機械音・ロボット音の発生を防止
 
-**アイコンライブラリ移行**
-- lucide-react → @tabler/icons-react に全面移行
-- VC チャットボタンを `IconMessageCircleFilled` に変更
-
-**Discord 風フォーカスビュー（メンバー非表示 / 大画面最大化）**
-- SpotlightLayout にフォーカスモードを追加（Discord の Focus ビュー相当）
-- 非表示: ボトムバーが height:0 アニメーションで消え、大画面が全体に拡大（コントロールバーの下に潜り込む）
-- 拡大中: コントロールバーはホバーで表示/非表示（下部に暗いフェードグラデーション付き）
-- 2種のトグルボタン: 縮小時は大画面内オーバーレイに「メンバーを非表示」、拡大時はコントロールバー上に「メンバーを表示」
-- 視聴停止ボタンをスポットライトのオーバーレイからコントロールバーに移動（終話ボタン右、赤ボーダー+スラッシュ付き）
-- GridLayout マウント時の空白フレーム解消（`useLayoutEffect` で初期サイズ同期読み取り）
-
-**VC グリッドレイアウト改修**
-- CSS Grid → JS 計算 + flexbox に変更
-- `ResizeObserver` でコンテナサイズ監視、`calculateGridLayout()` で最適列数を探索
-- 全パネル統一 16:9 サイズ（画面共有の余白は黒背景）
-
-**その他**
-- Service Worker Tauri メディア読み込み修正（`WebPlatform.registerServiceWorker()` に委譲）
-- ポップアウトウィンドウ改善（FOUC 防止、表示ラグ削減、「元に戻す」ボタン）
-- コンソール警告修正（MaxListenersExceeded、Avatar loading）
+**VC ポップアウトウィンドウの堅牢化（5件の修正）**
+1. **ルーム切替で閉じる問題**: ポップアウト状態を `NexusVoiceStore` に移行、`NexusVCPopoutContainer` を `LoggedInView` に配置（常時マウント）
+2. **アバター非表示問題（SW スコープ）**: `window.open("about:blank")` → `window.open("popout.html")` に変更（SW のスコープ内にするため）
+3. **開いた直後に閉じる問題**: `about:blank` → `popout.html` ナビゲーションで `pagehide` が発火 → `setTimeout` + `child.closed` チェックで偽陽性を防止
+4. **スポットライトモードのアバター問題**: `MutationObserver` で動的追加された `<img loading="lazy">` を `eager` に強制（WebView2 の Radix Avatar 対策）
+5. **SW postMessage タイムアウト**: ポップアウト WebView には `WebPlatform` のメッセージハンドラーがないため SW がタイムアウト → `clients.matchAll()` で他クライアント（メインウィンドウ）にフォールバック
 
 ### 未解決・次回やること
 
@@ -39,6 +24,7 @@
 3. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題
 4. **システムトレイ常駐** — 閉じてもバックグラウンド動作
 5. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等
+6. **画面共有 200% 音量テスト** — Tauri で Web Audio パイプライン経由の画面共有音声増幅を実装済み、動作テスト待ち
 
 ---
 
@@ -129,24 +115,36 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 ### フロー
 ```
 1. ユーザーがポップアウトボタンをクリック
-2. window.open("about:blank", "_blank", "width=480,height=640")
+2. window.open("popout.html", "_blank", "width=480,height=640")
 3. Rust on_new_window → WebviewWindowBuilder("vc-popout") + .window_features(features) + .visible(false)
 4. NewWindowResponse::Create { window } → WebView2 が Tauri 管理ウィンドウを使用
-5. JS: setupChild() → 背景色設定 + FOUC 防止オーバーレイ作成
+5. JS: setupChild() → about:blank をスキップ → 背景色設定 + FOUC 防止オーバーレイ作成
 6. JS: invoke("plugin:window|show") → ウィンドウ即座表示（オーバーレイが覆うので未スタイルは見えない）
 7. copyStylesToChild() + setPortalContainer() → ReactDOM.createPortal() で描画
 8. スタイルシート読み込み完了（or 500ms タイムアウト）→ オーバーレイ除去
 ```
 
+### アーキテクチャ
+- ポップアウト状態は `NexusVoiceStore` が管理（`getPopoutWindow()` / `setPopoutWindow()`）
+- `NexusVCPopoutContainer`（`LoggedInView` 内、常時マウント）がポップアウトを描画
+- `NexusVCRoomView` はストアの状態を参照してポップアウトボタンの表示/非表示を制御
+- `PipContainer` はポップアウト時に画面共有 PiP を抑制
+
 ### クローズ検出
-- `pagehide` イベント（メイン）
-- `unload` + `child.closed` ポーリング（フォールバック）
-- 通話切断時: `invoke("plugin:window|close", { label: "vc-popout" })`
+- `pagehide` / `unload` イベント + `setTimeout` + `child.closed` チェック（ナビゲーション偽陽性防止）
+- `child.closed` ポーリング（500ms、フォールバック）
+- 通話切断時: `NexusVoiceStore.leaveVoiceChannel()` → `invoke("plugin:window|close", { label: "vc-popout" })`
 
 ### Strict Mode 対策
 - cleanup で `setTimeout(0)` で deferred close（closeTimerRef に保存）
 - remount で `clearTimeout(closeTimerRef.current)` でキャンセル
 - 実際のアンマウント: timeout が発火しウィンドウを閉じる
+
+### SW 認証（ポップアウト WebView）
+- ポップアウトは `popout.html`（SW スコープ内）を開くため、SW がメディアリクエストをインターセプト可能
+- ポップアウト WebView には `WebPlatform` のメッセージハンドラーがないため、SW の `postMessage` がタイムアウト
+- `askClientForUserIdParams()` がフォールバックで `clients.matchAll()` → メインウィンドウに問い合わせ
+- MutationObserver で `loading="lazy"` の img を `eager` に強制（WebView2 の Radix Avatar 対策）
 
 ---
 

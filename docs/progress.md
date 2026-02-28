@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-02-28
+> 最終更新: 2026-03-01
 
 ## リポジトリ情報
 
@@ -51,6 +51,7 @@ nexus/                          # element-web フォーク
 │           ├── NexusScreenSharePanel.tsx # 画面共有設定パネル
 │           ├── NexusScreenSharePicker.tsx # ネイティブ画面共有ピッカー
 │           ├── NexusVCPopout.tsx        # VC ポップアウトウィンドウ（createPortal）
+│           ├── NexusVCPopoutContainer.tsx # ポップアウト常駐コンテナ（LoggedInView 内）
 │           └── NexusParticipantContextMenu.tsx # 参加者コンテキストメニュー
 ├── res/css/views/              # Nexus カスタム CSS
 │   ├── rooms/RoomListPanel/
@@ -117,6 +118,31 @@ nexus/                          # element-web フォーク
 
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 2026-03-01 (VC 音声品質改善 + ポップアウト堅牢化)
+- **画面共有音声 Web Audio パイプライン（Tauri）**: 画面共有の受信音声を Web Audio 経由に変更（>100% 音量対応）
+  - `createMediaStreamSource` → per-share `GainNode` → `outputMasterGain` で統一
+  - `screenShareSources` / `screenShareGains` Map で管理
+  - ブラウザ版は従来通り `videoEl.volume` で制御（A/V 同期維持）
+- **LiveKit PLI throttle 短縮**: `high_quality: 3s → 1s`、`mid_quality: 800ms`、`low_quality: 500ms`
+  - 画面共有のフリーズからキーフレーム再取得までの時間を短縮
+- **Opus DTX 無効化**: `dtx: false` に変更 — 無音区間後の音声復帰時に機械音・ロボット音が発生する問題を解消
+- **ポップアウトウィンドウ: ルーム切替で閉じる問題**: ポップアウト状態を `NexusVoiceStore` に移行
+  - `NexusVCPopoutContainer` を `LoggedInView` に配置（常時マウント、ルーム切替の影響を受けない）
+  - `NexusVCRoomView` からポップアウト描画を分離（ストア状態参照のみ）
+  - `PipContainer` がポップアウト時に画面共有 PiP を抑制
+  - `leaveVoiceChannel()` でポップアウト自動クローズ
+- **ポップアウトウィンドウ: アバター非表示問題（SW スコープ）**: `window.open("about:blank")` → `window.open("popout.html")`
+  - `about:blank` は SW スコープ外のため認証ヘッダーが付与されずメディアが 404
+  - `res/popout.html` を新設、webpack CopyPlugin に追加
+  - `setupChild()` で `location.href === "about:blank"` 時は待機（ナビゲーション完了まで）
+- **ポップアウトウィンドウ: 開いた直後に閉じる問題**: `about:blank` → `popout.html` ナビゲーション時の `pagehide` で偽陽性クローズ
+  - `pagehide` ハンドラーに `setTimeout` + `child.closed` チェックを追加（`unload` と同じパターン）
+- **ポップアウトウィンドウ: スポットライトモードのアバター**: WebView2 + Radix Avatar の `loading="lazy"` 問題
+  - `MutationObserver` で動的追加された `<img loading="lazy">` を `eager` に強制（Tauri のみ）
+- **ポップアウトウィンドウ: SW postMessage タイムアウト**: ポップアウト WebView に WebPlatform ハンドラーがない
+  - `askClientForUserIdParams()` をリファクタ: タイムアウト時に `clients.matchAll()` で全クライアントにフォールバック
+  - メインウィンドウが応答し認証情報を提供 → ポップアウトのメディアリクエストにも認証ヘッダー付与
 
 #### 2026-02-28 (v0.2.7: フォーカスビュー + グリッド改修 + メディアキャッシュ)
 - **Service Worker メディアキャッシュ**: Cache API でメディアレスポンスをキャッシュ
