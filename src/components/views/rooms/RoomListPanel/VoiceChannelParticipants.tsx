@@ -8,7 +8,7 @@
 import React, { type JSX, useCallback, useState } from "react";
 
 import classNames from "classnames";
-import { MicOff } from "lucide-react";
+import { IconMicrophoneOff } from "@tabler/icons-react";
 
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { useVCParticipants, type VCParticipantInfo } from "../../../../hooks/useVCParticipants";
@@ -109,7 +109,7 @@ function VoiceChannelParticipantItem({
             </div>
             <span className="mx_VoiceChannelParticipants_name">{displayName}</span>
             {!isTransitioning && isMuted && (
-                <MicOff
+                <IconMicrophoneOff
                     className="mx_VoiceChannelParticipants_muteIcon"
                     size={14}
                 />

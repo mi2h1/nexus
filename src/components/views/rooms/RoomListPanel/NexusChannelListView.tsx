@@ -26,7 +26,7 @@ import { CallEvent, ConnectionState } from "../../../../models/Call";
 import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
-import { MessageSquare } from "lucide-react";
+import { IconMessage } from "@tabler/icons-react";
 import { Tooltip } from "@vector-im/compound-web";
 import RightPanelStore from "../../../../stores/right-panel/RightPanelStore";
 import { RightPanelPhases } from "../../../../stores/right-panel/RightPanelStorePhases";
@@ -336,7 +336,7 @@ function VoiceChannelItem({
                 <Tooltip label="チャットを表示" placement="bottom">
                     {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
                     <div ref={chatButtonRef} className="nx_VoiceChannelItem_chatButton" onClick={onChatClick}>
-                        <MessageSquare size={16} />
+                        <IconMessage size={16} />
                     </div>
                 </Tooltip>
             </div>

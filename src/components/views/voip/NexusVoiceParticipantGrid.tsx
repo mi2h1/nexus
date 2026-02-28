@@ -9,7 +9,7 @@ import React, { type JSX, useEffect, useState } from "react";
 import { MatrixRTCSessionEvent } from "matrix-js-sdk/src/matrixrtc";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 import classNames from "classnames";
-import { MicOff } from "lucide-react";
+import { IconMicrophoneOff } from "@tabler/icons-react";
 
 import { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../stores/NexusVoiceStore";
@@ -113,7 +113,7 @@ export function ParticipantTile({ member, isSpeaking, isMuted, isScreenSharing, 
             <MemberAvatar member={member} size={size === "small" ? "48px" : "64px"} hideTitle />
             <div className="mx_NexusVoiceParticipantTile_nameRow">
                 {isMuted && (
-                    <MicOff
+                    <IconMicrophoneOff
                         className="mx_NexusVoiceParticipantTile_muteIcon"
                         size={14}
                     />

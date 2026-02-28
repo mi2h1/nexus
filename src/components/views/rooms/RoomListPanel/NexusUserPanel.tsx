@@ -6,7 +6,7 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Settings, LogOut, Bell, Lock, Download } from "lucide-react";
+import { IconMicrophone, IconMicrophoneOff, IconSettings, IconLogout, IconBell, IconLock, IconDownload } from "@tabler/icons-react";
 
 import { useActiveCall } from "../../../../hooks/useActiveCall";
 import { useConnectionState } from "../../../../hooks/useCall";
@@ -148,23 +148,23 @@ const NexusUserPanel: React.FC = () => {
                 </div>
                 <IconizedContextMenuOptionList>
                     <IconizedContextMenuOption
-                        icon={<Bell size={20} />}
+                        icon={<IconBell size={20} />}
                         label={_t("notifications|enable_prompt_toast_title")}
                         onClick={() => onSettingsOpen(UserTab.Notifications)}
                     />
                     <IconizedContextMenuOption
-                        icon={<Lock size={20} />}
+                        icon={<IconLock size={20} />}
                         label={_t("room_settings|security|title")}
                         onClick={() => onSettingsOpen(UserTab.Security)}
                     />
                     <IconizedContextMenuOption
-                        icon={<Settings size={20} />}
+                        icon={<IconSettings size={20} />}
                         label={_t("user_menu|settings")}
                         onClick={() => onSettingsOpen()}
                     />
                     <IconizedContextMenuOption
                         className="mx_IconizedContextMenu_option_red"
-                        icon={<LogOut size={20} />}
+                        icon={<IconLogout size={20} />}
                         label={_t("action|sign_out")}
                         onClick={onSignOutClick}
                     />
@@ -206,7 +206,7 @@ const NexusUserPanel: React.FC = () => {
                                 onClick={onUpdateClick}
                                 title="アップデートがあります"
                             >
-                                <Download size={20} />
+                                <IconDownload size={20} />
                             </AccessibleButton>
                             {showUpdateTooltip && (
                                 <div className="mx_NexusUserPanel_updateTooltip">
@@ -221,9 +221,9 @@ const NexusUserPanel: React.FC = () => {
                         title={effectiveMuted ? "マイクをオンにする" : "マイクをミュートする"}
                     >
                         {effectiveMuted ? (
-                            <MicOff size={20} />
+                            <IconMicrophoneOff size={20} />
                         ) : (
-                            <Mic size={20} />
+                            <IconMicrophone size={20} />
                         )}
                     </AccessibleButton>
                     <AccessibleButton
@@ -231,7 +231,7 @@ const NexusUserPanel: React.FC = () => {
                         onClick={() => onSettingsOpen()}
                         title="設定"
                     >
-                        <Settings size={20} />
+                        <IconSettings size={20} />
                     </AccessibleButton>
                     </div>
                 </div>
