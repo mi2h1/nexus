@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useState, useRef, useEffect, useCallback, type JSX, useMemo } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, type JSX, useMemo } from "react";
 import ReactDOM from "react-dom";
 import classNames from "classnames";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
@@ -653,6 +653,15 @@ function GridLayout({
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
+    // 初期サイズを同期的に読み取り、マウント直後の空白フレームを防ぐ
+    useLayoutEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const { width, height } = el.getBoundingClientRect();
+        setContainerSize({ width, height });
+    }, []);
+
+    // 以降のリサイズは rAF 経由で更新
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
