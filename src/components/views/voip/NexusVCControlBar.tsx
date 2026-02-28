@@ -7,7 +7,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { useCallback, useRef, useState, type JSX } from "react";
 import classNames from "classnames";
-import { Mic, MicOff, ScreenShare, Settings, PhoneOff, ExternalLink, Minimize2, MonitorOff } from "lucide-react";
+import { Mic, MicOff, MonitorUp, MonitorCog, Settings, PhoneOff, ExternalLink, SquareArrowOutDownLeft, MonitorOff } from "lucide-react";
 
 import { useNexusVoice } from "../../../hooks/useNexusVoice";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
@@ -116,7 +116,7 @@ export function NexusVCControlBar({
                     title={isScreenSharing ? (isTauri() ? "配信設定" : "共有を停止") : "画面を共有"}
                     disableTooltip={isPopout}
                 >
-                    <ScreenShare size={22} />
+                    {isScreenSharing ? <MonitorCog size={22} /> : <MonitorUp size={22} />}
                 </AccessibleButton>
 
                 {/* Settings */}
@@ -170,7 +170,7 @@ export function NexusVCControlBar({
                         title="元に戻す"
                         disableTooltip={isPopout}
                     >
-                        <Minimize2 size={20} />
+                        <SquareArrowOutDownLeft size={20} />
                     </AccessibleButton>
                 )}
             </div>
