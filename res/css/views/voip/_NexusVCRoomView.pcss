@@ -10,7 +10,21 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    position: relative;
     background-color: var(--cpd-color-bg-canvas-default);
+
+    &.nx_VCRoomView--focusMode {
+        /* content が absolute で全体を覆い、ControlBar の下に潜り込む */
+        .nx_VCRoomView_content {
+            position: absolute;
+            inset: 0;
+        }
+
+        .nx_VCControlBar {
+            margin-top: auto;
+            z-index: 1;
+        }
+    }
 }
 
 /* ─── Empty state (not connected) ──────────────────── */

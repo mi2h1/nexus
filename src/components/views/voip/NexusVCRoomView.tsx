@@ -264,7 +264,9 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     );
 
     return (
-        <div className="nx_VCRoomView" ref={viewRef}>
+        <div className={classNames("nx_VCRoomView", {
+            "nx_VCRoomView--focusMode": layoutMode === "spotlight" && focusMode,
+        })} ref={viewRef}>
             <div className="nx_VCRoomView_content" onContextMenu={onViewContextMenu}>
                 {layoutMode === "spotlight" ? (
                     <SpotlightLayout
@@ -281,7 +283,6 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                         onUnfocus={handleUnfocus}
                         focusMode={focusMode}
                         onToggleFocusMode={() => setFocusMode((prev) => !prev)}
-                        controlBar={focusMode ? controlBar : undefined}
                     />
                 ) : (
                     <GridLayout
@@ -299,7 +300,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                     />
                 )}
             </div>
-            {!(layoutMode === "spotlight" && focusMode) && controlBar}
+            {controlBar}
             {viewContextMenu && (
                 <NexusVCViewContextMenu
                     ref={contextMenuRef}
@@ -440,8 +441,6 @@ interface SpotlightLayoutProps {
     onUnfocus: () => void;
     focusMode?: boolean;
     onToggleFocusMode?: () => void;
-    /** ControlBar element passed when focusMode is active (rendered in focus overlay). */
-    controlBar?: React.ReactNode;
 }
 
 function SpotlightLayout({
@@ -458,7 +457,6 @@ function SpotlightLayout({
     onUnfocus,
     focusMode,
     onToggleFocusMode,
-    controlBar,
 }: SpotlightLayoutProps): JSX.Element {
     // Manual screen share selection (null = auto from focusTarget)
     const [manualScreenShareId, setManualScreenShareId] = useState<string | null>(null);
@@ -524,7 +522,6 @@ function SpotlightLayout({
 
                 {/* フォーカスオーバーレイ（ホバー時表示） */}
                 <div className="nx_VCRoomView_focusOverlay" onClick={(e) => e.stopPropagation()}>
-                    {focusMode && controlBar}
                     {(focusMode || hasBottomBar) && (
                         <button
                             className="nx_VCRoomView_focusToggleButton"
