@@ -15,6 +15,12 @@ rtc:
   congestion_control:
     enabled: true
     allow_pause: true
+  # キーフレーム間隔を短縮（デフォルト約4s → 2s）
+  # キーフレーム損失時の復帰が早くなる（ビットレート微増）
+  pli_throttle:
+    low_quality: 500ms
+    mid_quality: 800ms
+    high_quality: 1s
 
 # Opus RED: パケットロス時に直前パケットのコピーで補完（音声途切れ大幅改善）
 audio:
