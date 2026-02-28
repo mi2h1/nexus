@@ -45,7 +45,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     const client = useMatrixClientContext();
     const { participants: rawParticipants, connected } = useVCParticipants(roomId);
     const [popoutWindow, setPopoutWindow] = useState<Window | null>(null);
-    const viewRef = useRef<HTMLDivElement>(null);
+    const [viewEl, setViewEl] = useState<HTMLDivElement | null>(null);
     // Filter to resolved RoomMembers for layout components
     const members = useMemo(
         () =>
@@ -114,7 +114,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     // Close context menu on click outside or Escape
     useEffect(() => {
         if (!viewContextMenu) return;
-        const doc = viewRef.current?.ownerDocument ?? document;
+        const doc = viewEl?.ownerDocument ?? document;
         const onPointerDown = (e: PointerEvent): void => {
             if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
                 setViewContextMenu(null);
@@ -129,7 +129,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
             doc.removeEventListener("pointerdown", onPointerDown);
             doc.removeEventListener("keydown", onKeyDown);
         };
-    }, [viewContextMenu]);
+    }, [viewContextMenu, viewEl]);
 
     // Watching state lives in NexusVoiceConnection (persists across room navigation)
     const watchingIds = useNexusWatchingScreenShares();
@@ -250,7 +250,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
         <NexusVCControlBar
             roomId={roomId}
             isPopout={isPopout}
-            portalContainer={viewRef.current?.ownerDocument.body}
+            portalContainer={viewEl?.ownerDocument.body}
             onPopout={!isPopout ? async () => {
                 const win = window.open("about:blank", "_blank", "width=480,height=640");
                 if (win) setPopoutWindow(win);
@@ -274,7 +274,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     return (
         <div className={classNames("nx_VCRoomView", {
             "nx_VCRoomView--focusMode": layoutMode === "spotlight" && focusMode,
-        })} ref={viewRef}>
+        })} ref={setViewEl}>
             <div className="nx_VCRoomView_content" onContextMenu={onViewContextMenu}>
                 {layoutMode === "spotlight" ? (
                     <SpotlightLayout
@@ -318,7 +318,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                     onHideNonScreenSharePanelsChange={setHideNonScreenSharePanels}
                     onStopWatching={stopWatching}
                     onClose={() => setViewContextMenu(null)}
-                    portalContainer={viewRef.current?.ownerDocument.body}
+                    portalContainer={viewEl?.ownerDocument.body}
                 />
             )}
         </div>
