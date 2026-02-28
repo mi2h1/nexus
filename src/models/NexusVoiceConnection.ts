@@ -148,8 +148,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Screen share audio ──────────────────────────────────
     private screenShareVideoElements = new Map<string, HTMLVideoElement>();
     private screenShareVolumes = new Map<string, number>(); // 0-2.0 (0-200%)
-    private screenShareGains = new Map<string, GainNode>();
-    private screenShareSources = new Map<string, MediaElementAudioSourceNode>();
     // ─── Tauri output audio pipeline (>100% volume) ──────────
     // In Tauri, we use createMediaStreamSource() to route <audio> through
     // Web Audio API GainNodes, enabling volume amplification beyond 1.0.
@@ -907,23 +905,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         this.screenShareVideoElements.set(participantIdentity, videoEl);
         videoEl.muted = false;
-        videoEl.volume = 1; // Full volume on element; gain controlled by Web Audio
+        videoEl.volume = 1;
         videoEl.play().catch(() => {});
-
-        // Route through Web Audio for >100% volume
-        if (this.outputAudioContext) {
-            try {
-                const source = this.outputAudioContext.createMediaElementSource(videoEl);
-                const gain = this.outputAudioContext.createGain();
-                source.connect(gain);
-                gain.connect(this.outputAudioContext.destination);
-
-                this.screenShareSources.set(participantIdentity, source);
-                this.screenShareGains.set(participantIdentity, gain);
-            } catch (e) {
-                logger.warn("Failed to create MediaElementSource for screen share, falling back to videoEl.volume", e);
-            }
-        }
 
         const watching = this.watchingScreenShares.has(participantIdentity);
         this.applyScreenShareVolume(participantIdentity, watching);
@@ -933,35 +916,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * Unregister the <video> element when the tile unmounts.
      */
     public unregisterScreenShareVideoElement(participantIdentity: string): void {
-        const source = this.screenShareSources.get(participantIdentity);
-        if (source) {
-            source.disconnect();
-            this.screenShareSources.delete(participantIdentity);
-        }
-        const gain = this.screenShareGains.get(participantIdentity);
-        if (gain) {
-            gain.disconnect();
-            this.screenShareGains.delete(participantIdentity);
-        }
         this.screenShareVideoElements.delete(participantIdentity);
     }
 
     /**
-     * Apply the current volume to a screen share.
-     * Uses GainNode if available (>100% capable), falls back to videoEl.volume.
+     * Apply the current volume to a screen share via videoEl.volume (0-100%).
      */
     private applyScreenShareVolume(participantIdentity: string, watching: boolean): void {
         const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
         const effectiveVol = watching ? vol * this._masterOutputVolume : 0;
 
-        const gain = this.screenShareGains.get(participantIdentity);
-        if (gain) {
-            gain.gain.value = effectiveVol;
-        } else {
-            const videoEl = this.screenShareVideoElements.get(participantIdentity);
-            if (videoEl) {
-                videoEl.volume = Math.min(1, effectiveVol);
-            }
+        const videoEl = this.screenShareVideoElements.get(participantIdentity);
+        if (videoEl) {
+            videoEl.volume = Math.min(1, effectiveVol);
         }
     }
 
