@@ -115,70 +115,40 @@ export class NativeVideoCaptureStream {
 
 // ─── Audio capture stream ───────────────────────────────────────────
 
+// MediaStreamTrackGenerator type (non-standard, available in Chromium 94+)
+interface MediaStreamTrackGeneratorInit {
+    kind: "audio" | "video";
+}
+declare class MediaStreamTrackGenerator extends MediaStreamTrack {
+    constructor(init: MediaStreamTrackGeneratorInit);
+    readonly writable: WritableStream<AudioData>;
+}
+
 /**
  * Receives interleaved f32 PCM from Rust via Tauri events and writes
- * them into a MediaStreamTrack using a ScriptProcessorNode ring buffer.
+ * them directly into a MediaStreamTrack via MediaStreamTrackGenerator.
  *
- * We use ScriptProcessorNode instead of MediaStreamTrackGenerator because
- * the latter is not widely available in WebView2/Chromium yet.
- *
- * Accepts an **external** AudioContext (created during a user gesture in
- * NexusVoiceConnection.connect()) so that the context is guaranteed to be
- * in "running" state.  The caller owns the AudioContext lifecycle — this
- * class only creates disposable nodes on it.
+ * This bypasses Web Audio entirely (no ring buffer, no ScriptProcessorNode),
+ * giving near-zero latency between WASAPI capture and LiveKit publishing.
+ * The previous ScriptProcessorNode approach added ~85ms of fixed delay
+ * (4096-sample buffer at 48kHz) that caused A/V desync.
  */
 export class NativeAudioCaptureStream {
-    private audioContext: AudioContext;
-    private scriptProcessor: ScriptProcessorNode;
-    private silentSource: ConstantSourceNode;
-    private destination: MediaStreamAudioDestinationNode;
-    private keepAliveGain: GainNode;
-    private ringBuffer: Float32Array;
-    private writePos = 0;
-    private readPos = 0;
-    private bufferSize: number;
-    // @ts-ignore used for future multi-channel support
-    private _channelCount: number;
+    private generator: MediaStreamTrackGenerator;
+    private writer: WritableStreamDefaultWriter<AudioData>;
+    private sampleRate: number;
+    private channels: number;
+    private totalFramesWritten = 0;
     private unlisten: (() => void) | null = null;
     private stopped = false;
     private dataReceived = false;
-    /** Number of unread samples available in the ring buffer. */
-    private available = 0;
 
-    constructor(audioContext: AudioContext, sampleRate = 48000, channels = 2) {
-        this._channelCount = channels;
-        this.audioContext = audioContext;
-        // Ring buffer: 2 seconds of audio (interleaved) at the context's sample rate.
-        // Use a generous buffer to handle jitter between WASAPI and ScriptProcessorNode.
-        const actualRate = this.audioContext.sampleRate;
-        logger.info(`Audio capture: AudioContext sampleRate=${actualRate}, WASAPI=${sampleRate}`);
-        this.bufferSize = actualRate * channels * 2;
-        this.ringBuffer = new Float32Array(this.bufferSize);
-
-        // ScriptProcessorNode needs an active input to fire onaudioprocess in WebView2.
-        // Use a ConstantSourceNode (DC 0) — no frequency component, zero noise.
-        this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, channels);
-        this.destination = this.audioContext.createMediaStreamDestination();
-
-        this.silentSource = this.audioContext.createConstantSource();
-        this.silentSource.offset.value = 0;
-        this.silentSource.connect(this.scriptProcessor);
-        this.scriptProcessor.connect(this.destination);
-
-        // Keep-alive: also route scriptProcessor → zero-gain → audioContext.destination.
-        // In some WebView2 builds, onaudioprocess only fires if the node is in
-        // the rendering graph leading to audioContext.destination.
-        // The zero gain ensures no audible output.
-        this.keepAliveGain = this.audioContext.createGain();
-        this.keepAliveGain.gain.value = 0;
-        this.scriptProcessor.connect(this.keepAliveGain);
-        this.keepAliveGain.connect(this.audioContext.destination);
-
-        this.silentSource.start();
-
-        this.scriptProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
-            this.fillOutputBuffer(e);
-        };
+    constructor(_audioContext: AudioContext, sampleRate = 48000, channels = 2) {
+        this.sampleRate = sampleRate;
+        this.channels = channels;
+        this.generator = new MediaStreamTrackGenerator({ kind: "audio" });
+        this.writer = this.generator.writable.getWriter();
+        logger.info(`Audio capture: using MediaStreamTrackGenerator, ${sampleRate}Hz ${channels}ch`);
     }
 
     async start(): Promise<void> {
@@ -192,49 +162,31 @@ export class NativeAudioCaptureStream {
             this.writeAudioData(event.payload);
         });
         this.unlisten = unlisten;
-        logger.info(`Audio capture AudioContext state: ${this.audioContext.state}`);
     }
 
     private writeAudioData(payload: AudioPayload): void {
-        const data = payload.data;
-        for (let i = 0; i < data.length; i++) {
-            this.ringBuffer[this.writePos] = data[i];
-            this.writePos = (this.writePos + 1) % this.bufferSize;
-        }
-        this.available = Math.min(this.available + data.length, this.bufferSize);
-    }
+        const { data, frames } = payload;
+        if (frames === 0) return;
 
-    private fillOutputBuffer(e: AudioProcessingEvent): void {
-        const outputBuffer = e.outputBuffer;
-        const framesNeeded = outputBuffer.length;
-        const channels = outputBuffer.numberOfChannels;
-        const samplesNeeded = framesNeeded * channels;
+        // Timestamp in microseconds, monotonically increasing based on sample count
+        const timestamp = (this.totalFramesWritten / this.sampleRate) * 1_000_000;
+        this.totalFramesWritten += frames;
 
-        // If not enough data in ring buffer, output silence to avoid noise
-        if (this.available < samplesNeeded) {
-            for (let ch = 0; ch < channels; ch++) {
-                const channelData = outputBuffer.getChannelData(ch);
-                for (let frame = 0; frame < framesNeeded; frame++) {
-                    channelData[frame] = 0;
-                }
-            }
-            return;
-        }
+        // Create AudioData from interleaved f32 PCM and write to generator
+        const audioData = new AudioData({
+            format: "f32",  // interleaved Float32 (matches WASAPI output)
+            sampleRate: this.sampleRate,
+            numberOfFrames: frames,
+            numberOfChannels: this.channels,
+            timestamp,
+            data: new Float32Array(data),
+        });
 
-        this.available -= samplesNeeded;
-
-        for (let frame = 0; frame < framesNeeded; frame++) {
-            for (let ch = 0; ch < channels; ch++) {
-                const channelData = outputBuffer.getChannelData(ch);
-                channelData[frame] = this.ringBuffer[this.readPos];
-                this.readPos = (this.readPos + 1) % this.bufferSize;
-            }
-        }
+        this.writer.write(audioData).catch(() => {});
     }
 
     getAudioTrack(): MediaStreamTrack | null {
-        const tracks = this.destination.stream.getAudioTracks();
-        return tracks.length > 0 ? tracks[0] : null;
+        return this.generator;
     }
 
     stop(): void {
@@ -243,14 +195,7 @@ export class NativeAudioCaptureStream {
             this.unlisten();
             this.unlisten = null;
         }
-        this.silentSource.stop();
-        this.silentSource.disconnect();
-        this.scriptProcessor.disconnect();
-        this.keepAliveGain.disconnect();
-        this.destination.disconnect();
-        // AudioContext is externally owned — do NOT close it here.
-        for (const track of this.destination.stream.getTracks()) {
-            track.stop();
-        }
+        this.writer.close().catch(() => {});
+        this.generator.stop();
     }
 }
