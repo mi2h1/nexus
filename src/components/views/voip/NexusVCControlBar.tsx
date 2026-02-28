@@ -7,7 +7,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { useCallback, useRef, useState, type JSX } from "react";
 import classNames from "classnames";
-import { IconMicrophone, IconMicrophoneOff, IconScreenShare, IconDeviceDesktopCog, IconScreenShareOff, IconSettings, IconPhoneOff, IconExternalLink, IconSquareArrowDownLeft } from "@tabler/icons-react";
+import { IconMicrophone, IconMicrophoneOff, IconScreenShare, IconDeviceDesktopCog, IconScreenShareOff, IconSettings, IconPhoneOff, IconExternalLink, IconSquareArrowLeft } from "@tabler/icons-react";
 
 import { useNexusVoice } from "../../../hooks/useNexusVoice";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
@@ -170,7 +170,7 @@ export function NexusVCControlBar({
                         title="元に戻す"
                         disableTooltip={isPopout}
                     >
-                        <IconSquareArrowDownLeft size={20} />
+                        <IconSquareArrowLeft size={20} />
                     </AccessibleButton>
                 )}
             </div>
