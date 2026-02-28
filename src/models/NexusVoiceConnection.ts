@@ -503,16 +503,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const preset = this.getScreenSharePreset();
 
         try {
-            // Start native capture via Tauri
-            const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("start_capture", {
-                targetId,
-                fps,
-                captureAudio,
-                targetProcessId,
-            });
-
-            // Listen for capture events (must be registered before audio starts)
+            // Listen for capture events (must be registered BEFORE start_capture)
             const { listen } = await import("@tauri-apps/api/event");
             listen("capture-stopped", () => {
                 if (this._isNativeCapture && this._isScreenSharing && !this._isSwitchingTarget) {
@@ -523,6 +514,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             });
             listen<string>("wasapi-info", (event) => {
                 logger.info(event.payload);
+            });
+
+            // Start native capture via Tauri
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("start_capture", {
+                targetId,
+                fps,
+                captureAudio,
+                targetProcessId,
             });
 
             // Create video pipeline
