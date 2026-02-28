@@ -2,20 +2,21 @@
 
 ## 現在の状態
 
-### 直近の作業（2026-03-01）
+### 直近の作業（2026-03-02）
 
-**VC 音声・画面共有の品質改善**
+**ユーザー指定の表示名カラー（v0.2.11）**
+- 各ユーザーが自分の表示名色を選択可能に（Discord のロールカラーに相当）
+- サーバー側: lk-jwt-service に `GET /user-colors` + `PUT /user-color` エンドポイント追加
+- クライアント側: `NexusUserColorStore` シングルトン + `getUserNameColorStyle()` ユーティリティ
+- UI: 設定 > アカウントに20色プリセット + HEX 自由入力のカラーピッカー
+- `ColorsChanged` イベントで DisambiguatedProfileViewModel / ReplyChain / PinnedEventTile が即時再レンダリング
+- Tauri: `corsFreeGet` / `corsFreePut` を追加
+
+**VC 音声・画面共有の品質改善（v0.2.8-v0.2.10）**
 - 画面共有音声を Web Audio パイプライン経由に変更（Tauri で >100% 音量対応）
-  - `createMediaStreamSource` → per-share GainNode → `outputMasterGain` で統一
-- LiveKit PLI throttle 短縮（`high_quality: 3s → 1s`）— 画面共有フリーズからの復帰を高速化
+- LiveKit PLI throttle 短縮（`high_quality: 3s → 1s`）
 - Opus DTX 無効化 — 機械音・ロボット音の発生を防止
-
-**VC ポップアウトウィンドウの堅牢化（5件の修正）**
-1. **ルーム切替で閉じる問題**: ポップアウト状態を `NexusVoiceStore` に移行、`NexusVCPopoutContainer` を `LoggedInView` に配置（常時マウント）
-2. **アバター非表示問題（SW スコープ）**: `window.open("about:blank")` → `window.open("popout.html")` に変更（SW のスコープ内にするため）
-3. **開いた直後に閉じる問題**: `about:blank` → `popout.html` ナビゲーションで `pagehide` が発火 → `setTimeout` + `child.closed` チェックで偽陽性を防止
-4. **スポットライトモードのアバター問題**: `MutationObserver` で動的追加された `<img loading="lazy">` を `eager` に強制（WebView2 の Radix Avatar 対策）
-5. **SW postMessage タイムアウト**: ポップアウト WebView には `WebPlatform` のメッセージハンドラーがないため SW がタイムアウト → `clients.matchAll()` で他クライアント（メインウィンドウ）にフォールバック
+- 画面共有ピッカー: キャプチャ中サムネイルキャッシュ
 
 ### 未解決・次回やること
 
@@ -24,7 +25,7 @@
 3. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題
 4. **システムトレイ常駐** — 閉じてもバックグラウンド動作
 5. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等
-6. **画面共有 200% 音量テスト** — Tauri で Web Audio パイプライン経由の画面共有音声増幅を実装済み、動作テスト待ち
+6. **画面共有 200% 音量テスト** — Tauri で Web Audio パイプライン経由の画面共有音声増幅を実装済み、動作確認済み
 
 ---
 
@@ -54,7 +55,7 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 - AMD EPYC 3コア / 3.8GB RAM / 28GB ディスク
 - **Docker コンテナ** (3つ): `infra/livekit/docker-compose.yml` で管理
   - `nexus-livekit` — LiveKit SFU (WebRTC メディア中継)
-  - `nexus-jwt` — lk-jwt-service (Matrix OpenID → LiveKit JWT 変換、カスタムビルド + ユーザーホワイトリスト)
+  - `nexus-jwt` — lk-jwt-service (Matrix OpenID → LiveKit JWT 変換 + ユーザーカラー保存、カスタムビルド + ユーザーホワイトリスト)
   - `nexus-nginx` — TLS 終端 (Let's Encrypt)
 - **ポート**: 7880(WSS), 7881(TCP TURN), 7882(UDP WebRTC), 7891(HTTPS JWT)
 - **SSL 証明書**: `/etc/ssl/lche2/` (fullchain.pem + privkey.pem)
@@ -74,7 +75,7 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 | livekit-client | VC・画面共有（SFU 直接接続） |
 | Tauri 2 | ネイティブデスクトップアプリ（src-tauri/） |
 | LiveKit SFU | 自前ホスト（lche2.xvps.jp, Docker） |
-| lk-jwt-service | Element製 JWT ブリッジ（OpenID → LiveKit JWT） |
+| lk-jwt-service | Element製 JWT ブリッジ（OpenID → LiveKit JWT）+ ユーザーカラー保存 |
 | Cloudflare Workers | CORS プロキシ（フォールバック用） |
 | pnpm 10.x | パッケージマネージャ |
 | nx + Webpack | ビルド |
@@ -86,6 +87,7 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 
 ### ストア
 - `src/stores/NexusUpdateStore.ts` — Tauri 自動更新管理（ダウンロード進捗、インストール状態）
+- `src/stores/NexusUserColorStore.ts` — ユーザーカラー管理（lk-jwt-service 連携、色の取得・キャッシュ・設定）
 
 ### VC コア
 - `src/models/NexusVoiceConnection.ts` — LiveKit 直接接続 + MatrixRTC + Web Audio パイプライン
@@ -193,7 +195,7 @@ Phase 5: publishTrack(processedTrack)
 - Phase 1（環境構築）: ✅ 完了
 - Phase 2（Discord風UIカスタマイズ）: ✅ 完了
 - Phase 2.5（通話機能内包）: ✅ 完了
-- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.1.10）
+- Phase 3（Tauri 2 ネイティブ化）: ✅ 基本実装完了（v0.2.11）
 - 自前 SFU: ✅ 構築完了、ブラウザ版動作確認済み
 - VC ポップアウト: ✅ 実装完了（Tauri `NewWindowResponse::Create` 方式）
 

@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-01
+> 最終更新: 2026-03-02
 
 ## リポジトリ情報
 
@@ -25,7 +25,8 @@ nexus/                          # element-web フォーク
 │   ├── models/
 │   │   └── NexusVoiceConnection.ts  # LiveKit 直接接続クラス
 │   ├── stores/
-│   │   └── NexusVoiceStore.ts       # VC 接続管理シングルトン
+│   │   ├── NexusVoiceStore.ts       # VC 接続管理シングルトン
+│   │   └── NexusUserColorStore.ts   # ユーザーカラー管理（lk-jwt-service 連携）
 │   ├── utils/
 │   │   ├── tauriHttp.ts             # Tauri 判定 + CORS-free fetch
 │   │   └── popoutStyles.ts          # ポップアウトウィンドウへの CSS 転送
@@ -58,7 +59,8 @@ nexus/                          # element-web フォーク
 │   │   ├── _NexusChannelList.pcss
 │   │   └── _NexusUserPanel.pcss
 │   ├── settings/
-│   │   └── _NexusVoiceSettings.pcss    # 音声設定スライダー・レベルメーター
+│   │   ├── _NexusVoiceSettings.pcss    # 音声設定スライダー・レベルメーター
+│   │   └── _NexusUserColorPicker.pcss  # ユーザーカラーピッカー
 │   └── voip/
 │       ├── _NexusVCRoomView.pcss
 │       ├── _NexusVoiceParticipantGrid.pcss
@@ -114,11 +116,23 @@ nexus/                          # element-web フォーク
 | メインウィンドウ起動時フラッシュ防止 | `.visible(false)` + `.background_color()` → React 描画完了後 `show()` |
 | サービスワーカー Tauri 対応 | `TauriPlatform` は親の `WebPlatform.registerServiceWorker()` に委譲（SW は認証メディア取得に必須） |
 | 画面共有ピッカー サムネイルキャッシュ | WGC キャプチャ中は前回のサムネイルキャッシュを返す（GDI がビデオメモリを読み取る問題を回避） |
+| ユーザー指定の表示名カラー | `NexusUserColorStore` + lk-jwt-service エンドポイント + 設定画面カラーピッカー |
 
 ### ロードマップ
 
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 2026-03-02 (v0.2.11: ユーザー指定の表示名カラー)
+- **ユーザーカラー機能**: 各ユーザーが自分の表示名の色を選択可能に（Discord のロールカラーに相当）
+  - **サーバー側**: lk-jwt-service に `GET /user-colors`（全ユーザーの色を返す）と `PUT /user-color`（Matrix OpenID 認証 + ホワイトリスト必須）エンドポイントを追加
+  - **ストア**: `NexusUserColorStore` シングルトン — 色の取得・キャッシュ・設定を管理
+  - **表示名カラー**: `getUserNameColorStyle()` でカスタム色を優先、未設定ならハッシュ色にフォールバック
+  - **リアクティブ更新**: `ColorsChanged` イベントで `DisambiguatedProfileViewModel`、`ReplyChain`、`PinnedEventTile` が即時再レンダリング
+  - **設定 UI**: カラーピッカー（20色プリセット + HEX 自由入力 + プレビュー + リセット）を設定 > アカウントに追加
+  - **インフラ**: `docker-compose.yml` にデータボリューム追加、`nginx.conf` に GET/PUT メソッド許可
+  - **Tauri 対応**: `corsFreeGet` / `corsFreePut` を追加（CORS バイパス）
+  - **データ永続化**: `/data/user-colors.json` に JSON 形式で保存（Docker volume）
 
 #### 2026-03-01 (v0.2.10: 画面共有ピッカー サムネイルキャッシュ)
 - **画面共有ピッカー: キャプチャ中サムネイルキャッシュ**: WGC キャプチャ中に GDI `StretchBlt` が同じビデオメモリを読み取り、サムネイルが共有画面そのものになる問題を修正

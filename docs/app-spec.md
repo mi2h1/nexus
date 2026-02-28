@@ -1,6 +1,6 @@
 # アプリケーション仕様 — app-spec.md
 
-> 最終更新: 2026-02-28
+> 最終更新: 2026-03-02
 
 ## 概要
 
@@ -50,6 +50,7 @@ Nexus は Element Web をフォークし、Discord 風の**機能構成**にカ�
 | 起動時状態復元 | Nexus (前回のスペース・チャンネルを復元、初回はホーム) | 実装済み |
 | 日本語翻訳 88% | Nexus (ja.json に306件追加、設定画面・トースト・通話UI等) | 実装済み |
 | 更新確認→アップデートボタン | Nexus (UpdateCheckButton — 更新検知でボタン切替) | 実装済み |
+| ユーザー指定の表示名カラー | Nexus (NexusUserColorStore + lk-jwt-service, 20色プリセット + HEX 入力) | 実装済み |
 
 ## UI 構成
 
