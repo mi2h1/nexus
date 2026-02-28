@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "0.2.8"
+version = "0.2.9"
 description = "Nexus — Discord-style Matrix client"
 authors = ["mi2h1"]
 edition = "2021"
