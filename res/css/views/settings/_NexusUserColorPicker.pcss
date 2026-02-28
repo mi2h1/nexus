@@ -14,7 +14,7 @@ Please see LICENSE files in the repository root for full details.
 .mx_NexusUserColorPicker_presets {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 12px;
 }
 
 .mx_NexusUserColorPicker_preset {
@@ -42,7 +42,11 @@ Please see LICENSE files in the repository root for full details.
         &::after {
             content: "";
             position: absolute;
-            inset: 3px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: calc(100% - 6px);
+            height: calc(100% - 6px);
             border-radius: 50%;
             border: 2px solid var(--cpd-color-bg-canvas-default);
         }
