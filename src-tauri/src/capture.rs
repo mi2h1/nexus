@@ -890,6 +890,10 @@ mod platform {
         };
 
         println!("[WASAPI] Attempting process loopback: {} mode, PID={}", mode_name, pid);
+        let _ = app.emit(
+            "wasapi-info",
+            format!("WASAPI: attempting process loopback: {} mode, PID={}", mode_name, pid),
+        );
 
         // Step 1: Get the device's native format from the default render device.
         // Used for EXCLUDE mode; INCLUDE mode queries the process loopback
@@ -975,6 +979,10 @@ mod platform {
             println!(
                 "[WASAPI] Process loopback client activated ({} mode, PID={})",
                 mode_name, pid
+            );
+            let _ = app.emit(
+                "wasapi-info",
+                format!("WASAPI: process loopback activated ({} mode, PID={})", mode_name, pid),
             );
 
             // Step 3: Initialize with PCM stereo format + AUTOCONVERTPCM.
