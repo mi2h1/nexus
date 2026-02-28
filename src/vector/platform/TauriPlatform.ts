@@ -12,6 +12,7 @@ import WebPlatform from "./WebPlatform";
 import { UpdateCheckStatus, type UpdateStatus } from "../../BasePlatform";
 import dis from "../../dispatcher/dispatcher";
 import { Action } from "../../dispatcher/actions";
+import { type ActionPayload } from "../../dispatcher/payloads";
 import { type CheckUpdatesPayload } from "../../dispatcher/payloads/CheckUpdatesPayload";
 import { NexusUpdateStore } from "../../stores/NexusUpdateStore";
 
@@ -28,6 +29,15 @@ export default class TauriPlatform extends WebPlatform {
     // Service worker IS needed in Tauri — it intercepts media requests and
     // adds authentication headers (MSC3916).  The parent WebPlatform handles
     // registration + message handler setup; no override needed.
+    // However, SW registration may fail on some WebView2 configurations
+    // (e.g. tauri:// protocol), so suppress the error toast in Tauri.
+
+    protected onAction(payload: ActionPayload): void {
+        // Skip the ClientStarted → SW error toast from WebPlatform.
+        // SW failure is non-fatal in Tauri (media auth works via tauri-plugin-http).
+        if (payload.action === Action.ClientStarted) return;
+        super.onAction(payload);
+    }
 
     public async getAppVersion(): Promise<string> {
         const { getVersion } = await import("@tauri-apps/api/app");
