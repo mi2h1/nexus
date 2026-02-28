@@ -149,14 +149,15 @@ const NexusUserColorPicker: React.FC = () => {
             <div className="mx_NexusUserColorPicker">
                 <div className="mx_NexusUserColorPicker_presets">
                     {PRESET_COLORS.map((color) => (
-                        <button
+                        <div
                             key={color}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             className={`mx_NexusUserColorPicker_preset${currentColor === color ? " mx_NexusUserColorPicker_preset--selected" : ""}`}
                             style={{ backgroundColor: color }}
-                            onClick={() => onPresetClick(color)}
+                            onClick={() => !saving && onPresetClick(color)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!saving) onPresetClick(color); } }}
                             title={color}
-                            disabled={saving}
                         />
                     ))}
                 </div>
