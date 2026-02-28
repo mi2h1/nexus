@@ -118,6 +118,22 @@ nexus/                          # element-web フォーク
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
 
+#### 2026-02-28 (v0.2.8: Discord 風フォーカスビュー + GridLayout 空白フレーム修正)
+- **Discord 風フォーカスビュー（メンバー非表示 / 大画面最大化）**:
+  - SpotlightLayout に `focusMode` state を追加
+  - 非表示: ボトムバーが `height: 0` + `opacity: 0` アニメーションで消え、大画面がコントロールバーの下に潜り込む形で全体に拡大
+  - 拡大中: コントロールバーは `opacity: 0` → ホバーで表示（`::before` で下部に暗いフェードグラデーション付き）
+  - 2種のトグルボタン:
+    - 縮小時: 大画面内 `.nx_VCRoomView_focusOverlay` に「メンバーを非表示」（大画面ホバーで表示）
+    - 拡大時: コントロールバー上 `.nx_VCControlBar_focusToggle` に「メンバーを表示」（バーホバーで表示、`::after` でギャップ解消）
+  - 視聴停止ボタンをスポットライトのオーバーレイからコントロールバーに移動
+    - 終話ボタン右に赤ボーダー + CSS `::after` 斜めスラッシュ付きアイコンボタン
+  - `.nx_VCRoomView--focusMode` でルート div にクラス付与、content を `position: absolute; inset: 0` で全体に拡大
+  - グリッドモードに戻る時に `focusMode` 自動リセット
+- **GridLayout マウント時の空白フレーム解消**:
+  - `useLayoutEffect` で `getBoundingClientRect()` を使い初期コンテナサイズを同期読み取り
+  - スポットライト → グリッド切替時のちらつきを解消
+
 #### 2026-02-28 (v0.2.7: VC グリッドレイアウト改修 + ポップアウト改善 + SW 修正)
 - **VC グリッドレイアウト改修**: CSS Grid → JS 計算 + flexbox に変更
   - `ResizeObserver` でコンテナサイズ監視、`calculateGridLayout()` で最適列数を探索
