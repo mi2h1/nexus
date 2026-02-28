@@ -11,6 +11,7 @@ import dis from "../../../dispatcher/dispatcher";
 import { Action } from "../../../dispatcher/actions";
 import { type ViewRoomPayload } from "../../../dispatcher/payloads/ViewRoomPayload";
 import type { ScreenShareInfo } from "../../../models/Call";
+import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
 
 interface NexusScreenSharePipProps {
     share: ScreenShareInfo;
@@ -35,11 +36,33 @@ export const NexusScreenSharePip: React.FC<NexusScreenSharePipProps> = ({
     useEffect(() => {
         const videoEl = videoRef.current;
         if (!videoEl || !share.track) return;
-        share.track.attach(videoEl);
+
+        const hasAudio = !share.isLocal && share.audioTrack?.mediaStreamTrack;
+
+        // Build a combined MediaStream with video + audio for A/V sync
+        // (same approach as ScreenShareTile)
+        const stream = new MediaStream([share.track.mediaStreamTrack]);
+        if (hasAudio) {
+            stream.addTrack(share.audioTrack.mediaStreamTrack);
+        }
+
+        videoEl.srcObject = stream;
+        videoEl.muted = !hasAudio;
+        videoEl.play().catch(() => {});
+
+        // Register with NexusVoiceConnection for volume control
+        const conn = NexusVoiceStore.instance.getActiveConnection();
+        if (conn && hasAudio) {
+            conn.registerScreenShareVideoElement(share.participantIdentity, videoEl);
+        }
+
         return () => {
-            share.track.detach(videoEl);
+            videoEl.srcObject = null;
+            if (conn && hasAudio) {
+                conn.unregisterScreenShareVideoElement(share.participantIdentity);
+            }
         };
-    }, [share.track]);
+    }, [share.track, share.audioTrack, share.participantIdentity, share.isLocal]);
 
     const onClick = useCallback(() => {
         dis.dispatch<ViewRoomPayload>({
@@ -66,7 +89,6 @@ export const NexusScreenSharePip: React.FC<NexusScreenSharePipProps> = ({
                 className="mx_NexusScreenSharePip_video"
                 autoPlay
                 playsInline
-                muted
             />
             <div className="mx_NexusScreenSharePip_label">{label}</div>
             <button
