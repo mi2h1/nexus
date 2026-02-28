@@ -651,46 +651,44 @@ function GridLayout({
     onFocusScreenShare,
 }: GridLayoutProps): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
-    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+    const [isReady, setIsReady] = useState(false);
+
+    const totalItems = screenShares.length + unwatchedScreenShares.length
+        + (hideNonScreenSharePanels ? 0 : members.length);
+
+    // パネルサイズを CSS カスタムプロパティで直接設定（React 再レンダーを回避）
+    const updatePanelSize = useCallback((el: HTMLDivElement, width: number, height: number) => {
+        const { panelWidth, panelHeight } = calculateGridLayout(totalItems, width, height);
+        el.style.setProperty("--panel-w", `${panelWidth}px`);
+        el.style.setProperty("--panel-h", `${panelHeight}px`);
+    }, [totalItems]);
 
     // 初期サイズを同期的に読み取り、マウント直後の空白フレームを防ぐ
     useLayoutEffect(() => {
         const el = containerRef.current;
         if (!el) return;
         const { width, height } = el.getBoundingClientRect();
-        setContainerSize({ width, height });
-    }, []);
+        updatePanelSize(el, width, height);
+        setIsReady(true);
+    }, [updatePanelSize]);
 
-    // 以降のリサイズは rAF 経由で更新
+    // リサイズは直接 DOM に反映（setState なし → 再レンダーなし → 遅延なし）
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
-        let rafId = 0;
         const observer = new ResizeObserver((entries) => {
-            cancelAnimationFrame(rafId);
-            rafId = requestAnimationFrame(() => {
-                const { width, height } = entries[0].contentRect;
-                setContainerSize({ width, height });
-            });
+            const { width, height } = entries[0].contentRect;
+            updatePanelSize(el, width, height);
         });
         observer.observe(el);
-        return () => {
-            cancelAnimationFrame(rafId);
-            observer.disconnect();
-        };
-    }, []);
+        return () => observer.disconnect();
+    }, [updatePanelSize]);
 
     const isEmpty = hideNonScreenSharePanels && screenShares.length === 0 && unwatchedScreenShares.length === 0;
-    const totalItems = screenShares.length + unwatchedScreenShares.length
-        + (hideNonScreenSharePanels ? 0 : members.length);
-    const { panelWidth, panelHeight } = calculateGridLayout(
-        totalItems, containerSize.width, containerSize.height,
-    );
-    const panelStyle = { width: panelWidth, height: panelHeight };
 
     return (
         <div ref={containerRef} className="nx_VCRoomView_grid">
-            {containerSize.width > 0 && (
+            {isReady && (
                 <>
                     {isEmpty && (
                         <div className="nx_VCRoomView_gridEmpty">
@@ -701,7 +699,6 @@ function GridLayout({
                         <div
                             key={`ss-${share.participantIdentity}`}
                             className="nx_VCRoomView_gridPanel"
-                            style={panelStyle}
                             onClick={() => onFocusScreenShare(share)}
                         >
                             <div className="nx_VCRoomView_gridScreenShare">
@@ -717,7 +714,6 @@ function GridLayout({
                         <div
                             key={`preview-${share.participantIdentity}`}
                             className="nx_VCRoomView_gridPanel"
-                            style={panelStyle}
                             onClick={() => onStartWatching(share.participantIdentity)}
                         >
                             <div className="nx_VCRoomView_gridScreenShare nx_VCRoomView_gridScreenSharePreview">
@@ -736,7 +732,6 @@ function GridLayout({
                             <div
                                 key={member.userId}
                                 className="nx_VCRoomView_gridPanel"
-                                style={panelStyle}
                                 onClick={() => onFocusMember(member)}
                             >
                                 <ParticipantTile

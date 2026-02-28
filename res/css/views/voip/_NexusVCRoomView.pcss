@@ -216,7 +216,9 @@
     overflow: hidden;
     cursor: pointer;
     flex-shrink: 0;
-    /* width/height は JS inline style で設定 */
+    width: var(--panel-w);
+    height: var(--panel-h);
+    transition: width 0.15s ease, height 0.15s ease;
 
     > .mx_NexusVoiceParticipantTile {
         width: 100%;
