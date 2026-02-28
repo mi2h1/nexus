@@ -144,7 +144,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private audioContext: AudioContext | null = null;
     private _masterOutputVolume = 0; // 0-2 (0-200%), starts muted
     private outputAudioElements = new Map<string, HTMLAudioElement>();
-    private participantVolumes = new Map<string, number>(); // 0-1.0
+    private participantVolumes = new Map<string, number>(); // 0-2.0 (0-200%)
     // ─── Screen share audio ──────────────────────────────────
     private screenShareVideoElements = new Map<string, HTMLVideoElement>();
     private screenShareVolumes = new Map<string, number>(); // 0-2.0 (0-200%)
@@ -829,12 +829,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
-     * Set the audio volume for a remote participant (0.0–1.0).
+     * Set the audio volume for a remote participant (0.0–2.0, i.e. 0–200%).
      */
     public setParticipantVolume(userId: string, volume: number): void {
         const identity = this.findIdentityForUserId(userId);
         if (!identity) return;
-        const clamped = Math.max(0, Math.min(1, volume));
+        const clamped = Math.max(0, Math.min(2, volume));
         this.participantVolumes.set(identity, clamped);
 
         // Tauri: update per-participant GainNode
@@ -852,7 +852,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
-     * Get the current audio volume for a remote participant (0.0–1.0).
+     * Get the current audio volume for a remote participant (0.0–2.0).
      * Returns 1 if participant not found.
      */
     public getParticipantVolume(userId: string): number {
