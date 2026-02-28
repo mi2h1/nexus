@@ -278,6 +278,11 @@
         opacity: 1;
         pointer-events: auto;
     }
+
+    .nx_VCRoomView_spotlight--focusMode & {
+        /* コントロールバー（64px）の上に収まるよう余白を追加 */
+        padding-bottom: calc(64px + var(--cpd-space-4x));
+    }
 }
 
 .nx_VCRoomView_focusToggleButton {
