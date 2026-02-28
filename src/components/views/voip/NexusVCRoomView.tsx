@@ -691,15 +691,27 @@ function GridLayout({
     }, [updatePanelSize]);
 
     // リサイズは直接 DOM に反映（setState なし → 再レンダーなし → 遅延なし）
+    // ポップアウトウィンドウでは ResizeObserver の発火が1フレーム遅れるため、
+    // 所属ウィンドウの resize イベントも併用して即時更新する
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
-        const observer = new ResizeObserver((entries) => {
-            const { width, height } = entries[0].contentRect;
+
+        const sync = (): void => {
+            const { width, height } = el.getBoundingClientRect();
             updatePanelSize(el, width, height);
-        });
+        };
+
+        const observer = new ResizeObserver(sync);
         observer.observe(el);
-        return () => observer.disconnect();
+
+        const win = el.ownerDocument.defaultView ?? window;
+        win.addEventListener("resize", sync);
+
+        return () => {
+            observer.disconnect();
+            win.removeEventListener("resize", sync);
+        };
     }, [updatePanelSize]);
 
     const isEmpty = hideNonScreenSharePanels && screenShares.length === 0 && unwatchedScreenShares.length === 0;
