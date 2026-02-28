@@ -32,7 +32,7 @@ mod platform {
     use super::CaptureTarget;
     use base64::Engine;
     use serde::Serialize;
-    use std::collections::VecDeque;
+    use std::collections::{HashMap, VecDeque};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
@@ -63,6 +63,13 @@ mod platform {
     // CaptureControl is stored so stop_capture can halt the WGC session.
     // The type is erased to avoid complex generics — we only need stop().
     static CAPTURE_CONTROL: Mutex<Option<Box<dyn CaptureControlHandle>>> = Mutex::new(None);
+    /// Cache of thumbnails captured while WGC is NOT running.
+    /// During capture, GDI StretchBlt reads the same video memory as WGC,
+    /// returning the captured screen itself instead of the real thumbnail.
+    /// Key: target ID ("window:{hwnd}" / "monitor:{index}"), Value: (base64, w, h)
+    static THUMBNAIL_CACHE: Mutex<Option<HashMap<String, (String, u32, u32)>>> =
+        Mutex::new(None);
+
     static AUDIO_STOP_FLAG: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
     static AUDIO_THREAD_HANDLE: Mutex<Option<std::thread::JoinHandle<()>>> = Mutex::new(None);
 
@@ -459,7 +466,9 @@ mod platform {
     pub async fn enumerate_capture_targets() -> Result<Vec<CaptureTarget>, String> {
         // Run on a blocking thread because Win32 API calls are involved
         tauri::async_runtime::spawn_blocking(|| {
+            let capturing = CAPTURE_RUNNING.load(Ordering::SeqCst);
             let mut targets = Vec::new();
+            let mut new_cache = HashMap::new();
 
             // Enumerate windows
             if let Ok(windows) = Window::enumerate() {
@@ -492,10 +501,24 @@ mod platform {
                         pid
                     };
 
-                    let (thumbnail, width, height) = capture_window_thumbnail(hwnd_val);
+                    let target_id = format!("window:{}", hwnd_val);
+
+                    let (thumbnail, width, height) = if capturing {
+                        // During capture, GDI reads WGC video memory → use cached thumbnail
+                        THUMBNAIL_CACHE
+                            .lock()
+                            .unwrap()
+                            .as_ref()
+                            .and_then(|c| c.get(&target_id).cloned())
+                            .unwrap_or((String::new(), 0, 0))
+                    } else {
+                        let result = capture_window_thumbnail(hwnd_val);
+                        new_cache.insert(target_id.clone(), result.clone());
+                        result
+                    };
 
                     targets.push(CaptureTarget {
-                        id: format!("window:{}", hwnd_val),
+                        id: target_id,
                         title,
                         target_type: "window".to_string(),
                         process_name,
@@ -515,10 +538,24 @@ mod platform {
                         .unwrap_or_else(|_| format!("ディスプレイ {}", i + 1));
                     let w = mon.width().unwrap_or(0);
                     let h = mon.height().unwrap_or(0);
-                    let thumbnail = capture_monitor_thumbnail(&name);
+                    let target_id = format!("monitor:{}", i);
+
+                    let thumbnail = if capturing {
+                        THUMBNAIL_CACHE
+                            .lock()
+                            .unwrap()
+                            .as_ref()
+                            .and_then(|c| c.get(&target_id).cloned())
+                            .map(|(t, _, _)| t)
+                            .unwrap_or_default()
+                    } else {
+                        let t = capture_monitor_thumbnail(&name);
+                        new_cache.insert(target_id.clone(), (t.clone(), w, h));
+                        t
+                    };
 
                     targets.push(CaptureTarget {
-                        id: format!("monitor:{}", i),
+                        id: target_id,
                         title: format!("画面 {} ({})", i + 1, name),
                         target_type: "monitor".to_string(),
                         process_name: String::new(),
@@ -528,6 +565,11 @@ mod platform {
                         thumbnail,
                     });
                 }
+            }
+
+            // Update cache when not capturing
+            if !capturing {
+                *THUMBNAIL_CACHE.lock().unwrap() = Some(new_cache);
             }
 
             Ok(targets)
@@ -734,6 +776,9 @@ mod platform {
     #[tauri::command]
     pub async fn stop_capture() -> Result<(), String> {
         CAPTURE_RUNNING.store(false, Ordering::SeqCst);
+
+        // Clear thumbnail cache so next poll fetches fresh thumbnails
+        *THUMBNAIL_CACHE.lock().unwrap() = None;
 
         // Signal audio loopback to stop
         if let Some(flag) = AUDIO_STOP_FLAG.lock().unwrap().take() {
