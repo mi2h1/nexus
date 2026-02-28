@@ -191,6 +191,28 @@ async function getAuthData(client: unknown): Promise<{ accessToken: string; home
 async function askClientForUserIdParams(
     client: unknown,
 ): Promise<{ userId: string; deviceId: string; homeserver: string }> {
+    // Try the requesting client first. If it doesn't respond (e.g. popout window
+    // without a WebPlatform message handler), fall back to any other controlled client.
+    try {
+        return await askSingleClientForUserIdParams(client);
+    } catch {
+        // @ts-expect-error - service worker types are not available. See 'fetch' event handler.
+        const allClients: unknown[] = await global.clients.matchAll({ type: "window" });
+        for (const c of allClients) {
+            if (c === client) continue;
+            try {
+                return await askSingleClientForUserIdParams(c);
+            } catch {
+                continue;
+            }
+        }
+        throw new Error("timeout in postMessage: no client responded");
+    }
+}
+
+function askSingleClientForUserIdParams(
+    client: unknown,
+): Promise<{ userId: string; deviceId: string; homeserver: string }> {
     return new Promise((resolve, reject) => {
         // Dev note: this uses postMessage, which is a highly insecure channel. postMessage is typically visible to other
         // tabs, windows, browser extensions, etc, making it far from ideal for sharing sensitive information. This is
