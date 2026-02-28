@@ -143,11 +143,11 @@
     z-index: 2;
     opacity: 0;
     transition: opacity 0.15s ease, background-color 0.15s ease;
-    pointer-events: none;
 
-    .nx_VCControlBar:hover & {
+    /* 大画面ホバーで表示（ボタン自身のホバーでも維持） */
+    .nx_VCRoomView:has(.nx_VCRoomView_content:hover) &,
+    &:hover {
         opacity: 1;
-        pointer-events: auto;
     }
 
     &:hover {
