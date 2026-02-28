@@ -16,6 +16,7 @@ import {
     PopOutIcon,
     CollapseIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { MonitorOff } from "lucide-react";
 
 import { useNexusVoice } from "../../../hooks/useNexusVoice";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
@@ -155,7 +156,7 @@ export function NexusVCControlBar({
                         title="視聴を停止"
                         disableTooltip={isPopout}
                     >
-                        <ShareScreenSolidIcon width={22} height={22} />
+                        <MonitorOff size={20} />
                     </AccessibleButton>
                 )}
 
