@@ -9,6 +9,10 @@ import { idbLoad } from "../utils/StorageAccess";
 import { ACCESS_TOKEN_IV, tryDecryptToken } from "../utils/tokens/tokens";
 import { buildAndEncodePickleKey } from "../utils/tokens/pickling";
 
+const MEDIA_CACHE_NAME = "nexus-media-v1";
+const MEDIA_CACHE_MAX_ENTRIES = 2000;
+const inFlightRequests = new Map<string, Promise<Response>>();
+
 const serverSupportMap: {
     [serverUrl: string]: {
         supportsAuthedMedia: boolean;
@@ -25,7 +29,18 @@ global.addEventListener("install", (event) => {
 global.addEventListener("activate", (event) => {
     // We force all clients to be under our control, immediately. This could be old tabs.
     // @ts-expect-error - service worker types are not available. See 'fetch' event handler.
-    event.waitUntil(clients.claim());
+    event.waitUntil(
+        Promise.all([
+            clients.claim(),
+            caches.keys().then((names) =>
+                Promise.all(
+                    names
+                        .filter((n) => n.startsWith("nexus-media-") && n !== MEDIA_CACHE_NAME)
+                        .map((n) => caches.delete(n)),
+                ),
+            ),
+        ]),
+    );
 });
 
 // @ts-expect-error - the service worker types conflict with the DOM types available through TypeScript. Many hours
@@ -91,7 +106,36 @@ global.addEventListener("fetch", (event: FetchEvent) => {
             // Add authentication and send the request. We add authentication even if MSC3916 endpoints aren't
             // being used to ensure patches like this work:
             // https://github.com/matrix-org/synapse/commit/2390b66bf0ec3ff5ffb0c7333f3c9b239eeb92bb
-            return fetch(url, fetchConfigForToken(auth?.accessToken));
+
+            const cacheKey = url.href;
+            const cache = await caches.open(MEDIA_CACHE_NAME);
+
+            // Cache hit → return immediately without network
+            const cached = await cache.match(cacheKey);
+            if (cached) return cached;
+
+            // Deduplicate: if the same URL is already being fetched, wait and clone
+            if (inFlightRequests.has(cacheKey)) {
+                const res = await inFlightRequests.get(cacheKey)!;
+                return res.clone();
+            }
+
+            // Fetch, cache on success, and return
+            const fetchPromise = (async (): Promise<Response> => {
+                const response = await fetch(url, fetchConfigForToken(auth?.accessToken));
+                if (response.ok) {
+                    await cache.put(cacheKey, response.clone());
+                    evictOldEntries(cache);
+                }
+                return response;
+            })();
+
+            inFlightRequests.set(cacheKey, fetchPromise);
+            try {
+                return await fetchPromise;
+            } finally {
+                inFlightRequests.delete(cacheKey);
+            }
         })(),
     );
 });
@@ -175,6 +219,15 @@ async function askClientForUserIdParams(
 
         // Ask the tab for the information we need. This is handled by WebPlatform.
         (client as Window).postMessage({ responseKey, type: "userinfo" });
+    });
+}
+
+function evictOldEntries(cache: Cache): void {
+    cache.keys().then((keys) => {
+        const excess = keys.length - MEDIA_CACHE_MAX_ENTRIES;
+        for (let i = 0; i < excess; i++) {
+            cache.delete(keys[i]);
+        }
     });
 }
 
