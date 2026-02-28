@@ -147,12 +147,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private participantVolumes = new Map<string, number>(); // 0-1.0
     // ─── Screen share audio ──────────────────────────────────
     private screenShareVideoElements = new Map<string, HTMLVideoElement>();
-    private screenShareVolumes = new Map<string, number>(); // 0-1.0
+    private screenShareVolumes = new Map<string, number>(); // 0-2.0 (0-200%)
+    private screenShareGains = new Map<string, GainNode>();
+    private screenShareSources = new Map<string, MediaElementAudioSourceNode>();
     // ─── Tauri output audio pipeline (>100% volume) ──────────
     // In Tauri, we use createMediaStreamSource() to route <audio> through
     // Web Audio API GainNodes, enabling volume amplification beyond 1.0.
-    // NOTE: Screen share audio does NOT use Web Audio — it stays on the
-    // <video> element (videoEl.volume) to preserve browser A/V sync.
+    // Screen share audio also uses Web Audio (createMediaElementSource →
+    // GainNode) for >100% volume while preserving A/V sync.
     private outputAudioContext: AudioContext | null = null;
     private outputMasterGain: GainNode | null = null;
     private outputMediaSources = new Map<string, AudioNode>();
@@ -865,25 +867,22 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Public: Per-screen-share volume ─────────────────────
 
     /**
-     * Set the audio volume for a remote screen share (0.0–1.0).
+     * Set the audio volume for a remote screen share (0.0–2.0, i.e. 0–200%).
      * Uses participantIdentity directly as key.
      */
     public setScreenShareVolume(participantIdentity: string, volume: number): void {
-        const clamped = Math.max(0, Math.min(1, volume));
+        const clamped = Math.max(0, Math.min(2, volume));
         this.screenShareVolumes.set(participantIdentity, clamped);
         const watching = this.watchingScreenShares.has(participantIdentity);
 
-        const videoEl = this.screenShareVideoElements.get(participantIdentity);
-        if (videoEl && watching) {
-            videoEl.volume = Math.min(1, clamped * this._masterOutputVolume);
-        }
+        this.applyScreenShareVolume(participantIdentity, watching);
         // Persist by resolved userId (stable across sessions)
         const userId = this.resolveIdentityToUserId(participantIdentity);
         if (userId) this.persistVolume(NexusVoiceConnection.SCREENSHARE_VOLUMES_KEY, userId, clamped);
     }
 
     /**
-     * Get the current audio volume for a remote screen share (0.0–1.0).
+     * Get the current audio volume for a remote screen share (0.0–2.0).
      * Returns 1 if not set.
      */
     public getScreenShareVolume(participantIdentity: string): number {
@@ -898,25 +897,72 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     /**
      * Register the <video> element used by ScreenShareTile for volume control.
-     * The tile combines video + audio tracks into a single MediaStream on this
-     * element. We use videoEl.volume directly (no Web Audio) to keep audio in
-     * the same pipeline as video — preserving browser RTCP SR-based A/V sync.
+     * Routes audio through Web Audio (createMediaElementSource → GainNode)
+     * to enable >100% amplification while preserving A/V sync — the video
+     * element's internal decoder still drives audio timing.
      */
     public registerScreenShareVideoElement(participantIdentity: string, videoEl: HTMLVideoElement): void {
-        this.screenShareVideoElements.set(participantIdentity, videoEl);
-        const watching = this.watchingScreenShares.has(participantIdentity);
-        const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
+        // Clean up previous registration if any
+        this.unregisterScreenShareVideoElement(participantIdentity);
 
+        this.screenShareVideoElements.set(participantIdentity, videoEl);
         videoEl.muted = false;
-        videoEl.volume = watching ? Math.min(1, vol * this._masterOutputVolume) : 0;
+        videoEl.volume = 1; // Full volume on element; gain controlled by Web Audio
         videoEl.play().catch(() => {});
+
+        // Route through Web Audio for >100% volume
+        if (this.outputAudioContext) {
+            try {
+                const source = this.outputAudioContext.createMediaElementSource(videoEl);
+                const gain = this.outputAudioContext.createGain();
+                source.connect(gain);
+                gain.connect(this.outputAudioContext.destination);
+
+                this.screenShareSources.set(participantIdentity, source);
+                this.screenShareGains.set(participantIdentity, gain);
+            } catch (e) {
+                logger.warn("Failed to create MediaElementSource for screen share, falling back to videoEl.volume", e);
+            }
+        }
+
+        const watching = this.watchingScreenShares.has(participantIdentity);
+        this.applyScreenShareVolume(participantIdentity, watching);
     }
 
     /**
      * Unregister the <video> element when the tile unmounts.
      */
     public unregisterScreenShareVideoElement(participantIdentity: string): void {
+        const source = this.screenShareSources.get(participantIdentity);
+        if (source) {
+            source.disconnect();
+            this.screenShareSources.delete(participantIdentity);
+        }
+        const gain = this.screenShareGains.get(participantIdentity);
+        if (gain) {
+            gain.disconnect();
+            this.screenShareGains.delete(participantIdentity);
+        }
         this.screenShareVideoElements.delete(participantIdentity);
+    }
+
+    /**
+     * Apply the current volume to a screen share.
+     * Uses GainNode if available (>100% capable), falls back to videoEl.volume.
+     */
+    private applyScreenShareVolume(participantIdentity: string, watching: boolean): void {
+        const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
+        const effectiveVol = watching ? vol * this._masterOutputVolume : 0;
+
+        const gain = this.screenShareGains.get(participantIdentity);
+        if (gain) {
+            gain.gain.value = effectiveVol;
+        } else {
+            const videoEl = this.screenShareVideoElements.get(participantIdentity);
+            if (videoEl) {
+                videoEl.volume = Math.min(1, effectiveVol);
+            }
+        }
     }
 
     // ─── Public: Screen share watching ──────────────────────
@@ -936,11 +982,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.watchingScreenShares.delete(participantIdentity);
         }
 
-        const vol = this.screenShareVolumes.get(participantIdentity) ?? 1;
-        const videoEl = this.screenShareVideoElements.get(participantIdentity);
-        if (videoEl) {
-            videoEl.volume = watching ? Math.min(1, vol * this._masterOutputVolume) : 0;
-        }
+        this.applyScreenShareVolume(participantIdentity, watching);
         this.emit(CallEvent.WatchingChanged, new Set(this.watchingScreenShares));
     }
 
@@ -985,14 +1027,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             }
         }
 
-        // Screen share audio: always via videoEl.volume (both Tauri and Browser)
-        for (const [identity, videoEl] of this.screenShareVideoElements) {
-            if (this.watchingScreenShares.has(identity)) {
-                const vol = this.screenShareVolumes.get(identity) ?? 1;
-                videoEl.volume = Math.min(1, vol * this._masterOutputVolume);
-            } else {
-                videoEl.volume = 0;
-            }
+        // Screen share audio: GainNode if available, else videoEl.volume
+        for (const [identity] of this.screenShareVideoElements) {
+            const watching = this.watchingScreenShares.has(identity);
+            this.applyScreenShareVolume(identity, watching);
         }
     }
 
