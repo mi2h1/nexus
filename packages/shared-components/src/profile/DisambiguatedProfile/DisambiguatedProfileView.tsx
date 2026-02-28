@@ -21,9 +21,13 @@ export interface DisambiguatedProfileViewSnapshot {
     displayName: string;
     /**
      * The CSS class for coloring the display name (e.g., "mx_Username_color1").
-     * Undefined if coloring is not enabled.
+     * Undefined if coloring is not enabled or when colorStyle is set instead.
      */
     colorClass?: string;
+    /**
+     * Inline color style for custom user colors. Takes precedence over colorClass.
+     */
+    colorStyle?: React.CSSProperties;
     /**
      * The CSS class name.
      */
@@ -78,7 +82,8 @@ interface DisambiguatedProfileViewProps {
  * ```
  */
 export function DisambiguatedProfileView({ vm }: Readonly<DisambiguatedProfileViewProps>): JSX.Element {
-    const { displayName, colorClass, displayIdentifier, title, emphasizeDisplayName, className } = useViewModel(vm);
+    const { displayName, colorClass, colorStyle, displayIdentifier, title, emphasizeDisplayName, className } =
+        useViewModel(vm);
 
     const displayNameClasses = classNames(colorClass, {
         [styles.disambiguatedProfile_displayName]: emphasizeDisplayName,
@@ -104,7 +109,7 @@ export function DisambiguatedProfileView({ vm }: Readonly<DisambiguatedProfileVi
             role={vm.onClick ? "button" : undefined}
             tabIndex={vm.onClick ? 0 : undefined}
         >
-            <span className={displayNameClasses} dir="auto">
+            <span className={displayNameClasses} style={colorStyle} dir="auto">
                 {displayName}
             </span>
             {/* mx_DisambiguatedProfile_mxid is required for PCSS selectors like .mx_MemberTileView .mx_DisambiguatedProfile_mxid */}

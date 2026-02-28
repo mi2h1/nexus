@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX, useCallback, useContext, useEffect } from "react";
+import React, { type JSX, useCallback, useContext, useEffect, useState } from "react";
 import { HTTPError } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
@@ -26,6 +26,7 @@ import { SettingsSubsection, SettingsSubsectionText } from "../../shared/Setting
 import { SDKContext } from "../../../../../contexts/SDKContext";
 import { UserPersonalInfoSettings } from "../../UserPersonalInfoSettings";
 import { useMatrixClientContext } from "../../../../../contexts/MatrixClientContext";
+import { NexusUserColorStore, NexusUserColorStoreEvent } from "../../../../../stores/NexusUserColorStore";
 
 interface IProps {
     closeSettingsFn: () => void;
@@ -80,6 +81,131 @@ const ManagementSection: React.FC<ManagementSectionProps> = ({ onDeactivateClick
                 </AccessibleButton>
             </SettingsSubsection>
         </SettingsSection>
+    );
+};
+
+const PRESET_COLORS = [
+    "#e03131", "#f08c00", "#e8590c", "#ffd43b", "#2b8a3e",
+    "#0ca678", "#1098ad", "#1c7ed6", "#4263eb", "#7048e8",
+    "#ae3ec9", "#d6336c", "#f06595", "#ced4da", "#ff6b6b",
+    "#20c997", "#339af0", "#845ef7", "#f783ac", "#fab005",
+];
+
+const HEX_REGEX = /^#[0-9a-fA-F]{6}$/;
+
+const NexusUserColorPicker: React.FC = () => {
+    const cli = useMatrixClientContext();
+    const userId = cli.getSafeUserId();
+    const displayName = cli.getUser(userId)?.displayName ?? userId;
+    const store = NexusUserColorStore.instance;
+
+    const [currentColor, setCurrentColor] = useState<string>(store.getColor(userId) ?? "");
+    const [hexInput, setHexInput] = useState<string>(currentColor);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        const onChanged = (): void => {
+            const c = store.getColor(userId) ?? "";
+            setCurrentColor(c);
+            setHexInput(c);
+        };
+        store.on(NexusUserColorStoreEvent.ColorsChanged, onChanged);
+        return () => {
+            store.off(NexusUserColorStoreEvent.ColorsChanged, onChanged);
+        };
+    }, [store, userId]);
+
+    const applyColor = useCallback(async (color: string) => {
+        setSaving(true);
+        try {
+            await store.setMyColor(color);
+        } catch (e) {
+            logger.error("Failed to set user color", e);
+        } finally {
+            setSaving(false);
+        }
+    }, [store]);
+
+    const onPresetClick = useCallback((color: string) => {
+        setHexInput(color);
+        applyColor(color);
+    }, [applyColor]);
+
+    const onHexApply = useCallback(() => {
+        if (HEX_REGEX.test(hexInput)) {
+            applyColor(hexInput);
+        }
+    }, [hexInput, applyColor]);
+
+    const onReset = useCallback(() => {
+        setHexInput("");
+        applyColor("");
+    }, [applyColor]);
+
+    const previewColor = HEX_REGEX.test(hexInput) ? hexInput : currentColor;
+
+    return (
+        <SettingsSubsection heading="ユーザーカラー" stretchContent>
+            <div className="mx_NexusUserColorPicker">
+                <div className="mx_NexusUserColorPicker_presets">
+                    {PRESET_COLORS.map((color) => (
+                        <button
+                            key={color}
+                            type="button"
+                            className={`mx_NexusUserColorPicker_preset${currentColor === color ? " mx_NexusUserColorPicker_preset--selected" : ""}`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => onPresetClick(color)}
+                            title={color}
+                            disabled={saving}
+                        />
+                    ))}
+                </div>
+
+                <div className="mx_NexusUserColorPicker_hexRow">
+                    <div
+                        className="mx_NexusUserColorPicker_hexPreview"
+                        style={{ backgroundColor: previewColor || undefined }}
+                    />
+                    <span>HEX:</span>
+                    <input
+                        type="text"
+                        className="mx_NexusUserColorPicker_hexInput"
+                        value={hexInput}
+                        onChange={(e) => setHexInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") onHexApply(); }}
+                        placeholder="#000000"
+                        maxLength={7}
+                        disabled={saving}
+                    />
+                    <AccessibleButton
+                        kind="primary"
+                        onClick={onHexApply}
+                        disabled={saving || !HEX_REGEX.test(hexInput)}
+                    >
+                        適用
+                    </AccessibleButton>
+                </div>
+
+                {previewColor && (
+                    <div>
+                        <span>プレビュー: </span>
+                        <span className="mx_NexusUserColorPicker_preview" style={{ color: previewColor }}>
+                            {displayName}
+                        </span>
+                    </div>
+                )}
+
+                <div className="mx_NexusUserColorPicker_actions">
+                    <AccessibleButton kind="secondary" onClick={onReset} disabled={saving || !currentColor}>
+                        デフォルトに戻す
+                    </AccessibleButton>
+                </div>
+
+                <SettingsSubsectionText>
+                    ユーザーカラーはこのサーバー専用です。他のサーバーでは適用されません。
+                </SettingsSubsectionText>
+            </div>
+        </SettingsSubsection>
     );
 };
 
@@ -193,6 +319,7 @@ const AccountUserSettingsTab: React.FC<IProps> = ({ closeSettingsFn }) => {
                     onPasswordChanged={onPasswordChanged}
                     onPasswordChangeError={onPasswordChangeError}
                 />
+                <NexusUserColorPicker />
             </SettingsSection>
             {accountManagementSection}
         </SettingsTab>

@@ -21,6 +21,8 @@ services:
     image: nexus-lk-jwt-service:latest
     container_name: nexus-jwt
     restart: always
+    volumes:
+      - ./data:/data
     environment:
       # Public URL — returned to clients in JWT response so they can connect
       LIVEKIT_URL: "wss://lche2.xvps.jp:7880"

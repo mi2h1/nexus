@@ -23,7 +23,7 @@ import { Action } from "../../../dispatcher/actions";
 import MessageEvent from "../messages/MessageEvent";
 import MemberAvatar from "../avatars/MemberAvatar";
 import { _t } from "../../../languageHandler";
-import { getUserNameColorClass } from "../../../utils/FormattingUtils";
+import { getUserNameColorClass, getUserNameColorStyle } from "../../../utils/FormattingUtils";
 import { type ViewRoomPayload } from "../../../dispatcher/payloads/ViewRoomPayload";
 import { type RoomPermalinkCreator } from "../../../utils/permalinks/Permalinks";
 import { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
@@ -82,7 +82,10 @@ export function PinnedEventTile({ event, room, permalinkCreator }: PinnedEventTi
             <div className="mx_PinnedEventTile_wrapper">
                 <div className="mx_PinnedEventTile_top">
                     <Tooltip label={event.sender?.name || sender}>
-                        <span className={classNames("mx_PinnedEventTile_sender", getUserNameColorClass(sender))}>
+                        <span
+                            className={classNames("mx_PinnedEventTile_sender", getUserNameColorClass(sender))}
+                            style={getUserNameColorStyle(sender)}
+                        >
                             {event.sender?.name || sender}
                         </span>
                     </Tooltip>

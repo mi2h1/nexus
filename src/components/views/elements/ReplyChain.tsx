@@ -16,7 +16,7 @@ import dis from "../../../dispatcher/dispatcher";
 import { makeUserPermalink, type RoomPermalinkCreator } from "../../../utils/permalinks/Permalinks";
 import SettingsStore from "../../../settings/SettingsStore";
 import { type Layout } from "../../../settings/enums/Layout";
-import { getUserNameColorClass } from "../../../utils/FormattingUtils";
+import { getUserNameColorClass, getUserNameColorStyle } from "../../../utils/FormattingUtils";
 import { Action } from "../../../dispatcher/actions";
 import Spinner from "./Spinner";
 import ReplyTile from "../rooms/ReplyTile";
@@ -195,6 +195,11 @@ export default class ReplyChain extends React.Component<IProps, IState> {
         return getUserNameColorClass(ev.getSender()!).replace("Username", "ReplyChain");
     }
 
+    private getReplyChainColorStyle(ev: MatrixEvent): React.CSSProperties | undefined {
+        const style = getUserNameColorStyle(ev.getSender()!);
+        return style ? { borderLeftColor: style.color as string } : undefined;
+    }
+
     public render(): React.ReactNode {
         let header: JSX.Element | undefined;
         if (this.state.err) {
@@ -206,8 +211,9 @@ export default class ReplyChain extends React.Component<IProps, IState> {
         } else if (this.state.loadedEv && shouldDisplayReply(this.state.events[0])) {
             const ev = this.state.loadedEv;
             const room = this.matrixClient.getRoom(ev.getRoomId());
+            const headerColorStyle = this.getReplyChainColorStyle(ev);
             header = (
-                <blockquote className={`mx_ReplyChain ${this.getReplyChainColorClass(ev)}`}>
+                <blockquote className={`mx_ReplyChain ${this.getReplyChainColorClass(ev)}`} style={headerColorStyle}>
                     {_t(
                         "timeline|reply|in_reply_to",
                         {},
@@ -265,8 +271,9 @@ export default class ReplyChain extends React.Component<IProps, IState> {
                 // We don't want to add the class if it's undefined, it should only be expanded/collapsed when it's true/false
                 "mx_ReplyChain--collapsed": isQuoteExpanded === false,
             });
+            const evColorStyle = this.getReplyChainColorStyle(ev);
             return (
-                <blockquote ref={this.blockquoteRef} className={classname} key={ev.getId()}>
+                <blockquote ref={this.blockquoteRef} className={classname} style={evColorStyle} key={ev.getId()}>
                     <ReplyTile
                         mxEvent={ev}
                         permalinkCreator={this.props.permalinkCreator}

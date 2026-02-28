@@ -10,10 +10,10 @@ import {
     type DisambiguatedProfileViewSnapshot,
     type DisambiguatedProfileViewModel as DisambiguatedProfileViewModelInterface,
 } from "@element-hq/web-shared-components";
-import { type MouseEvent } from "react";
+import React, { type MouseEvent } from "react";
 
 import { _t } from "../../languageHandler";
-import { getUserNameColorClass } from "../../utils/FormattingUtils";
+import { getUserNameColorClass, getUserNameColorStyle } from "../../utils/FormattingUtils";
 import UserIdentifier from "../../customisations/UserIdentifier";
 
 /**
@@ -89,10 +89,14 @@ export class DisambiguatedProfileViewModel
         const displayName = member?.rawDisplayName || fallbackName;
         const mxid = member?.userId;
 
-        // Compute color class if coloring is enabled
+        // Compute color class/style if coloring is enabled
         let colorClass: string | undefined;
+        let colorStyle: React.CSSProperties | undefined;
         if (colored && mxid) {
-            colorClass = getUserNameColorClass(mxid);
+            colorStyle = getUserNameColorStyle(mxid);
+            if (!colorStyle) {
+                colorClass = getUserNameColorClass(mxid);
+            }
         }
 
         // Compute display identifier for disambiguation
@@ -123,6 +127,7 @@ export class DisambiguatedProfileViewModel
         return {
             displayName,
             colorClass,
+            colorStyle,
             className,
             displayIdentifier,
             title,

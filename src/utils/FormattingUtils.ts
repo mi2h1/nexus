@@ -7,11 +7,12 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import { type ReactElement, type ReactNode } from "react";
+import { type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { useIdColorHash } from "@vector-im/compound-web";
 
 import { _t, getCurrentLanguage, getUserLanguage } from "../languageHandler";
 import { jsxJoin } from "./ReactUtils";
+import { NexusUserColorStore } from "../stores/NexusUserColorStore";
 
 export { formatBytes } from "@element-hq/web-shared-components";
 
@@ -47,6 +48,14 @@ export function getUserNameColorClass(userId: string): string {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const number = useIdColorHash(userId);
     return `mx_Username_color${number}`;
+}
+
+/**
+ * Returns an inline style with the user's custom color if set, or undefined to fall back to the hash-based class.
+ */
+export function getUserNameColorStyle(userId: string): CSSProperties | undefined {
+    const customColor = NexusUserColorStore.instance.getColor(userId);
+    return customColor ? { color: customColor } : undefined;
 }
 
 /**
