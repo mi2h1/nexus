@@ -73,6 +73,11 @@ export function NexusVCPopout({ roomId, childWindow, onClose }: NexusVCPopoutPro
         const setupChild = (): void => {
             if (closed) return;
             try {
+                // Wait for popout.html to load (skip the transient about:blank)
+                if (child.location.href === "about:blank") {
+                    if (!closed) setTimeout(setupChild, 50);
+                    return;
+                }
                 child.document.title = "Nexus VC";
                 // Read current theme background and apply immediately to avoid flash
                 const bg = getComputedStyle(document.documentElement)

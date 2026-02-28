@@ -247,7 +247,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
             isPopout={isPopout}
             portalContainer={viewEl?.ownerDocument.body}
             onPopout={!isPopout ? async () => {
-                const win = window.open("about:blank", "_blank", "width=480,height=640");
+                const win = window.open("popout.html", "_blank", "width=480,height=640");
                 if (win) NexusVoiceStore.instance.setPopoutWindow(win);
             } : undefined}
             onRestoreFromPopout={isPopout ? () => {
