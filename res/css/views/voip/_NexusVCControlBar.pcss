@@ -76,6 +76,30 @@
             background-color: var(--cpd-color-bg-critical-hovered);
         }
     }
+
+    &.nx_VCControlBar_button--stopWatching {
+        background-color: transparent;
+        border: 2px solid var(--cpd-color-icon-critical-primary);
+        color: var(--cpd-color-icon-critical-primary);
+        position: relative;
+        overflow: hidden;
+
+        /* Diagonal slash over the icon */
+        &::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 130%;
+            height: 2px;
+            background-color: var(--cpd-color-icon-critical-primary);
+            transform: translate(-50%, -50%) rotate(-45deg);
+        }
+
+        &:hover {
+            background-color: var(--cpd-color-bg-critical-subtle);
+        }
+    }
 }
 
 /* ─── Layout toggle buttons ────────────────────────── */
@@ -98,5 +122,43 @@
     &:hover {
         background-color: var(--cpd-color-bg-subtle-secondary);
     }
+}
 
+/* ─── Focus toggle (above control bar) ────────────── */
+
+.nx_VCControlBar_focusToggle {
+    position: absolute;
+    /* Bottom bar (100px) + gap (16px) above the control bar = bottom of main screen */
+    bottom: calc(100% + 116px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--cpd-space-2x) var(--cpd-space-4x);
+    border: none;
+    border-radius: var(--cpd-space-2x);
+    background-color: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font: var(--cpd-font-body-md-semibold);
+    cursor: pointer;
+    white-space: nowrap;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+    pointer-events: none;
+
+    .nx_VCControlBar:hover & {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    &:hover {
+        background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    /* In focus mode, position just above the control bar */
+    .nx_VCRoomView--focusMode & {
+        bottom: calc(100% + var(--cpd-space-4x));
+        /* Always visible in focus mode */
+        opacity: 1;
+        pointer-events: auto;
+    }
 }

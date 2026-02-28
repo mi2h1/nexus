@@ -255,50 +255,6 @@
     cursor: pointer;
 }
 
-/* ─── Focus overlay (hover to show controls) ──────── */
-
-.nx_VCRoomView_focusOverlay {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    padding-bottom: var(--cpd-space-4x);
-    gap: var(--cpd-space-3x);
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    pointer-events: none;
-    z-index: 2;
-
-    .nx_VCRoomView_spotlightMain:hover & {
-        opacity: 1;
-        pointer-events: auto;
-    }
-
-    .nx_VCRoomView_spotlight--focusMode & {
-        /* コントロールバー（64px）の上に収まるよう余白を追加 */
-        padding-bottom: calc(64px + var(--cpd-space-4x));
-    }
-}
-
-.nx_VCRoomView_focusToggleButton {
-    padding: var(--cpd-space-2x) var(--cpd-space-4x);
-    border: none;
-    border-radius: var(--cpd-space-2x);
-    background-color: rgba(255, 255, 255, 0.15);
-    color: #fff;
-    font: var(--cpd-font-body-md-semibold);
-    cursor: pointer;
-
-    &:hover {
-        background-color: rgba(255, 255, 255, 0.25);
-    }
-}
-
 /* ─── Screen share preview overlay (opt-in) ───────── */
 
 .nx_VCRoomView_screenSharePreview {

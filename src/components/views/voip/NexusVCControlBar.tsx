@@ -36,6 +36,11 @@ interface NexusVCControlBarProps {
     isPopout?: boolean;
     /** Portal target for screen share panel/picker — set to popout body when in a child window. */
     portalContainer?: HTMLElement;
+    layoutMode?: "spotlight" | "grid";
+    focusMode?: boolean;
+    onToggleFocusMode?: () => void;
+    /** Stop watching the current spotlight screen share. Shown only when set. */
+    onStopWatching?: () => void;
 }
 
 export function NexusVCControlBar({
@@ -44,6 +49,10 @@ export function NexusVCControlBar({
     onRestoreFromPopout,
     isPopout,
     portalContainer,
+    layoutMode,
+    focusMode,
+    onToggleFocusMode,
+    onStopWatching,
 }: NexusVCControlBarProps): JSX.Element {
     const { isMicMuted, isScreenSharing } = useNexusVoice();
     const [showSharePanel, setShowSharePanel] = useState(false);
@@ -77,6 +86,16 @@ export function NexusVCControlBar({
 
     return (
         <div className="nx_VCControlBar">
+            {/* Focus toggle — spotlight mode only, positioned above the bar */}
+            {layoutMode === "spotlight" && onToggleFocusMode && (
+                <button
+                    className="nx_VCControlBar_focusToggle"
+                    onClick={onToggleFocusMode}
+                >
+                    {focusMode ? "メンバーを表示" : "メンバーを非表示"}
+                </button>
+            )}
+
             <div className="nx_VCControlBar_center">
                 {/* Mic toggle */}
                 <AccessibleButton
@@ -127,6 +146,18 @@ export function NexusVCControlBar({
                 >
                     <EndCallIcon width={22} height={22} />
                 </AccessibleButton>
+
+                {/* Stop watching screen share */}
+                {onStopWatching && (
+                    <AccessibleButton
+                        className="nx_VCControlBar_button nx_VCControlBar_button--stopWatching"
+                        onClick={onStopWatching}
+                        title="視聴を停止"
+                        disableTooltip={isPopout}
+                    >
+                        <ShareScreenSolidIcon width={22} height={22} />
+                    </AccessibleButton>
+                )}
 
             </div>
 

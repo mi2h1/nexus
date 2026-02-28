@@ -260,6 +260,14 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                     invoke("plugin:window|close", { label: "vc-popout" });
                 }).catch(() => {});
             } : undefined}
+            layoutMode={layoutMode}
+            focusMode={focusMode}
+            onToggleFocusMode={() => setFocusMode((prev) => !prev)}
+            onStopWatching={
+                layoutMode === "spotlight" && focusTarget?.type === "screenshare" && !focusTarget.share.isLocal
+                    ? () => stopWatching(focusTarget.share.participantIdentity)
+                    : undefined
+            }
         />
     );
 
@@ -274,7 +282,6 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                         screenShares={watchedScreenShares}
                         unwatchedScreenShares={unwatchedScreenShares}
                         onStartWatching={startWatching}
-                        onStopWatching={stopWatching}
                         onShareContextMenu={onShareContextMenu}
                         members={visibleMembers}
                         activeSpeakers={activeSpeakers}
@@ -282,7 +289,6 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
                         hideNonScreenSharePanels={hideNonScreenSharePanels}
                         onUnfocus={handleUnfocus}
                         focusMode={focusMode}
-                        onToggleFocusMode={() => setFocusMode((prev) => !prev)}
                     />
                 ) : (
                     <GridLayout
@@ -431,7 +437,6 @@ interface SpotlightLayoutProps {
     screenShares: ScreenShareInfo[];
     unwatchedScreenShares: ScreenShareInfo[];
     onStartWatching: (id: string) => void;
-    onStopWatching: (id: string) => void;
     onShareContextMenu: (share: ScreenShareInfo, left: number, top: number) => void;
     members: RoomMember[];
     activeSpeakers: Set<string>;
@@ -440,7 +445,6 @@ interface SpotlightLayoutProps {
     hideNonScreenSharePanels?: boolean;
     onUnfocus: () => void;
     focusMode?: boolean;
-    onToggleFocusMode?: () => void;
 }
 
 function SpotlightLayout({
@@ -448,7 +452,6 @@ function SpotlightLayout({
     screenShares,
     unwatchedScreenShares,
     onStartWatching,
-    onStopWatching,
     onShareContextMenu,
     members,
     activeSpeakers,
@@ -456,7 +459,6 @@ function SpotlightLayout({
     hideNonScreenSharePanels,
     onUnfocus,
     focusMode,
-    onToggleFocusMode,
 }: SpotlightLayoutProps): JSX.Element {
     // Manual screen share selection (null = auto from focusTarget)
     const [manualScreenShareId, setManualScreenShareId] = useState<string | null>(null);
@@ -504,7 +506,6 @@ function SpotlightLayout({
                 {effectiveTarget?.type === "screenshare" ? (
                     <ScreenShareTile
                         share={effectiveTarget.share}
-                        onStopWatching={effectiveTarget.share.isLocal ? undefined : () => onStopWatching(effectiveTarget.share.participantIdentity)}
                         onShareContextMenu={onShareContextMenu}
                     />
                 ) : effectiveTarget?.type === "member" ? (
@@ -519,18 +520,6 @@ function SpotlightLayout({
                         画面を共有しているユーザーはいません
                     </div>
                 ) : null}
-
-                {/* フォーカスオーバーレイ（ホバー時表示） */}
-                <div className="nx_VCRoomView_focusOverlay" onClick={(e) => e.stopPropagation()}>
-                    {(focusMode || hasBottomBar) && (
-                        <button
-                            className="nx_VCRoomView_focusToggleButton"
-                            onClick={(e) => { e.stopPropagation(); onToggleFocusMode?.(); }}
-                        >
-                            {focusMode ? "メンバーを表示" : "メンバーを非表示"}
-                        </button>
-                    )}
-                </div>
             </div>
             {hasBottomBar && (
                 <div className={classNames("nx_VCRoomView_spotlightBottomBar", {
