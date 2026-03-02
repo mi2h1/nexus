@@ -208,26 +208,34 @@
     align-items: center;
     flex-shrink: 0;
     cursor: default;
+    padding: 2px;
+    border: 1px solid;
+    border-radius: 5px;
 }
 
 .mx_NexusCallStatusPanel_signal--good {
     color: var(--cpd-color-icon-success-primary);
+    border-color: var(--cpd-color-icon-success-primary);
 }
 
 .mx_NexusCallStatusPanel_signal--fair {
     color: var(--cpd-color-orange-900);
+    border-color: var(--cpd-color-orange-900);
 }
 
 .mx_NexusCallStatusPanel_signal--poor {
     color: var(--cpd-color-orange-900);
+    border-color: var(--cpd-color-orange-900);
 }
 
 .mx_NexusCallStatusPanel_signal--bad {
     color: var(--cpd-color-icon-critical-primary);
+    border-color: var(--cpd-color-icon-critical-primary);
 }
 
 .mx_NexusCallStatusPanel_signal--unknown {
     color: var(--cpd-color-icon-secondary);
+    border-color: var(--cpd-color-icon-secondary);
 }
 
 @keyframes nexus-pulse {

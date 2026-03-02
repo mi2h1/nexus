@@ -110,7 +110,7 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
         statusIndicator = (
             <Tooltip label={signal.label} placement="top">
                 <span className={`mx_NexusCallStatusPanel_signal ${signal.className}`}>
-                    <signal.Icon size={20} />
+                    <signal.Icon size={28} />
                 </span>
             </Tooltip>
         );
