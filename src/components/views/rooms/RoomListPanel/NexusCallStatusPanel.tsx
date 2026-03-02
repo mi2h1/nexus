@@ -6,7 +6,16 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { useCallback, useRef, useState } from "react";
-import { IconPhoneOff, IconScreenShare, IconScreenShareOff } from "@tabler/icons-react";
+import { Tooltip } from "@vector-im/compound-web";
+import {
+    IconAntennaBars1,
+    IconAntennaBars2,
+    IconAntennaBars3,
+    IconAntennaBars5,
+    IconPhoneOff,
+    IconScreenShare,
+    IconScreenShareOff,
+} from "@tabler/icons-react";
 
 import { type Call, ConnectionState } from "../../../../models/Call";
 import type { NexusVoiceConnection } from "../../../../models/NexusVoiceConnection";
@@ -19,6 +28,27 @@ import { NexusScreenSharePanel } from "../../voip/NexusScreenSharePanel";
 
 interface NexusCallStatusPanelProps {
     call: Call | NexusVoiceConnection;
+}
+
+/** Returns icon component and CSS color class based on latency. */
+function getSignalQuality(ms: number | null): {
+    Icon: React.ComponentType<{ size?: number }>;
+    className: string;
+    label: string;
+} {
+    if (ms === null) {
+        return { Icon: IconAntennaBars1, className: "mx_NexusCallStatusPanel_signal--unknown", label: "計測中…" };
+    }
+    if (ms < 80) {
+        return { Icon: IconAntennaBars5, className: "mx_NexusCallStatusPanel_signal--good", label: `${ms}ms` };
+    }
+    if (ms < 150) {
+        return { Icon: IconAntennaBars3, className: "mx_NexusCallStatusPanel_signal--fair", label: `${ms}ms` };
+    }
+    if (ms < 250) {
+        return { Icon: IconAntennaBars2, className: "mx_NexusCallStatusPanel_signal--poor", label: `${ms}ms` };
+    }
+    return { Icon: IconAntennaBars1, className: "mx_NexusCallStatusPanel_signal--bad", label: `${ms}ms` };
 }
 
 const statusLabels: Record<ConnectionState, string> = {
@@ -71,25 +101,33 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
         }
     }, [call, isScreenSharing]);
 
-    let dotClass: string;
-    if (displayState === ConnectionState.Connected) {
-        dotClass = "mx_NexusCallStatusPanel_dot--connected";
-    } else if (displayState === ConnectionState.Connecting) {
-        dotClass = "mx_NexusCallStatusPanel_dot--connecting";
-    } else {
-        dotClass = "mx_NexusCallStatusPanel_dot--disconnecting";
-    }
+    const isConnected = displayState === ConnectionState.Connected;
+    const signal = getSignalQuality(latencyMs);
 
-    const latencyLabel =
-        latencyMs !== null ? ` — ${latencyMs}ms` : "";
+    // Status indicator: signal icon when connected, colored dot otherwise
+    let statusIndicator: React.ReactNode;
+    if (isConnected) {
+        statusIndicator = (
+            <Tooltip label={signal.label} placement="top">
+                <span className={`mx_NexusCallStatusPanel_signal ${signal.className}`}>
+                    <signal.Icon size={16} />
+                </span>
+            </Tooltip>
+        );
+    } else {
+        const dotClass = displayState === ConnectionState.Connecting
+            ? "mx_NexusCallStatusPanel_dot--connecting"
+            : "mx_NexusCallStatusPanel_dot--disconnecting";
+        statusIndicator = <span className={`mx_NexusCallStatusPanel_dot ${dotClass}`} />;
+    }
 
     return (
         <div className="mx_NexusCallStatusPanel">
             <div className="mx_NexusCallStatusPanel_info">
                 <div className="mx_NexusCallStatusPanel_status">
-                    <span className={`mx_NexusCallStatusPanel_dot ${dotClass}`} />
+                    {statusIndicator}
                     <span className={`mx_NexusCallStatusPanel_statusText${displayState === ConnectionState.Connecting ? " mx_NexusCallStatusPanel_statusText--connecting" : ""}`}>
-                        {statusLabels[displayState]}{latencyLabel}
+                        {statusLabels[displayState]}
                     </span>
                 </div>
                 <span className="mx_NexusCallStatusPanel_roomName">{roomName}</span>
