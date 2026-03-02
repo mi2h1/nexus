@@ -123,13 +123,11 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
 
     return (
         <div className="mx_NexusCallStatusPanel">
+            {statusIndicator}
             <div className="mx_NexusCallStatusPanel_info">
-                <div className="mx_NexusCallStatusPanel_status">
-                    {statusIndicator}
-                    <span className={`mx_NexusCallStatusPanel_statusText${displayState === ConnectionState.Connecting ? " mx_NexusCallStatusPanel_statusText--connecting" : ""}`}>
-                        {statusLabels[displayState]}
-                    </span>
-                </div>
+                <span className={`mx_NexusCallStatusPanel_statusText${displayState === ConnectionState.Connecting ? " mx_NexusCallStatusPanel_statusText--connecting" : ""}`}>
+                    {statusLabels[displayState]}
+                </span>
                 <span className="mx_NexusCallStatusPanel_roomName">{roomName}</span>
             </div>
             <AccessibleButton

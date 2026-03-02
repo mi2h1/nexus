@@ -1987,19 +1987,23 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.livekitRoom) return;
 
         try {
-            // Access the underlying RTCPeerConnection via LiveKit's engine
-            const subscriberPc = (this.livekitRoom as any).engine?.pcManager?.subscriber?.pc as
-                | RTCPeerConnection
-                | undefined;
-            if (subscriberPc) {
-                const stats = await subscriberPc.getStats();
+            // Access the underlying RTCPeerConnections via LiveKit's engine.
+            // Try subscriber first (has stats when receiving remote tracks),
+            // fall back to publisher (always available when connected).
+            const pcManager = (this.livekitRoom as any).engine?.pcManager;
+            const pcs: RTCPeerConnection[] = [];
+            if (pcManager?.subscriber?.pc) pcs.push(pcManager.subscriber.pc);
+            if (pcManager?.publisher?.pc) pcs.push(pcManager.publisher.pc);
+
+            for (const pc of pcs) {
+                const stats = await pc.getStats();
                 for (const report of stats.values()) {
                     if (report.type === "candidate-pair" && report.state === "succeeded") {
                         this._latencyMs =
                             typeof report.currentRoundTripTime === "number"
                                 ? Math.round(report.currentRoundTripTime * 1000)
                                 : null;
-                        return;
+                        if (this._latencyMs !== null) return;
                     }
                 }
             }
