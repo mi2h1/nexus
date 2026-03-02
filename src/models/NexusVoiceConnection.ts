@@ -33,7 +33,6 @@ import {
     VideoPreset,
 } from "livekit-client";
 
-import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppressor";
 
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
 import SettingsStore from "../settings/SettingsStore";
@@ -166,12 +165,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private inputGainNode: GainNode | null = null;
     private sourceNode: MediaStreamAudioSourceNode | null = null;
     private highPassFilter: BiquadFilterNode | null = null;
-    private compressorNode: DynamicsCompressorNode | null = null;
     private delayNode: DelayNode | null = null;
-    // ─── RNNoise noise cancellation ───────────────────────────
-    private rnnoiseNode: RnnoiseWorkletNode | null = null;
-    private static rnnoiseWasmBinary: ArrayBuffer | null = null;
-    private static rnnoiseWorkletRegistered = false;
     private voiceGateTimer: ReturnType<typeof setInterval> | null = null;
     private _inputLevel = 0; // 0-100 real-time input level
     private _voiceGateOpen = true;
@@ -286,9 +280,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             }
 
             // ── Phase 1: Parallel pre-fetch ──────────────────────────
-            // JWT, mic access, and RNNoise WASM download run concurrently
-            // to minimize total wall-clock time.
-            const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation") ?? false;
+            // JWT and mic access run concurrently to minimize total wall-clock time.
             const [{ jwt, url }, audioTrack] = await Promise.all([
                 this.getJwt(),
                 createLocalAudioTrack({
@@ -298,8 +290,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     sampleRate: 48000,
                     channelCount: 1,
                 }),
-                // Preload RNNoise WASM binary in parallel (cached statically)
-                ncEnabled ? NexusVoiceConnection.preloadRnnoiseWasm() : Promise.resolve(),
             ]);
             this.localAudioTrack = audioTrack;
 
@@ -317,7 +307,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             this.livekitRoom.on(LivekitRoomEvent.DataReceived, this.onDataReceived);
 
-            const pipelinePromise = this.buildInputPipeline(audioTrack, ncEnabled);
+            const pipelinePromise = this.buildInputPipeline(audioTrack);
             await this.livekitRoom.connect(url, jwt);
             const processedTrack = await pipelinePromise;
 
@@ -1042,40 +1032,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
     }
 
-    // ─── Public: Noise cancellation ─────────────────────────
-
-    /**
-     * Toggle RNNoise noise cancellation during an active call.
-     * Reconnects the audio pipeline with or without the RNNoise node.
-     */
-    public async setNoiseCancellation(enabled: boolean): Promise<void> {
-        if (!this.audioContext || !this.sourceNode || !this.analyserNode || !this.inputGainNode) return;
-
-        // Disconnect the full pipeline to rewire
-        this.disconnectInputPipeline();
-
-        if (enabled && this.audioContext.sampleRate === 48000) {
-            if (!this.rnnoiseNode) {
-                await this.setupRnnoiseNode();
-            }
-        } else if (this.rnnoiseNode) {
-            this.rnnoiseNode.disconnect();
-            this.rnnoiseNode.destroy();
-            this.rnnoiseNode = null;
-        }
-
-        this.connectInputPipeline();
-        logger.info(enabled && this.rnnoiseNode ? "Noise cancellation enabled (RNNoise)" : "Noise cancellation disabled");
-    }
-
     /**
      * Build the full input audio pipeline and return the processed MediaStreamTrack.
      * Runs in parallel with livekitRoom.connect() — only needs audioContext
      * and localAudioTrack, both of which are ready before connect() starts.
      *
-     * Pipeline: source → [RNNoise] → HPF → compressor → analyser + inputGain → dest
+     * Pipeline: source → HPF → compressor → analyser + inputGain → dest
      */
-    private async buildInputPipeline(audioTrack: LocalAudioTrack, ncEnabled: boolean): Promise<MediaStreamTrack> {
+    private async buildInputPipeline(audioTrack: LocalAudioTrack): Promise<MediaStreamTrack> {
         if (!this.audioContext) throw new Error("AudioContext not initialized");
 
         this.sourceNode = this.audioContext.createMediaStreamSource(
@@ -1088,14 +1052,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.highPassFilter.frequency.value = 80;
         this.highPassFilter.Q.value = 0.7;
 
-        // Compressor — evens out volume, prevents clipping on loud input
-        this.compressorNode = this.audioContext.createDynamicsCompressor();
-        this.compressorNode.threshold.value = -24;
-        this.compressorNode.knee.value = 12;
-        this.compressorNode.ratio.value = 4;
-        this.compressorNode.attack.value = 0.003;
-        this.compressorNode.release.value = 0.25;
-
         // AnalyserNode — monitors input level
         this.analyserNode = this.audioContext.createAnalyser();
         this.analyserNode.fftSize = 256;
@@ -1104,12 +1060,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Start muted — unmutePipelines() restores the real volume.
         this.inputGainNode = this.audioContext.createGain();
         this.inputGainNode.gain.value = 0;
-
-        // Insert RNNoise if enabled and sample rate is 48kHz
-        // (WASM binary is already preloaded from Phase 1)
-        if (ncEnabled && this.audioContext.sampleRate === 48000) {
-            await this.setupRnnoiseNode();
-        }
 
         // Connect the pipeline chain
         this.connectInputPipeline();
@@ -1122,55 +1072,31 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     /**
      * Connect the input audio pipeline chain:
-     *   source → [rnnoise] → HPF → compressor → analyser (no delay)
-     *                                          → delayNode(50ms) → inputGain
+     *   source → HPF → analyser (no delay)
+     *                 → delayNode(50ms) → inputGain
      */
     private connectInputPipeline(): void {
-        if (!this.sourceNode || !this.highPassFilter || !this.compressorNode
+        if (!this.sourceNode || !this.highPassFilter
             || !this.analyserNode || !this.inputGainNode || !this.audioContext) return;
 
-        if (this.rnnoiseNode) {
-            this.sourceNode.connect(this.rnnoiseNode);
-            this.rnnoiseNode.connect(this.highPassFilter);
-        } else {
-            this.sourceNode.connect(this.highPassFilter);
-        }
-        this.highPassFilter.connect(this.compressorNode);
+        this.sourceNode.connect(this.highPassFilter);
         // Analyser taps the signal before the delay so level detection is immediate
-        this.compressorNode.connect(this.analyserNode);
+        this.highPassFilter.connect(this.analyserNode);
         // DelayNode lookahead: speech is detected 50ms before it reaches the gate
         this.delayNode = this.audioContext.createDelay(0.1);
         this.delayNode.delayTime.value = NexusVoiceConnection.VOICE_GATE_LOOKAHEAD_SEC;
-        this.compressorNode.connect(this.delayNode);
+        this.highPassFilter.connect(this.delayNode);
         this.delayNode.connect(this.inputGainNode);
     }
 
     /**
-     * Disconnect the input pipeline so it can be rewired.
-     * Does NOT destroy nodes — only breaks connections.
-     */
-    private disconnectInputPipeline(): void {
-        this.sourceNode?.disconnect();
-        this.rnnoiseNode?.disconnect();
-        this.highPassFilter?.disconnect();
-        this.compressorNode?.disconnect();
-        this.delayNode?.disconnect();
-        // Don't disconnect analyserNode or inputGainNode — they connect to dest
-    }
-
-    // ─── Private: RNNoise setup ──────────────────────────────
-
-    /**
      * Prefetch VC resources at app startup (after login).
      * Runs in the background — failures are silently ignored.
-     * Warms up: RNNoise WASM binary + OpenID token cache.
+     * Warms up: OpenID token cache.
      */
     public static prefetch(client: MatrixClient): void {
         // Fire-and-forget — don't block the caller
-        Promise.all([
-            NexusVoiceConnection.preloadRnnoiseWasm(),
-            NexusVoiceConnection.prefetchOpenIdToken(client),
-        ]).catch(() => {});
+        NexusVoiceConnection.prefetchOpenIdToken(client).catch(() => {});
     }
 
     /**
@@ -1185,54 +1111,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             logger.info("OpenID token prefetched");
         } catch (e) {
             logger.warn("Failed to prefetch OpenID token", e);
-        }
-    }
-
-    /**
-     * Preload the RNNoise WASM binary without requiring an AudioContext.
-     * Called during connect() in parallel with JWT fetch and mic access
-     * so the binary is already cached when setupRnnoiseNode() runs.
-     */
-    public static async preloadRnnoiseWasm(): Promise<void> {
-        if (NexusVoiceConnection.rnnoiseWasmBinary) return;
-        try {
-            NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
-                url: "noise-suppressor/rnnoise.wasm",
-                simdUrl: "noise-suppressor/rnnoise_simd.wasm",
-            });
-            logger.info("RNNoise WASM preloaded");
-        } catch (e) {
-            logger.warn("Failed to preload RNNoise WASM", e);
-        }
-    }
-
-    private async setupRnnoiseNode(): Promise<void> {
-        if (!this.audioContext) return;
-        try {
-            // Load WASM binary (cached statically across connections)
-            if (!NexusVoiceConnection.rnnoiseWasmBinary) {
-                NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
-                    url: "noise-suppressor/rnnoise.wasm",
-                    simdUrl: "noise-suppressor/rnnoise_simd.wasm",
-                });
-            }
-
-            // Register AudioWorklet processor (once per AudioContext)
-            if (!NexusVoiceConnection.rnnoiseWorkletRegistered) {
-                await this.audioContext.audioWorklet.addModule(
-                    "noise-suppressor/rnnoise/workletProcessor.js",
-                );
-                NexusVoiceConnection.rnnoiseWorkletRegistered = true;
-            }
-
-            this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
-                maxChannels: 1,
-                wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
-            });
-            logger.info("RNNoise worklet node created");
-        } catch (e) {
-            logger.warn("Failed to set up RNNoise noise cancellation, falling back", e);
-            this.rnnoiseNode = null;
         }
     }
 
@@ -1429,11 +1307,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         // Close audio pipeline
-        if (this.rnnoiseNode) {
-            this.rnnoiseNode.disconnect();
-            this.rnnoiseNode.destroy();
-            this.rnnoiseNode = null;
-        }
         this.sourceNode = null;
         if (this.audioContext) {
             this.audioContext.close().catch(() => {});
@@ -1442,7 +1315,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.analyserNode = null;
         this.inputGainNode = null;
         this.highPassFilter = null;
-        this.compressorNode = null;
         if (this.delayNode) {
             this.delayNode.disconnect();
             this.delayNode = null;

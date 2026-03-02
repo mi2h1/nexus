@@ -738,17 +738,6 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
                         context: path.resolve(__dirname, "src/vector/mobile_guide"),
                         to: "mobile_guide",
                     },
-                    // RNNoise noise suppressor WASM + worklet
-                    {
-                        from: "*.wasm",
-                        context: path.join(getPackageRoot("@sapphi-red/web-noise-suppressor"), "dist"),
-                        to: "noise-suppressor",
-                    },
-                    {
-                        from: "rnnoise/workletProcessor.js",
-                        context: path.join(getPackageRoot("@sapphi-red/web-noise-suppressor"), "dist"),
-                        to: "noise-suppressor",
-                    },
                 ],
             }),
 

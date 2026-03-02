@@ -377,7 +377,6 @@ export interface Settings {
     "nexus_voice_gate_threshold": IBaseSetting<number>;
     "nexus_input_volume": IBaseSetting<number>;
     "nexus_output_volume": IBaseSetting<number>;
-    "nexus_noise_cancellation": IBaseSetting<boolean>;
     "nexus_screen_share_quality": IBaseSetting<string>;
 }
 
@@ -1516,10 +1515,6 @@ export const SETTINGS: Settings = {
     "nexus_output_volume": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: 100, // 0-200 (percentage)
-    },
-    "nexus_noise_cancellation": {
-        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
-        default: false,
     },
     "nexus_screen_share_quality": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,

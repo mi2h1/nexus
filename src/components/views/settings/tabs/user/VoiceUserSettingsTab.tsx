@@ -291,34 +291,6 @@ function NexusVoiceGateSettings(): JSX.Element {
     );
 }
 
-/** Noise cancellation (RNNoise) toggle. */
-function NexusNoiseCancellation(): JSX.Element {
-    const { connection } = useNexusVoice();
-    const [ncEnabled, setNcEnabled] = useState<boolean>(
-        () => SettingsStore.getValue("nexus_noise_cancellation") ?? false,
-    );
-
-    const onChange = useCallback(
-        (e: React.ChangeEvent<HTMLInputElement>) => {
-            const enabled = e.target.checked;
-            setNcEnabled(enabled);
-            SettingsStore.setValue("nexus_noise_cancellation", null, SettingLevel.DEVICE, enabled);
-            // Apply to active connection if in a call
-            connection?.setNoiseCancellation(enabled);
-        },
-        [connection],
-    );
-
-    return (
-        <SettingsToggleInput
-            name="nx-noise-cancellation"
-            label="AIノイズキャンセリング (RNNoise)"
-            helpMessage="機械学習ベースのノイズ抑制を適用します（48kHz専用）"
-            checked={ncEnabled}
-            onChange={onChange}
-        />
-    );
-}
 
 export default class VoiceUserSettingsTab extends React.Component<EmptyObject, IState> {
     public static contextType = MatrixClientContext;
@@ -485,7 +457,6 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
 
                     <SettingsSection heading={_t("common|advanced")}>
                         <SettingsSubsection heading={_t("settings|voip|voice_processing")}>
-                            <NexusNoiseCancellation />
                             <SettingsToggleInput
                                 name="voice-noise-suppression"
                                 label={_t("settings|voip|noise_suppression")}
