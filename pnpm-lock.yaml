@@ -116,9 +116,6 @@ importers:
       '@matrix-org/react-sdk-module-api':
         specifier: ^2.4.0
         version: 2.5.0(patch_hash=016146c9cc96e6363609d2b2ac0896ccef567882eb1d73b75a77b8a30929de96)(react@19.2.4)
-      '@sapphi-red/web-noise-suppressor':
-        specifier: ^0.3.5
-        version: 0.3.5
       '@sentry/browser':
         specifier: ^10.0.0
         version: 10.38.0
@@ -3780,9 +3777,6 @@ packages:
 
   '@rushstack/ts-command-line@5.1.7':
     resolution: {integrity: sha512-Ugwl6flarZcL2nqH5IXFYk3UR3mBVDsVFlCQW/Oaqidvdb/5Ota6b/Z3JXWIdqV3rOR2/JrYoAHanWF5rgenXA==}
-
-  '@sapphi-red/web-noise-suppressor@0.3.5':
-    resolution: {integrity: sha512-jh3+V9yM+zxLriQexoGm0GatoPaJWjs6ypFIbFYwQp+AoUb55eUXrjKtKQyuC5zShzzeAQUl0M5JzqB7SSrsRA==}
 
   '@sentry-internal/browser-utils@10.38.0':
     resolution: {integrity: sha512-UOJtYmdcxHCcV0NPfXFff/a95iXl/E0EhuQ1y0uE0BuZDMupWSF5t2BgC4HaE5Aw3RTjDF3XkSHWoIF6ohy7eA==}
@@ -14057,8 +14051,6 @@ snapshots:
       string-argv: 0.3.2
     transitivePeerDependencies:
       - '@types/node'
-
-  '@sapphi-red/web-noise-suppressor@0.3.5': {}
 
   '@sentry-internal/browser-utils@10.38.0':
     dependencies:
