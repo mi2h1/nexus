@@ -149,10 +149,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private audioContext: AudioContext | null = null;
     private _masterOutputVolume = 0; // 0-2 (0-200%), starts muted
     private outputAudioElements = new Map<string, HTMLAudioElement>();
-    private participantVolumes = new Map<string, number>(); // 0-2.0 (0-200%)
+    private participantVolumes = new Map<string, number>(); // 0-4.0 (0-400%)
     // ─── Screen share audio ──────────────────────────────────
     private screenShareVideoElements = new Map<string, HTMLVideoElement>();
-    private screenShareVolumes = new Map<string, number>(); // 0-2.0 (0-200%)
+    private screenShareVolumes = new Map<string, number>(); // 0-4.0 (0-400%)
     private screenShareSources = new Map<string, AudioNode>();
     private screenShareGains = new Map<string, GainNode>();
     // ─── Tauri output audio pipeline (>100% volume) ──────────
@@ -867,12 +867,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
-     * Set the audio volume for a remote participant (0.0–2.0, i.e. 0–200%).
+     * Set the audio volume for a remote participant (0.0–4.0, i.e. 0–400%).
      */
     public setParticipantVolume(userId: string, volume: number): void {
         const identity = this.findIdentityForUserId(userId);
         if (!identity) return;
-        const clamped = Math.max(0, Math.min(2, volume));
+        const clamped = Math.max(0, Math.min(4, volume));
         this.participantVolumes.set(identity, clamped);
 
         // Tauri: update per-participant GainNode
@@ -905,11 +905,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Public: Per-screen-share volume ─────────────────────
 
     /**
-     * Set the audio volume for a remote screen share (0.0–2.0, i.e. 0–200%).
+     * Set the audio volume for a remote screen share (0.0–4.0, i.e. 0–400%).
      * Uses participantIdentity directly as key.
      */
     public setScreenShareVolume(participantIdentity: string, volume: number): void {
-        const clamped = Math.max(0, Math.min(2, volume));
+        const clamped = Math.max(0, Math.min(4, volume));
         this.screenShareVolumes.set(participantIdentity, clamped);
         const watching = this.watchingScreenShares.has(participantIdentity);
 

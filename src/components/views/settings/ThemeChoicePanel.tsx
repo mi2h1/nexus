@@ -140,6 +140,7 @@ function ThemeSelectors({ theme, disabled }: ThemeSelectorProps): JSX.Element {
                             // For example when the light theme is used, the dark theme selector should be dark
                             "cpd-theme-light": !_theme.isDark,
                             "cpd-theme-dark": _theme.isDark,
+                            "cpd-theme-black": _theme.id === "black",
                         })}
                         name="themeSelector"
                         key={_theme.id}
@@ -188,7 +189,7 @@ function useThemes(): Array<ITheme & { isDark: boolean }> {
         // Check if the themes are dark
         return allThemes.map((theme) => {
             const customTheme = customThemeMap.get(theme.name);
-            const isDark = (customTheme ? customTheme.is_dark : theme.id.includes("dark")) || false;
+            const isDark = (customTheme ? customTheme.is_dark : theme.id.includes("dark") || theme.id === "black") || false;
             return { ...theme, isDark };
         });
     }, [customThemes]);
