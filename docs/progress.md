@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-11
+> 最終更新: 2026-03-11（マイク権限事前取得・Windows音量低下バイパス・スピーカーミュート・LiveKit再接続・システムトレイ常駐）
 
 ## リポジトリ情報
 
@@ -118,6 +118,11 @@ nexus/                          # element-web フォーク
 | サービスワーカー Tauri 対応 | `TauriPlatform` は親の `WebPlatform.registerServiceWorker()` に委譲（SW は認証メディア取得に必須） |
 | 画面共有ピッカー サムネイルキャッシュ | WGC キャプチャ中は前回のサムネイルキャッシュを返す（GDI がビデオメモリを読み取る問題を回避） |
 | ユーザー指定の表示名カラー | `NexusUserColorStore` + lk-jwt-service エンドポイント + 設定画面カラーピッカー |
+| スピーカーミュート（デフ） | コントロールバーにヘッドフォンボタン追加。`outputMasterGain` (Tauri) / `videoEl.volume` (ブラウザ) 一括0化 |
+| LiveKit 自動再接続 | `Reconnecting`/`Reconnected` イベント購読、再接続後にミュート状態を再ブロードキャスト |
+| システムトレイ常駐 | `TrayIconBuilder`、閉じるボタンで非表示、トレイクリックで表示/非表示トグル |
+| マイク権限の事前取得 | VC ルーム表示時に `getUserMedia` → 即 stop でブラウザ権限をキャッシュ（初回接続 ~300ms 短縮） |
+| Windows 自動音量低下バイパス | `audio_duck.rs` — VC 接続時に全 audio session へ `SetDuckingPreference(true)` |
 
 ### ロードマップ
 
@@ -340,6 +345,29 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - ゲートクローズ時: ramp を 20ms → 50ms に延長（滑らかなフェードアウト）
 - **リリースビルドで DevTools 有効化**: `tauri` の `features` に `"devtools"` 追加
 
+#### 2026-03-11 (マイク権限事前取得・Windows 音量低下バイパス)
+- **マイク権限の事前取得**: `NexusVoiceConnection.prefetchMicPermission()` 追加
+  - `NexusVCRoomView` マウント時（未接続時のみ）に fire-and-forget で `getUserMedia({ audio: true })` → 即 `track.stop()`
+  - ブラウザが権限をキャッシュするため、実際の VC 接続時に権限ダイアログ待機が不要になる（初回 ~300ms 短縮）
+- **Windows 自動音量低下バイパス**: `src-tauri/src/audio_duck.rs` 新設
+  - `IMMDeviceEnumerator` → `IAudioSessionManager2` → `IAudioSessionEnumerator` で全セッションを列挙
+  - `IAudioSessionControl2::SetDuckingPreference(true)` で各セッションを communications ducking からオプトアウト
+  - `NexusVoiceStore.joinVoiceChannel()` で VC 接続開始時に `invoke("disable_audio_ducking")` を fire-and-forget で呼び出し
+
+#### 2026-03-11 (スピーカーミュート・LiveKit 再接続・システムトレイ常駐)
+- **スピーカーミュート（デフ）**: コントロールバーにヘッドフォンアイコンボタン追加
+  - `CallEvent.OutputMuted` イベント追加、`NexusVoiceConnection.setOutputMuted()` / `isOutputMuted` 実装
+  - Tauri: `outputMasterGain.gain.value = 0` で全出力を一括無音化
+  - ブラウザ: `applyAllOutputVolumes()` / `applyScreenShareVolume()` に `_isOutputMuted` 考慮を追加（videoEl.volume）
+  - `NexusVoiceStore.toggleOutputMuted()`、`useNexusVoice` に `isOutputMuted` state 追加
+- **LiveKit 自動再接続**: 一時的なネットワーク断からのフルハンドシェイク不要の高速復帰
+  - `RoomEvent.Reconnecting` / `RoomEvent.Reconnected` ハンドラー追加
+  - 再接続成功後に `broadcastMuteState()` でミュート状態を再配信
+- **システムトレイ常駐**: Tauri `tray-icon` feature 追加
+  - `TrayIconBuilder` でトレイアイコン作成
+  - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
+  - トレイアイコンクリック → 表示/非表示トグル
+
 #### 最優先: VC 接続高速化
 
 | 施策 | 難易度 | 効果 | 状態 | 詳細 |
@@ -349,8 +377,8 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | OpenID トークンキャッシュ | 低 | ~100-200ms (再接続時) | ✅ 完了 | `getCachedOpenIdToken()` — expires_in の 80% でキャッシュ |
 | 起動時プリフェッチ | 低 | 初回接続の cold-start 排除 | ✅ 完了 | `prefetch()` — OpenID トークン + RNNoise WASM を login 後に先行取得 |
 | 切断即時化 | 低 | 切断 ~0ms（体感即座） | ✅ 完了 | `leaveRoomSession` + `livekitRoom.disconnect` を fire-and-forget |
-| LiveKit reconnect() | 低 | 再接続時大幅短縮 | 未着手 | Discord の Resume に相当 |
-| マイク権限の事前取得 | 低 | 初回 ~300ms | 未着手 | VC パネル表示時に先行 getUserMedia |
+| LiveKit reconnect() | 低 | 再接続時大幅短縮 | ✅ 完了 | Reconnecting/Reconnected イベントハンドラー追加、再接続後ミュート状態を再ブロードキャスト |
+| マイク権限の事前取得 | 低 | 初回 ~300ms | ✅ 完了 | `NexusVCRoomView` マウント時に `prefetchMicPermission()` — getUserMedia → 即 stop |
 
 #### 高優先: ネイティブアプリ体験 (Tauri)
 
@@ -361,8 +389,8 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | 配信中ターゲット切替 | 中 | Discord 同等のウィンドウ切替 | ✅ 完了 | `switch_capture_target` — 映像+音声同時切替 |
 | プロセス単位オーディオキャプチャ | 高 | 共有アプリの音だけキャプチャ | ✅ 完了 | WASAPI INCLUDE モード（ウィンドウ共有時） |
 | VC ポップアウトウィンドウ | 中 | VC を別ウィンドウで表示 | ✅ 完了 | Tauri `NewWindowResponse::Create` + `createPortal` |
-| システムトレイ常駐 | 低 | 閉じてもバックグラウンド動作 | 未着手 | `TrayIconBuilder` API |
-| Windows 自動音量低下バイパス | 中 | 通話中に他アプリの音量が下がらない | 未着手 | Windows API auto-ducking 無効化 |
+| システムトレイ常駐 | 低 | 閉じてもバックグラウンド動作 | ✅ 完了 | `TrayIconBuilder` + 閉じるボタンで非表示、トレイクリックで表示/非表示トグル |
+| Windows 自動音量低下バイパス | 中 | 通話中に他アプリの音量が下がらない | ✅ 完了 | `IAudioSessionControl2::SetDuckingPreference(true)` を VC 接続時に全セッションへ適用 |
 
 #### 中優先: 音声品質
 
@@ -375,7 +403,10 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | コンプレッサー（ゲート後） | 低 | 音量ピーク防止 | ✅ 完了 | Discord 標準搭載 |
 | noiseSuppression OFF | 低 | Win11 二重処理防止 | ✅ 完了 | — |
 | 音声処理設定 UI | 低 | NC/EQ/AGC 個別 ON/OFF | ✅ 完了 | Discord は Krisp ON/OFF のみ |
-| スピーカーミュート（デフ） | 低 | 出力を一括ミュート | 未着手 | Discord 標準搭載 |
+| スピーカーミュート（デフ） | 低 | 出力を一括ミュート | ✅ 完了 | コントロールバーにヘッドフォンアイコンボタン追加。`outputMasterGain.gain.value = 0` (Tauri) / `videoEl.volume = 0` (ブラウザ) |
+| プライオリティスピーカー | 中 | 発言者優先・他音量ダック | 未着手 | Discord の Speaking flag bit2（値=4）相当。per-participant GainNode で実装可能 |
+| 適応型画面共有品質 | 中 | 視聴者回線に自動適応 | 未着手 | LiveKit の `adaptiveStream` + `setQuality()` で実装可能。現状は固定4段階プリセットのみ |
+| AV1 コーデック対応 | 中 | 高品質画面共有（RTX 40+ 向け） | 将来 | Discord は NVIDIA RTX 40 シリーズで AV1 対応。LiveKit もサポート済み |
 | Opus ビットレート引き上げ | 低 | 128kbps 固定 | ✅ 完了 | Discord は動的(32〜128kbps) |
 | 次世代 NC (dtln-rs/DeepFilterNet) | 高 | RNNoise より高品質な NC | 将来 | dtln-rs 48kHz対応 or DeepFilterNet WASM 安定化待ち |
 | エコーキャンセレーション強化 | 高 | スピーカー利用時のエコー除去 | 未着手 | |
@@ -385,9 +416,8 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | 施策 | 難易度 | 効果 | Discord 比較 |
 |------|--------|------|-------------|
 | VC 品質インジケーター | 低 | ping, ビットレート, コーデック表示 | ✅ ping 完了 | Discord: 接続情報パネル |
-| ユーザーステータス | 中 | オンライン/退席中/取り込み中/オフライン | Discord 標準搭載 |
+| ユーザーステータス | 中 | オンライン/退席中/取り込み中/オフライン | Discord 標準搭載。Matrix `m.presence` イベントでネイティブサポートあり |
 | キーバインド設定 | 中 | ミュートキー等のカスタマイズ | Discord 標準搭載 |
-| 配信モード | 中 | 個人情報を隠す | Discord Streamer Mode |
 
 #### 将来: 基盤
 

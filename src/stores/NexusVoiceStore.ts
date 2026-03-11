@@ -11,6 +11,7 @@ import { logger } from "matrix-js-sdk/src/logger";
 
 import { NexusVoiceConnection, playVcSound, VC_STANDBY_SOUND, VC_JOIN_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";
 import { isTauri } from "../utils/tauriHttp";
+import { invoke } from "@tauri-apps/api/core";
 import { CallStore, CallStoreEvent } from "./CallStore";
 import { ConnectionState } from "../models/Call";
 import { MatrixClientPeg } from "../MatrixClientPeg";
@@ -163,6 +164,11 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
         CallStore.instance.registerVoiceConnection(room.roomId, connection);
 
         this.emit(NexusVoiceStoreEvent.ActiveConnection, connection);
+
+        // Disable Windows communications auto-ducking before audio starts
+        if (isTauri()) {
+            invoke("disable_audio_ducking").catch(() => {});
+        }
 
         try {
             await connection.connect();

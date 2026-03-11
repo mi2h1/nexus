@@ -1,4 +1,10 @@
+mod audio_duck;
 mod capture;
+
+#[tauri::command]
+fn disable_audio_ducking() {
+    audio_duck::disable_ducking();
+}
 
 pub fn run() {
     tauri::Builder::default()
@@ -12,6 +18,7 @@ pub fn run() {
             capture::start_capture,
             capture::stop_capture,
             capture::switch_capture_target,
+            disable_audio_ducking,
         ])
         .setup(|app| {
             use tauri::utils::config::Color;

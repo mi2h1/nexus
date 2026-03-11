@@ -1257,6 +1257,23 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
+     * Request microphone permission so the browser caches the grant.
+     * Stops the stream immediately — the only goal is the permission dialog.
+     * Call when the user navigates to a VC channel (before they click Join).
+     */
+    public static prefetchMicPermission(): void {
+        navigator.mediaDevices
+            .getUserMedia({ audio: true })
+            .then((stream) => {
+                stream.getTracks().forEach((t) => t.stop());
+                logger.info("Mic permission prefetched");
+            })
+            .catch(() => {
+                // Permission denied or device unavailable — ignore silently
+            });
+    }
+
+    /**
      * Prefetch RNNoise WASM binary so the first VC join doesn't need
      * to download it. Runs silently in the background.
      */
