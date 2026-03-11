@@ -166,6 +166,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private sourceNode: MediaStreamAudioSourceNode | null = null;
     private highPassFilter: BiquadFilterNode | null = null;
     private delayNode: DelayNode | null = null;
+    // ─── Voice EQ ─────────────────────────────────────────────
+    private eqLowCut: BiquadFilterNode | null = null;
+    private eqPresence: BiquadFilterNode | null = null;
+    // ─── Compressor (limiter) ─────────────────────────────────
+    private compressorNode: DynamicsCompressorNode | null = null;
+    // ─── VAD-gated AGC ────────────────────────────────────────
+    private agcGainNode: GainNode | null = null;
+    private agcCurrentGain = 1.0;
     private voiceGateTimer: ReturnType<typeof setInterval> | null = null;
     private _inputLevel = 0; // 0-100 real-time input level
     private _voiceGateOpen = true;
@@ -175,6 +183,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private static readonly VOICE_GATE_RAMP_SEC = 0.05;
     /** DelayNode lookahead so analyser detects speech before audio reaches the gate. */
     private static readonly VOICE_GATE_LOOKAHEAD_SEC = 0.05;
+    // ─── AGC constants ────────────────────────────────────────
+    /** Target RMS level for AGC (0-100 scale). */
+    private static readonly AGC_TARGET_RMS = 25;
+    private static readonly AGC_MIN_GAIN = 0.5;
+    private static readonly AGC_MAX_GAIN = 3.0;
+    /** How fast AGC adjusts gain per poll cycle (0-1, higher = faster). */
+    private static readonly AGC_ADJUSTMENT_RATE = 0.03;
     private participantRetryTimer: ReturnType<typeof setInterval> | null = null;
 
     // ─── OpenID token cache ────────────────────────────────────
@@ -285,7 +300,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 this.getJwt(),
                 createLocalAudioTrack({
                     echoCancellation: true,
-                    noiseSuppression: true,
+                    noiseSuppression: false, // OFF — Win11 OS-level noise suppression と二重処理を防ぐ
                     autoGainControl: false,
                     sampleRate: 48000,
                     channelCount: 1,
@@ -1037,7 +1052,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * Runs in parallel with livekitRoom.connect() — only needs audioContext
      * and localAudioTrack, both of which are ready before connect() starts.
      *
-     * Pipeline: source → HPF → compressor → analyser + inputGain → dest
+     * Pipeline:
+     *   source → HPF(80Hz) → analyser (即時レベル検出)
+     *                       → delay(50ms) → inputGain (voice gate)
+     *                       → eqLowCut (350Hz -3dB, こもり除去)
+     *                       → eqPresence (3kHz +2.5dB, 明瞭さ向上)
+     *                       → agcGain (VAD連動自動音量調整)
+     *                       → compressor (ピーク防止)
+     *                       → dest
      */
     private async buildInputPipeline(audioTrack: LocalAudioTrack): Promise<MediaStreamTrack> {
         if (!this.audioContext) throw new Error("AudioContext not initialized");
@@ -1052,32 +1074,62 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.highPassFilter.frequency.value = 80;
         this.highPassFilter.Q.value = 0.7;
 
-        // AnalyserNode — monitors input level
+        // AnalyserNode — monitors input level (pre-delay for instant detection)
         this.analyserNode = this.audioContext.createAnalyser();
         this.analyserNode.fftSize = 256;
 
-        // Input GainNode — adjusts input volume before sending to LiveKit
+        // Input GainNode — voice gate (0 = gate closed, inputVol = gate open)
         // Start muted — unmutePipelines() restores the real volume.
         this.inputGainNode = this.audioContext.createGain();
         this.inputGainNode.gain.value = 0;
+
+        // Voice EQ — de-mud: cut muddy low-mids for clarity
+        this.eqLowCut = this.audioContext.createBiquadFilter();
+        this.eqLowCut.type = "peaking";
+        this.eqLowCut.frequency.value = 350;
+        this.eqLowCut.Q.value = 1.0;
+        this.eqLowCut.gain.value = -3;
+
+        // Voice EQ — presence: boost upper-mids for intelligibility
+        this.eqPresence = this.audioContext.createBiquadFilter();
+        this.eqPresence.type = "peaking";
+        this.eqPresence.frequency.value = 3000;
+        this.eqPresence.Q.value = 0.8;
+        this.eqPresence.gain.value = 2.5;
+
+        // VAD-gated AGC — gain adjusted only during voice activity
+        this.agcGainNode = this.audioContext.createGain();
+        this.agcGainNode.gain.value = this.agcCurrentGain;
+
+        // Compressor/Limiter — prevents peaks, placed AFTER gate so
+        // background noise is already gated and won't be amplified
+        this.compressorNode = this.audioContext.createDynamicsCompressor();
+        this.compressorNode.threshold.value = -18;
+        this.compressorNode.knee.value = 12;
+        this.compressorNode.ratio.value = 4;
+        this.compressorNode.attack.value = 0.003;
+        this.compressorNode.release.value = 0.15;
 
         // Connect the pipeline chain
         this.connectInputPipeline();
 
         // Create processed stream destination
         const dest = this.audioContext.createMediaStreamDestination();
-        this.inputGainNode.connect(dest);
+        this.compressorNode.connect(dest);
         return dest.stream.getAudioTracks()[0];
     }
 
     /**
      * Connect the input audio pipeline chain:
-     *   source → HPF → analyser (no delay)
-     *                 → delayNode(50ms) → inputGain
+     *   source → HPF → analyser (no delay, instant level detection)
+     *                 → delay(50ms) → inputGain (voice gate)
+     *                 → eqLowCut → eqPresence → agcGain → compressor
      */
     private connectInputPipeline(): void {
         if (!this.sourceNode || !this.highPassFilter
-            || !this.analyserNode || !this.inputGainNode || !this.audioContext) return;
+            || !this.analyserNode || !this.inputGainNode || !this.audioContext
+            || !this.eqLowCut || !this.eqPresence || !this.agcGainNode
+            || !this.compressorNode) return;
 
         this.sourceNode.connect(this.highPassFilter);
         // Analyser taps the signal before the delay so level detection is immediate
@@ -1087,6 +1139,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.delayNode.delayTime.value = NexusVoiceConnection.VOICE_GATE_LOOKAHEAD_SEC;
         this.highPassFilter.connect(this.delayNode);
         this.delayNode.connect(this.inputGainNode);
+        // Voice gate → EQ → AGC → Compressor
+        this.inputGainNode.connect(this.eqLowCut);
+        this.eqLowCut.connect(this.eqPresence);
+        this.eqPresence.connect(this.agcGainNode);
+        this.agcGainNode.connect(this.compressorNode);
     }
 
     /**
@@ -1197,6 +1254,28 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 }
                 this.voiceGateReleaseTimeout = null;
             }, NexusVoiceConnection.VOICE_GATE_RELEASE_MS);
+        }
+
+        // ── VAD-gated AGC ──
+        // Only adjust gain when voice gate is open (speaking detected).
+        // Never adjust during silence to prevent background noise amplification.
+        if (this._voiceGateOpen && !this._isMicMuted && this.agcGainNode && this.audioContext) {
+            const target = NexusVoiceConnection.AGC_TARGET_RMS;
+            if (this._inputLevel > 5) { // Only adjust on meaningful signal
+                const ratio = target / Math.max(1, this._inputLevel);
+                // Smoothly approach the desired gain
+                const desiredGain = this.agcCurrentGain * ratio;
+                const clamped = Math.max(
+                    NexusVoiceConnection.AGC_MIN_GAIN,
+                    Math.min(NexusVoiceConnection.AGC_MAX_GAIN, desiredGain),
+                );
+                // Exponential smoothing — only move a fraction toward the target per cycle
+                this.agcCurrentGain += (clamped - this.agcCurrentGain) * NexusVoiceConnection.AGC_ADJUSTMENT_RATE;
+                this.agcGainNode.gain.exponentialRampToValueAtTime(
+                    Math.max(0.01, this.agcCurrentGain), // exponentialRamp requires > 0
+                    this.audioContext.currentTime + 0.05,
+                );
+            }
         }
     }
 
@@ -1319,6 +1398,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.delayNode.disconnect();
             this.delayNode = null;
         }
+        this.eqLowCut = null;
+        this.eqPresence = null;
+        this.compressorNode = null;
+        this.agcGainNode = null;
+        this.agcCurrentGain = 1.0;
         this._inputLevel = 0;
         this._voiceGateOpen = true;
 
