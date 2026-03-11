@@ -512,39 +512,6 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
                         <NexusAudioProcessingSettings />
                     </SettingsSection>
 
-                    <SettingsSection heading={_t("common|advanced")}>
-                        <SettingsSubsection heading={_t("settings|voip|voice_processing")}>
-                            <SettingsToggleInput
-                                name="voice-noise-suppression"
-                                label={_t("settings|voip|noise_suppression")}
-                                helpMessage={_t("settings|voip|noise_suppression_description")}
-                                checked={this.state.audioNoiseSuppression}
-                                onChange={this.onNoiseSuppressionChanged}
-                            />
-                            <SettingsToggleInput
-                                name="voice-echo-cancellation"
-                                label={_t("settings|voip|echo_cancellation")}
-                                helpMessage={_t("settings|voip|echo_cancellation_description")}
-                                checked={this.state.audioEchoCancellation}
-                                onChange={this.onEchoCancellationChanged}
-                            />
-                        </SettingsSubsection>
-                        <SettingsSubsection heading={_t("settings|voip|connection_section")}>
-                            <SettingsFlag
-                                name="webRtcAllowPeerToPeer"
-                                level={SettingLevel.DEVICE}
-                                onChange={this.changeWebRtcMethod}
-                            />
-                            <SettingsFlag
-                                name="fallbackICEServerAllowed"
-                                label={_t("settings|voip|enable_fallback_ice_server", {
-                                    server: new URL(FALLBACK_ICE_SERVER).pathname,
-                                })}
-                                level={SettingLevel.DEVICE}
-                                hideIfCannotSet
-                            />
-                        </SettingsSubsection>
-                    </SettingsSection>
                 </Form.Root>
             </SettingsTab>
         );
