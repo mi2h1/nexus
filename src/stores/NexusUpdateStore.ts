@@ -74,15 +74,6 @@ class NexusUpdateStore extends TypedEventEmitter<NexusUpdateStoreEvent, EventHan
         this.emit(NexusUpdateStoreEvent.UpdateAvailable, true);
     }
 
-    public clearUpdate(): void {
-        this._updateAvailable = false;
-        this._updateVersion = "";
-        this._phase = UpdatePhase.None;
-        this._downloadedBytes = 0;
-        this._totalBytes = 0;
-        this.emit(NexusUpdateStoreEvent.UpdateAvailable, false);
-    }
-
     public setDownloadStarted(totalBytes: number): void {
         this._phase = UpdatePhase.Downloading;
         this._totalBytes = totalBytes;

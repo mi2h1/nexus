@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, useEffect, useRef, useState, type JSX } from "react";
+import React, { useCallback, useRef, useState, type JSX } from "react";
 import ReactDOM from "react-dom";
 import { logger as rootLogger } from "matrix-js-sdk/src/logger";
 
@@ -17,47 +17,12 @@ import {
     type ScreenShareQuality,
 } from "../../../models/NexusVoiceConnection";
 import { isTauri } from "../../../utils/tauriHttp";
+import { useClickOutside, useEscapeKey, stopBubble } from "../../../hooks/useMenuDismiss";
 import { NexusScreenSharePicker } from "./NexusScreenSharePicker";
 
 const logger = rootLogger.getChild("NexusScreenSharePanel");
 
 const PRESET_KEYS: ScreenShareQuality[] = ["low", "standard", "high", "ultra"];
-
-/**
- * Close the panel when clicking/tapping outside.
- */
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void, portalContainer?: HTMLElement): void {
-    useEffect(() => {
-        const doc = portalContainer?.ownerDocument ?? document;
-        const handler = (e: PointerEvent): void => {
-            if (ref.current && !ref.current.contains(e.target as Node)) {
-                onClose();
-            }
-        };
-        doc.addEventListener("pointerdown", handler);
-        return () => doc.removeEventListener("pointerdown", handler);
-    }, [ref, onClose, portalContainer]);
-}
-
-/**
- * Close the panel on Escape key.
- */
-function useEscapeKey(onClose: () => void, portalContainer?: HTMLElement): void {
-    useEffect(() => {
-        const doc = portalContainer?.ownerDocument ?? document;
-        const handler = (e: KeyboardEvent): void => {
-            if (e.key === "Escape") onClose();
-        };
-        doc.addEventListener("keydown", handler);
-        return () => doc.removeEventListener("keydown", handler);
-    }, [onClose, portalContainer]);
-}
-
-/** Stop pointer/mouse/focus events from bubbling to RovingTabIndex ancestors. */
-function stopBubble(e: React.SyntheticEvent): void {
-    e.stopPropagation();
-    e.nativeEvent.stopImmediatePropagation();
-}
 
 interface NexusScreenSharePanelProps {
     isScreenSharing: boolean;

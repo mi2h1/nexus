@@ -13,87 +13,46 @@ export function isTauri(): boolean {
 }
 
 /**
- * GET JSON without CORS restrictions.
- *
- * - **Tauri**: Uses `@tauri-apps/plugin-http` (Rust-side fetch, no CORS).
- * - **Browser**: Uses the standard Fetch API (caller must handle CORS proxy).
+ * Internal helper — CORS-free JSON request via Tauri plugin-http or standard fetch.
  */
+async function corsFreeRequest<T>(
+    method: string,
+    url: string,
+    body?: Record<string, unknown>,
+): Promise<T> {
+    const options: RequestInit = { method };
+    if (body) {
+        options.headers = { "Content-Type": "application/json" };
+        options.body = JSON.stringify(body);
+    }
+
+    if (isTauri()) {
+        const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+        const response = await tauriFetch(url, options);
+        if (!response.ok) {
+            throw new Error(`Tauri HTTP ${method} failed: ${response.status} ${response.statusText}`);
+        }
+        return (await response.json()) as T;
+    }
+
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        throw new Error(`HTTP ${method} failed: ${response.status} ${response.statusText}`);
+    }
+    return (await response.json()) as T;
+}
+
+/** GET JSON without CORS restrictions. */
 export async function corsFreeGet<T>(url: string): Promise<T> {
-    if (isTauri()) {
-        const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-        const response = await tauriFetch(url, { method: "GET" });
-        if (!response.ok) {
-            throw new Error(`Tauri HTTP GET failed: ${response.status} ${response.statusText}`);
-        }
-        return (await response.json()) as T;
-    }
-
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`HTTP GET failed: ${response.status} ${response.statusText}`);
-    }
-    return (await response.json()) as T;
+    return corsFreeRequest<T>("GET", url);
 }
 
-/**
- * POST JSON without CORS restrictions.
- *
- * - **Tauri**: Uses `@tauri-apps/plugin-http` (Rust-side fetch, no CORS).
- * - **Browser**: Uses the standard Fetch API (caller must handle CORS proxy).
- */
+/** POST JSON without CORS restrictions. */
 export async function corsFreePost<T>(url: string, body: Record<string, unknown>): Promise<T> {
-    if (isTauri()) {
-        const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-        const response = await tauriFetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-        });
-        if (!response.ok) {
-            throw new Error(`Tauri HTTP POST failed: ${response.status} ${response.statusText}`);
-        }
-        return (await response.json()) as T;
-    }
-
-    // Browser fallback — standard fetch
-    const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-        throw new Error(`HTTP POST failed: ${response.status} ${response.statusText}`);
-    }
-    return (await response.json()) as T;
+    return corsFreeRequest<T>("POST", url, body);
 }
 
-/**
- * PUT JSON without CORS restrictions.
- *
- * - **Tauri**: Uses `@tauri-apps/plugin-http` (Rust-side fetch, no CORS).
- * - **Browser**: Uses the standard Fetch API (caller must handle CORS proxy).
- */
+/** PUT JSON without CORS restrictions. */
 export async function corsFreePut<T>(url: string, body: Record<string, unknown>): Promise<T> {
-    if (isTauri()) {
-        const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-        const response = await tauriFetch(url, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-        });
-        if (!response.ok) {
-            throw new Error(`Tauri HTTP PUT failed: ${response.status} ${response.statusText}`);
-        }
-        return (await response.json()) as T;
-    }
-
-    const response = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-        throw new Error(`HTTP PUT failed: ${response.status} ${response.statusText}`);
-    }
-    return (await response.json()) as T;
+    return corsFreeRequest<T>("PUT", url, body);
 }

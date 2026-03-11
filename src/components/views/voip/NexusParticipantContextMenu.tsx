@@ -5,47 +5,12 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, useEffect, useRef, type JSX } from "react";
+import React, { useCallback, useRef, type JSX } from "react";
 import ReactDOM from "react-dom";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
 
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
-
-/**
- * Close the menu when clicking/tapping outside.
- * Uses pointerdown (not mousedown) because Firefox dispatches spurious
- * mouse events from range-input drags that can close the menu.
- */
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void): void {
-    useEffect(() => {
-        const handler = (e: PointerEvent): void => {
-            if (ref.current && !ref.current.contains(e.target as Node)) {
-                onClose();
-            }
-        };
-        document.addEventListener("pointerdown", handler);
-        return () => document.removeEventListener("pointerdown", handler);
-    }, [ref, onClose]);
-}
-
-/**
- * Close the menu on Escape key.
- */
-function useEscapeKey(onClose: () => void): void {
-    useEffect(() => {
-        const handler = (e: KeyboardEvent): void => {
-            if (e.key === "Escape") onClose();
-        };
-        document.addEventListener("keydown", handler);
-        return () => document.removeEventListener("keydown", handler);
-    }, [onClose]);
-}
-
-/** Stop pointer/mouse/focus events from bubbling to RovingTabIndex ancestors. */
-function stopBubble(e: React.SyntheticEvent): void {
-    e.stopPropagation();
-    e.nativeEvent.stopImmediatePropagation();
-}
+import { useClickOutside, useEscapeKey, stopBubble } from "../../../hooks/useMenuDismiss";
 
 interface NexusParticipantContextMenuProps {
     member: RoomMember;

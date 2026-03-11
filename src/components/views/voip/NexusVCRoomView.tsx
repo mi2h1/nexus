@@ -21,6 +21,7 @@ import { ParticipantTile } from "./NexusVoiceParticipantGrid";
 import { NexusVCControlBar } from "./NexusVCControlBar";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../stores/NexusVoiceStore";
 import type { ScreenShareInfo } from "../../../models/Call";
+import { stopBubble } from "../../../hooks/useMenuDismiss";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
 import { IconEyeOff } from "@tabler/icons-react";
@@ -358,11 +359,6 @@ const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewConte
             },
             [conn, share],
         );
-
-        const stopBubble = (e: React.SyntheticEvent): void => {
-            e.stopPropagation();
-            e.nativeEvent.stopImmediatePropagation();
-        };
 
         return ReactDOM.createPortal(
             <div

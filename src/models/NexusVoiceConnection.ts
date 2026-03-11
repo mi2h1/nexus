@@ -48,7 +48,7 @@ const STATS_POLL_INTERVAL_MS = 2000;
 // ─── Screen share quality presets ────────────────────────
 export type ScreenShareQuality = "low" | "standard" | "high" | "ultra";
 
-export interface ScreenSharePresetConfig {
+interface ScreenSharePresetConfig {
     label: string;
     description: string;
     width: number;
@@ -70,8 +70,8 @@ export const VC_LEAVE_SOUND = "media/sfx_leave.mp3";
 export const VC_STANDBY_SOUND = "media/sfx_standby.mp3";
 export const VC_MUTE_SOUND = "media/sfx_mute.mp3";
 export const VC_UNMUTE_SOUND = "media/sfx_unmute.mp3";
-export const VC_SCREEN_ON_SOUND = "media/sfx_screen-on.mp3";
-export const VC_SCREEN_OFF_SOUND = "media/sfx_screen-off.mp3";
+const VC_SCREEN_ON_SOUND = "media/sfx_screen-on.mp3";
+const VC_SCREEN_OFF_SOUND = "media/sfx_screen-off.mp3";
 
 export function playVcSound(src: string): void {
     try {
@@ -91,11 +91,12 @@ export function playVcSound(src: string): void {
  * When set, bypasses both the CORS proxy and matrix.org's transport URL.
  * Set to empty string to fall back to the matrix.org transport + CORS proxy.
  */
-const NEXUS_JWT_SERVICE_URL = "https://lche2.xvps.jp:7891";
+export const NEXUS_JWT_SERVICE_URL = "https://lche2.xvps.jp:7891";
 
 /**
  * Cloudflare Workers CORS proxy URL for LiveKit JWT endpoint.
- * Used as fallback when NEXUS_JWT_SERVICE_URL is not set.
+ * Only used as a last-resort fallback when NEXUS_JWT_SERVICE_URL fails
+ * AND the browser needs to reach the matrix.org transport URL without CORS.
  */
 const LIVEKIT_CORS_PROXY_URL = "https://nexus-livekit-proxy.mi2h1.workers.dev";
 
@@ -129,6 +130,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private nativeVideoCapture: NativeVideoCaptureStream | null = null;
     private nativeAudioCapture: NativeAudioCaptureStream | null = null;
     private _isNativeCapture = false;
+    /** Tauri event unlisten functions — cleaned up in cleanupNativeCapture(). */
+    private tauriUnlistenFns: Array<() => void> = [];
     private _isScreenSharing = false;
     private _isSwitchingTarget = false;
     private _screenShares: ScreenShareInfo[] = [];
@@ -185,6 +188,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private agcCurrentGain = 1.0;
     private voiceGateTimer: ReturnType<typeof setInterval> | null = null;
     private _inputLevel = 0; // 0-100 real-time input level
+    /** Reusable buffer for analyser data — avoids allocation in hot polling loop. */
+    private analyserBuffer: Uint8Array<ArrayBuffer> | null = null;
     private _voiceGateOpen = true;
     private voiceGateReleaseTimeout: ReturnType<typeof setTimeout> | null = null;
     private static readonly VOICE_GATE_RELEASE_MS = 300;
@@ -326,7 +331,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
             this.livekitRoom.on(LivekitRoomEvent.TrackMuted, this.onTrackMuted);
             this.livekitRoom.on(LivekitRoomEvent.TrackUnmuted, this.onTrackUnmuted);
-            this.livekitRoom.on(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             this.livekitRoom.on(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             this.livekitRoom.on(LivekitRoomEvent.DataReceived, this.onDataReceived);
@@ -519,17 +523,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         try {
             // Listen for capture events (must be registered BEFORE start_capture)
+            // Store unlisten functions to prevent listener accumulation on repeated start/stop.
             const { listen } = await import("@tauri-apps/api/event");
-            listen("capture-stopped", () => {
+            const unlistenStopped = await listen("capture-stopped", () => {
                 if (this._isNativeCapture && this._isScreenSharing && !this._isSwitchingTarget) {
                     this.stopScreenShare().catch((e) =>
                         logger.warn("Failed to stop after capture-stopped", e),
                     );
                 }
             });
-            listen<string>("wasapi-info", (event) => {
+            const unlistenWasapi = await listen<string>("wasapi-info", (event) => {
                 logger.info(event.payload);
             });
+            this.tauriUnlistenFns.push(unlistenStopped, unlistenWasapi);
 
             // Start native capture via Tauri
             const { invoke } = await import("@tauri-apps/api/core");
@@ -750,6 +756,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     private async cleanupNativeCapture(): Promise<void> {
         this._isNativeCapture = false;
+
+        // Remove Tauri event listeners to prevent accumulation on repeated start/stop
+        for (const unlisten of this.tauriUnlistenFns) {
+            unlisten();
+        }
+        this.tauriUnlistenFns = [];
 
         // Stop Rust-side WASAPI / WGC capture FIRST so that the OS audio
         // session is properly released before we tear down JS-side nodes.
@@ -1280,7 +1292,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private pollInputLevel(): void {
         if (!this.analyserNode) return;
 
-        const data = new Uint8Array(this.analyserNode.fftSize);
+        if (!this.analyserBuffer || this.analyserBuffer.length !== this.analyserNode.fftSize) {
+            this.analyserBuffer = new Uint8Array(this.analyserNode.fftSize) as Uint8Array<ArrayBuffer>;
+        }
+        const data = this.analyserBuffer;
         this.analyserNode.getByteTimeDomainData(data);
 
         // RMS calculation → scale to 0-100
@@ -1550,25 +1565,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.localScreenAudioTrack.stop();
             this.localScreenAudioTrack = null;
         }
-        // Clean up native capture — stop Rust side first, then JS nodes.
+        // Clean up native capture (fire-and-forget — unlisten + stop Rust side + JS nodes)
         if (this._isNativeCapture) {
-            this._isNativeCapture = false;
-            // Fire-and-forget stop_capture — WASAPI session must be released
-            // before JS-side nodes are torn down to avoid orphaned audio taps.
-            import("@tauri-apps/api/core").then(({ invoke }) => {
-                invoke("stop_capture").catch(() => {});
-            }).then(() => {
-                this.nativeVideoCapture?.stop();
-                this.nativeVideoCapture = null;
-                this.nativeAudioCapture?.stop();
-                this.nativeAudioCapture = null;
-            }).catch(() => {
-                // Fallback: clean up JS side even if stop_capture failed
-                this.nativeVideoCapture?.stop();
-                this.nativeVideoCapture = null;
-                this.nativeAudioCapture?.stop();
-                this.nativeAudioCapture = null;
-            });
+            void this.cleanupNativeCapture();
         }
         this._isScreenSharing = false;
         this._screenShares = [];
@@ -1589,7 +1588,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.off(LivekitRoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
             this.livekitRoom.off(LivekitRoomEvent.TrackMuted, this.onTrackMuted);
             this.livekitRoom.off(LivekitRoomEvent.TrackUnmuted, this.onTrackUnmuted);
-            this.livekitRoom.off(LivekitRoomEvent.ActiveSpeakersChanged, this.onActiveSpeakersChanged);
             this.livekitRoom.off(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.off(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             this.livekitRoom.off(LivekitRoomEvent.DataReceived, this.onDataReceived);
@@ -1608,12 +1606,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Private: Remote Audio ───────────────────────────────
 
     /**
-     * When a remote audio track is muted, mute the corresponding <audio> element
-     * to eliminate WebRTC decoder noise floor ("サー" noise).
-     */
-    /**
      * TrackMuted fires for BOTH local and remote tracks.
      * We only mute/unmute <audio> elements for remote participants.
+     * Note: updateParticipants() is NOT called here — mute state is tracked
+     * separately via data messages and pollActiveSpeakers(), and the
+     * participant set does not change on mute/unmute.
      */
     private onTrackMuted = (
         publication: TrackPublication,
@@ -1624,7 +1621,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const audio = this.outputAudioElements.get(participant.identity);
             if (audio) audio.muted = true;
         }
-        this.updateParticipants();
     };
 
     private onTrackUnmuted = (
@@ -1636,7 +1632,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const audio = this.outputAudioElements.get(participant.identity);
             if (audio) audio.muted = false;
         }
-        this.updateParticipants();
     };
 
     private onTrackSubscribed = (
@@ -1859,35 +1854,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
     }
 
-    private onActiveSpeakersChanged = (speakers: Participant[]): void => {
-        this.updateActiveSpeakersFromParticipants(speakers);
-    };
-
-    private updateActiveSpeakersFromParticipants(speakers: Participant[]): void {
-        const speakingUserIds = new Set<string>();
-        const myUserId = this.client.getUserId();
-
-        for (const speaker of speakers) {
-            // Check if this is the local participant
-            if (
-                this.livekitRoom &&
-                speaker.sid === this.livekitRoom.localParticipant.sid &&
-                myUserId
-            ) {
-                speakingUserIds.add(myUserId);
-                continue;
-            }
-
-            // Remote participant — resolve identity to Matrix user ID
-            const userId = this.resolveIdentityToUserId(speaker.identity);
-            if (userId) {
-                speakingUserIds.add(userId);
-            }
-        }
-
-        this._activeSpeakers = speakingUserIds;
-        this.emit(CallEvent.ActiveSpeakers, speakingUserIds);
-    }
+    // ActiveSpeakersChanged event handler removed — speaker detection is
+    // handled solely by pollActiveSpeakers() (250ms) and the local fast
+    // path in pollInputLevel() (50ms). The event handler emitted without
+    // change checks and was immediately overwritten by the next poll cycle.
 
     /**
      * Polling fallback for speaker detection.
@@ -1937,26 +1907,23 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         // Check remote participants
         for (const participant of this.livekitRoom.remoteParticipants.values()) {
+            const userId = this.resolveIdentityToUserId(participant.identity);
+            if (!userId) continue;
+
             if (participant.isSpeaking) {
-                const userId = this.resolveIdentityToUserId(participant.identity);
-                if (userId) {
-                    speakingUserIds.add(userId);
-                }
+                speakingUserIds.add(userId);
             }
 
-            const userId = this.resolveIdentityToUserId(participant.identity);
-            if (userId) {
-                // Use data-message-based mute state (our custom signaling),
-                // falling back to LiveKit's micPub.isMuted for participants
-                // that haven't sent a data message yet.
-                const dataMuted = this.remoteMuteStates.get(participant.identity);
-                const micPub = participant.getTrackPublication(Track.Source.Microphone);
-                const isMuted = dataMuted ?? (micPub ? micPub.isMuted : true);
-                newStates.set(userId, {
-                    isMuted,
-                    isScreenSharing: screenSharingUserIds.has(userId),
-                });
-            }
+            // Use data-message-based mute state (our custom signaling),
+            // falling back to LiveKit's micPub.isMuted for participants
+            // that haven't sent a data message yet.
+            const dataMuted = this.remoteMuteStates.get(participant.identity);
+            const micPub = participant.getTrackPublication(Track.Source.Microphone);
+            const isMuted = dataMuted ?? (micPub ? micPub.isMuted : true);
+            newStates.set(userId, {
+                isMuted,
+                isScreenSharing: screenSharingUserIds.has(userId),
+            });
         }
 
         // Only emit if the set actually changed
@@ -2057,18 +2024,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     };
 
     private onMembershipsChanged = (): void => {
-        const prevCount = this._participants.size;
         this.updateParticipants();
         const newCount = this._participants.size;
 
-        // Play SE when OTHER users join/leave (suppress during self join/leave)
-        if (this.connected && !this._suppressMembershipSounds && prevCount !== newCount) {
-            if (newCount > prevCount) {
-                playVcSound(VC_JOIN_SOUND);
-            } else if (newCount > 0) {
-                playVcSound(VC_LEAVE_SOUND);
-            }
-        }
+        // SE is NOT played here — LiveKit ParticipantConnected/Disconnected
+        // fires first and is the sole trigger for join/leave sounds.
+        // Playing here too would cause double SE playback.
 
         // If connected but memberships dropped to 0, MatrixRTC may be
         // re-joining (force re-join on "Missing own membership"). Retry

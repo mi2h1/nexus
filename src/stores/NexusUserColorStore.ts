@@ -10,8 +10,7 @@ import { type MatrixClient } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
 import { corsFreeGet, corsFreePut } from "../utils/tauriHttp";
-
-const JWT_SERVICE_URL = "https://lche2.xvps.jp:7891";
+import { NEXUS_JWT_SERVICE_URL } from "../models/NexusVoiceConnection";
 
 export enum NexusUserColorStoreEvent {
     ColorsChanged = "colors_changed",
@@ -66,7 +65,7 @@ export class NexusUserColorStore extends TypedEventEmitter<
      */
     public async fetchColors(): Promise<void> {
         try {
-            const data = await corsFreeGet<Record<string, string>>(`${JWT_SERVICE_URL}/user-colors`);
+            const data = await corsFreeGet<Record<string, string>>(`${NEXUS_JWT_SERVICE_URL}/user-colors`);
             this.colors.clear();
             for (const [userId, color] of Object.entries(data)) {
                 this.colors.set(userId, color);
@@ -87,7 +86,7 @@ export class NexusUserColorStore extends TypedEventEmitter<
 
         const openIdToken = await this.client.getOpenIdToken();
 
-        await corsFreePut<{ status: string }>(`${JWT_SERVICE_URL}/user-color`, {
+        await corsFreePut<{ status: string }>(`${NEXUS_JWT_SERVICE_URL}/user-color`, {
             openid_token: {
                 access_token: openIdToken.access_token,
                 token_type: openIdToken.token_type,
