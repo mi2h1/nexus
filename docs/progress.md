@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-02
+> 最終更新: 2026-03-11
 
 ## リポジトリ情報
 
@@ -246,6 +246,38 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - VC 経過時間の位置調整（`right` 値変更）・ホバー時非表示（チャットボタンとの重なり解消）
   - VC 経過時間テキスト `line-height: 1` で垂直中央揃え
 
+#### 2026-03-11 (音声入力パイプライン Phase 1 + RNNoise ノイキャン)
+- **音声品質調査**: Win11 ユーザーの音質問題（こもり、音が大きい、環境音拾いすぎ）を調査
+  - Win11 の Voice Focus（OS レベル NC）とブラウザ `noiseSuppression` の二重処理が原因と推定
+  - Discord の音声処理（Krisp, AGC, EQ, コンプレッサー）との比較分析
+  - 利用可能なノイキャンライブラリ比較（RNNoise, dtln-rs, DeepFilterNet3, Krisp SDK 等）
+- **noiseSuppression OFF**: `getUserMedia` の `noiseSuppression` を `false` に変更（Win11 二重処理防止）
+- **Voice EQ 追加**: `BiquadFilterNode` x2
+  - eqLowCut: 350Hz -3dB peaking（こもった低中域を除去）
+  - eqPresence: 3kHz +2.5dB peaking（声の明瞭さ・通りを向上）
+- **VAD 連動カスタム AGC**: `GainNode` + `pollInputLevel` 内ロジック
+  - 声が検出されている時のみゲイン調整（0.5x-3.0x）、`exponentialRampToValueAtTime` で滑らか遷移
+  - 静寂時は一切調整しない → 背景ノイズが増幅されない
+- **コンプレッサー再導入**: `DynamicsCompressorNode` を voice gate の後に配置
+  - threshold -18dB, knee 12, ratio 4:1, attack 3ms, release 150ms
+  - ゲート閉鎖時は無信号 → 以前のキーボード音増幅問題は発生しない
+- **音声処理設定 UI**: 設定 > 音声 > 音声処理セクション追加
+  - AI ノイズキャンセリング / ボイス EQ / 自動音量調整（AGC）の個別 ON/OFF トグル
+  - 各トグルに説明文付き
+- **RNNoise AI ノイズキャンセリング**: `@sapphi-red/web-noise-suppressor` 導入
+  - 48kHz ネイティブ対応（リサンプル不要）、MIT ライセンス
+  - HPF と Analyser の間に挿入: `HPF → [RNNoise] → Analyser`
+  - AudioWorklet + WASM で動作、Tauri/WebView2 では自動フォールバック（NC なし）
+  - WASM はインスタンス間キャッシュ、ログイン時プリフェッチ
+  - webpack CopyPlugin で WASM + worklet ファイルを配信
+- **通話パネル接続品質表示**: `NexusCallStatusPanel` に電波アイコン追加
+  - `@tabler/icons-react` の `IconAntennaBars1/2/3/5` で 4段階表示
+  - compound-web `Tooltip` で ping ms 値を hover 表示
+  - publisher PC フォールバックで単独時も計測可能に
+- **Tauri SW エラートースト抑制**: `TauriPlatform.onAction` で `ClientStarted` をスキップ
+- **RNNoise + Compressor 削除（後に Phase 1 で再設計）**: 以前の実装を一旦削除
+  - RNNoise は Tauri で読み込み失敗、Compressor はゲート前配置でキーボード音を増幅していた
+
 #### 2026-02-27 (SFU ホワイトリスト + SE 修正 + TS エラー全解消)
 - **lk-jwt-service ユーザーホワイトリスト**: フォーク等によるただ乗り防止
   - `LIVEKIT_ALLOWED_USER_IDS` 環境変数（カンマ区切り）でJWT発行対象を制限
@@ -287,7 +319,7 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | 自前 LiveKit SFU (日本VPS) | 中 | **~1秒短縮** | ✅ 完了 | [vc-optimization.md](vc-optimization.md) |
 | パイプライン構築を connect() と並列化 | 低 | ~50-100ms | ✅ 完了 | `buildInputPipeline()` + `livekitRoom.connect()` 並列 |
 | OpenID トークンキャッシュ | 低 | ~100-200ms (再接続時) | ✅ 完了 | `getCachedOpenIdToken()` — expires_in の 80% でキャッシュ |
-| 起動時プリフェッチ | 低 | 初回接続の cold-start 排除 | ✅ 完了 | `prefetch()` — RNNoise WASM + OpenID トークンを login 後に先行取得 |
+| 起動時プリフェッチ | 低 | 初回接続の cold-start 排除 | ✅ 完了 | `prefetch()` — OpenID トークン + RNNoise WASM を login 後に先行取得 |
 | 切断即時化 | 低 | 切断 ~0ms（体感即座） | ✅ 完了 | `leaveRoomSession` + `livekitRoom.disconnect` を fire-and-forget |
 | LiveKit reconnect() | 低 | 再接続時大幅短縮 | 未着手 | Discord の Resume に相当 |
 | マイク権限の事前取得 | 低 | 初回 ~300ms | 未着手 | VC パネル表示時に先行 getUserMedia |
@@ -310,17 +342,21 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 |------|--------|------|------|-------------|
 | 画面共有 A/V 同期改善 | 高 | 映像と音声のズレ解消 | ✅ 改善済み（100-300ms、許容範囲） | Discord は RTCP SR + カスタム C++ エンジン |
 | AGC（自動ゲイン制御） | 低 | マイク音量の自動調整 | ✅ 完了 | Discord 標準搭載 |
-| VAD 改善 | 低 | RNNoise の VAD 出力を活用 | 未着手 | Discord は Krisp |
+| Voice EQ | 低 | こもり除去 + 明瞭さ向上 | ✅ 完了 | Discord 内部処理相当 |
+| RNNoise AI ノイキャン | 中 | キーボード音・ファン音の除去 | ✅ 完了 | Discord は Krisp (有料級) |
+| コンプレッサー（ゲート後） | 低 | 音量ピーク防止 | ✅ 完了 | Discord 標準搭載 |
+| noiseSuppression OFF | 低 | Win11 二重処理防止 | ✅ 完了 | — |
+| 音声処理設定 UI | 低 | NC/EQ/AGC 個別 ON/OFF | ✅ 完了 | Discord は Krisp ON/OFF のみ |
 | スピーカーミュート（デフ） | 低 | 出力を一括ミュート | 未着手 | Discord 標準搭載 |
 | Opus ビットレート引き上げ | 低 | 128kbps 固定 | ✅ 完了 | Discord は動的(32〜128kbps) |
-| DTLN ノイズキャンセリング | 高 | RNNoise より高品質な NC | 未着手 | Discord は Krisp (有料級) |
+| 次世代 NC (dtln-rs/DeepFilterNet) | 高 | RNNoise より高品質な NC | 将来 | dtln-rs 48kHz対応 or DeepFilterNet WASM 安定化待ち |
 | エコーキャンセレーション強化 | 高 | スピーカー利用時のエコー除去 | 未着手 | |
 
 #### 低優先: UI/UX 改善
 
 | 施策 | 難易度 | 効果 | Discord 比較 |
 |------|--------|------|-------------|
-| VC 品質インジケーター | 低 | ping, ビットレート, コーデック表示 | Discord: 接続情報パネル |
+| VC 品質インジケーター | 低 | ping, ビットレート, コーデック表示 | ✅ ping 完了 | Discord: 接続情報パネル |
 | ユーザーステータス | 中 | オンライン/退席中/取り込み中/オフライン | Discord 標準搭載 |
 | キーバインド設定 | 中 | ミュートキー等のカスタマイズ | Discord 標準搭載 |
 | 配信モード | 中 | 個人情報を隠す | Discord Streamer Mode |

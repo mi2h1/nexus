@@ -1,6 +1,6 @@
 # 技術スタック — tech-stack.md
 
-> 最終更新: 2026-03-02
+> 最終更新: 2026-03-11
 
 ## 実行環境
 
@@ -24,7 +24,8 @@
 | matrix-react-sdk | Element Web に統合済み | UI コンポーネント群 |
 | livekit-client | Element Web 同梱 | VC・画面共有（LiveKit SFU 直接接続） |
 | @hello-pangea/dnd | ^18.0.0 | スペースパネルのドラッグ&ドロップ（react-beautiful-dnd の React 19 対応 fork） |
-| Web Audio API | ブラウザ標準 | 入力音量調整(GainNode)・入力レベル監視(AnalyserNode)・ボイスゲート |
+| @sapphi-red/web-noise-suppressor | latest | RNNoise AI ノイズキャンセリング（WASM AudioWorklet, 48kHz ネイティブ） |
+| Web Audio API | ブラウザ標準 | 入力音声処理（HPF・EQ・AGC・コンプレッサー・ボイスゲート・レベル監視） |
 
 ## インフラ・サービス
 
@@ -53,7 +54,7 @@
 
 | 技術 | 用途 | 時期 |
 |------|------|------|
-| dtln-rs or web-noise-suppressor | 高度ノイズキャンセリング（WASM） | 検討中 |
+| dtln-rs / DeepFilterNet3 | 次世代ノイズキャンセリング（RNNoise より高品質） | dtln-rs の 48kHz 対応待ち / DeepFilterNet の WASM 安定化待ち |
 
 ## CSS アーキテクチャ
 
@@ -67,19 +68,22 @@
 ```
 ブラウザ (Nexus)
   │
-  ├─ Web Audio API パイプライン
-  │    ├─ マイク → AnalyserNode (レベル監視) → GainNode (音量+ゲート) → 処理済みトラック
-  │    └─ リモート音声 → HTMLAudioElement (マスター音量適用)
+  ├─ Web Audio API 入力パイプライン
+  │    マイク(EC:on, NS:off, AGC:off, 48kHz)
+  │    → HPF(80Hz) → [RNNoise WASM] → Analyser → Delay(50ms)
+  │    → VoiceGate(GainNode) → EQ(350Hz/-3dB, 3kHz/+2.5dB)
+  │    → AGC(VAD連動) → Compressor → 処理済みトラック
+  │
+  ├─ Web Audio API 出力パイプライン
+  │    ├─ ブラウザ: HTMLAudioElement (マスター音量適用, 0-100%)
+  │    └─ Tauri: MediaStreamSource → GainNode → masterGain (0-200%)
   │
   ├─ MatrixRTC (matrix-js-sdk)
   │    └─ m.call.member ステートイベントで参加/退出を通知
   │
-  ├─ CORS Proxy (Cloudflare Workers)
-  │    └─ LiveKit JWT 取得（livekit-jwt.call.matrix.org へ中継）
-  │
   └─ LiveKit SFU (livekit-client)
-       ├─ 処理済み音声トラック送信
+       ├─ 処理済み音声トラック送信 (Opus 128kbps, DTX:off, RED:on)
        ├─ リモート音声トラック受信
        ├─ 画面共有トラック送受信 (720p30 + 360p15 simulcast)
-       └─ WebRTC stats（遅延計測）
+       └─ WebRTC stats（遅延計測、publisher/subscriber PC 両対応）
 ```

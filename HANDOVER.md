@@ -2,30 +2,37 @@
 
 ## 現在の状態
 
-### 直近の作業（2026-03-02）
+### 直近の作業（2026-03-11）
+
+**音声入力パイプライン大幅改善（v0.2.12+）**
+- **RNNoise AI ノイズキャンセリング**: `@sapphi-red/web-noise-suppressor` で WASM AudioWorklet ノイキャン実装
+  - 48kHz ネイティブ対応、リサンプル不要
+  - Tauri/WebView2 で AudioWorklet 読み込み失敗時は自動フォールバック（NC なし）
+  - WASM はインスタンス間キャッシュ + ログイン時プリフェッチ
+- **Voice EQ**: 350Hz -3dB カット（こもり除去）+ 3kHz +2.5dB ブースト（明瞭さ向上）
+- **VAD 連動カスタム AGC**: 声がある時だけゲイン調整（0.5x-3.0x）、静寂時のノイズ増幅なし
+- **コンプレッサー**: voice gate の後に配置（以前の問題を解消、ピーク防止のみ）
+- **noiseSuppression: false**: Win11 OS レベル処理との二重処理を防止
+- 全機能を設定 > 音声 > 音声処理で個別 ON/OFF 可能
+
+**通話パネル接続品質表示（v0.2.12）**
+- 電波アイコン + 色で ping 品質を表示（<80ms 緑, 80-150ms 橙, 150-250ms 橙, >250ms 赤）
+- Tooltip でms値表示、publisher PC フォールバックで単独時も計測可能
 
 **ユーザー指定の表示名カラー（v0.2.11）**
 - 各ユーザーが自分の表示名色を選択可能に（Discord のロールカラーに相当）
 - サーバー側: lk-jwt-service に `GET /user-colors` + `PUT /user-color` エンドポイント追加
 - クライアント側: `NexusUserColorStore` シングルトン + `getUserNameColorStyle()` ユーティリティ
-- UI: 設定 > アカウントに20色プリセット + HEX 自由入力のカラーピッカー
-- `ColorsChanged` イベントで DisambiguatedProfileViewModel / ReplyChain / PinnedEventTile が即時再レンダリング
-- Tauri: `corsFreeGet` / `corsFreePut` を追加
-
-**VC 音声・画面共有の品質改善（v0.2.8-v0.2.10）**
-- 画面共有音声を Web Audio パイプライン経由に変更（Tauri で >100% 音量対応）
-- LiveKit PLI throttle 短縮（`high_quality: 3s → 1s`）
-- Opus DTX 無効化 — 機械音・ロボット音の発生を防止
-- 画面共有ピッカー: キャプチャ中サムネイルキャッシュ
 
 ### 未解決・次回やること
 
-1. **RNNoise worklet 読み込み失敗（Tauri）** — `AbortError: Unable to load a worklet's module`。WebView2 で AudioWorklet のモジュールロードに制限がある可能性。フォールバック済み（ノイキャンなし）
-2. **Win10 画面共有テスト** — 1名が画面共有できない問題、Win10 環境での検証待ち
-3. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題
-4. **システムトレイ常駐** — 閉じてもバックグラウンド動作
-5. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等
-6. **画面共有 200% 音量テスト** — Tauri で Web Audio パイプライン経由の画面共有音声増幅を実装済み、動作確認済み
+1. **RNNoise worklet 読み込み失敗（Tauri）** — `AbortError: Unable to load a worklet's module`。WebView2 で AudioWorklet のモジュールロードに制限がある可能性。フォールバック済み（ノイキャンなし）→ 設定で OFF にすることで即座にバイパス可能
+2. **Phase 1 音声品質テスト** — EQ/AGC/コンプレッサー/RNNoise の効果をユーザーテストで確認。パラメータ調整が必要な可能性
+3. **Win10 画面共有テスト** — 1名が画面共有できない問題、Win10 環境での検証待ち
+4. **Chrome (Mac) でVCに入れない** — `NotFoundError: Requested device not found`。macOS のマイク権限問題
+5. **システムトレイ常駐** — 閉じてもバックグラウンド動作
+6. **日本語翻訳 残り415件** — `devtools`(75), `encryption`(59), `auth`(39), `right_panel`(28) 等
+7. **Phase 2: AI ノイキャン品質向上** — dtln-rs（48kHz 対応時）や DeepFilterNet3（WASM 安定化時）への移行検討
 
 ---
 
@@ -154,13 +161,24 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 
 ### 入力（マイク）
 ```
-getUserMedia → LocalAudioTrack
-  → MediaStreamSource → [RNNoise] → HPF(80Hz) → Compressor
+getUserMedia(EC:on, NS:off, AGC:off, 48kHz, Mono)
+  → MediaStreamSource
+  → HPF(80Hz, Q:0.7)
+  → [RNNoise AudioWorklet (optional, 設定 ON 時)]
   → Analyser (遅延なし、即時レベル検出)
-  → DelayNode(50ms) → InputGainNode → MediaStreamDestination → publish to LiveKit
+  → DelayNode(50ms lookahead)
+  → InputGainNode (voice gate: 0=閉, inputVol=開)
+  → EQ LowCut (350Hz -3dB, peaking)
+  → EQ Presence (3kHz +2.5dB, peaking)
+  → AGC GainNode (VAD連動 0.5x-3.0x)
+  → DynamicsCompressor (threshold:-18dB, ratio:4:1)
+  → MediaStreamDestination → publish to LiveKit (Opus 128kbps, DTX:off, RED:on)
 ```
 - AudioContext はユーザージェスチャー内（await 前）に生成必須
 - ミュートは `inputGainNode.gain.value = 0`（LiveKit の track.mute() は使わない — Firefox で壊れるため）
+- `noiseSuppression: false` — Win11 の OS レベル処理との二重処理を回避
+- RNNoise / EQ / AGC は設定で個別 ON/OFF 可能（OFF 時はバイパスまたは unity gain）
+- コンプレッサーは voice gate の後 — ゲート閉鎖時は無信号なのでノイズ増幅なし
 
 ### 出力（リモート音声）
 - per-participant `<audio>` 要素 + Web Audio API で再生
@@ -177,15 +195,19 @@ getUserMedia → LocalAudioTrack
 
 ```
 Phase 0: AudioContext 生成（同期、ユーザージェスチャー内）
-Phase 1: Promise.all([getJwt(), createLocalAudioTrack(), preloadRnnoiseWasm()])
+Phase 1: Promise.all([getJwt(), createLocalAudioTrack()])
   └─ getJwt():
      ├─ getCachedOpenIdToken() — キャッシュヒット時は matrix.org スキップ
      ├─ 優先: 自前 JWT サービス (https://lche2.xvps.jp:7891/sfu/get)
      └─ フォールバック: Element の JWT via CORS プロキシ
 Phase 3+4: 並列実行
   ├─ livekitRoom.connect(url, jwt) — wss://lche2.xvps.jp:7880
-  └─ buildInputPipeline() — AudioNode + RNNoise + MediaStreamDestination
+  └─ buildInputPipeline() — HPF + [RNNoise] + EQ + AGC + Compressor + dest
 Phase 5: publishTrack(processedTrack)
+
+プリフェッチ（ログイン後バックグラウンド）:
+  ├─ OpenID トークンキャッシュ
+  └─ RNNoise WASM バイナリダウンロード
 ```
 
 ---

@@ -124,10 +124,15 @@ NexusVoiceStore (シングルトン)
   └─ NexusVoiceConnection
        ├─ Web Audio API パイプライン（入力）
        │    ├─ AudioContext（livekitRoom.connect() より前に生成）
-       │    ├─ MediaStreamSource (マイク入力)
-       │    ├─ [RnnoiseWorkletNode (ノイズキャンセリング、任意)]
+       │    ├─ MediaStreamSource (マイク入力, EC:on, NS:off, AGC:off)
+       │    ├─ BiquadFilter HPF (80Hz ハイパス)
+       │    ├─ [RnnoiseWorkletNode (AI ノイズキャンセリング、任意)]
        │    ├─ AnalyserNode (入力レベル監視、50ms ポーリング)
-       │    ├─ GainNode (入力音量調整 + ボイスゲート)
+       │    ├─ DelayNode (50ms lookahead for voice gate)
+       │    ├─ GainNode (ボイスゲート: 閾値ベース)
+       │    ├─ BiquadFilter x2 (Voice EQ: 350Hz -3dB + 3kHz +2.5dB)
+       │    ├─ GainNode (VAD連動 AGC: 0.5x-3.0x)
+       │    ├─ DynamicsCompressor (ピーク防止)
        │    └─ MediaStreamDestination → 処理済みトラック
        ├─ Web Audio API パイプライン（出力）
        │    ├─ per-participant: MediaStreamAudioSourceNode → GainNode → masterGain
@@ -150,8 +155,7 @@ NexusVoiceStore (シングルトン)
 
 ```
 ┌─ getJwt()              （JWT 取得: 200-500ms）
-├─ createLocalAudioTrack() （マイクアクセス: 50-200ms）
-└─ preloadRnnoiseWasm()    （WASM プリロード: 50-150ms）
+└─ createLocalAudioTrack() （マイクアクセス: 50-200ms）
          ↓
 livekitRoom.connect()      （WebRTC 確立: 500-5000ms）← JWT 必要なので後
          ↓
