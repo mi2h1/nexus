@@ -99,11 +99,10 @@ function getHeaderLabelJSX(vm: MemberListViewState): React.ReactNode {
 export const MemberListHeaderView: React.FC<Props> = (props: Props) => {
     const vm = props.vm;
 
-    let contentJSX: React.ReactNode;
+    if (!vm.shouldShowSearch) return null;
 
-    if (vm.shouldShowSearch) {
-        // When we need to show the search box
-        contentJSX = (
+    return (
+        <Flex className="mx_MemberListHeaderView" as="header" align="center" justify="space-between" direction="column">
             <Flex justify="center" className="mx_MemberListHeaderView_container">
                 <Search
                     className="mx_MemberListHeaderView_search mx_no_textinput"
@@ -111,27 +110,7 @@ export const MemberListHeaderView: React.FC<Props> = (props: Props) => {
                     placeholder={_t("member_list|filter_placeholder")}
                     onChange={(e) => vm.search((e as React.ChangeEvent<HTMLInputElement>).target.value)}
                 />
-                <InviteButton vm={vm} />
             </Flex>
-        );
-    } else if (!vm.shouldShowSearch && vm.shouldShowInvite) {
-        // When we don't need to show the search box but still need an invite button
-        contentJSX = (
-            <Flex justify="center" className="mx_MemberListHeaderView_container">
-                <InviteButton vm={vm} />
-            </Flex>
-        );
-    } else {
-        // No search box and no invite icon, so nothing to render!
-        contentJSX = null;
-    }
-
-    return (
-        <Flex className="mx_MemberListHeaderView" as="header" align="center" justify="space-between" direction="column">
-            {!vm.isLoading && contentJSX}
-            <Text as="div" size="sm" weight="semibold" className="mx_MemberListHeaderView_label">
-                {getHeaderLabelJSX(vm)}
-            </Text>
         </Flex>
     );
 };
