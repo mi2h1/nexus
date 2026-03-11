@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX, useEffect } from "react";
+import React, { type JSX, useCallback, useEffect } from "react";
 import { useCreateAutoDisposedViewModel, DisambiguatedProfileView } from "@element-hq/web-shared-components";
 
 import { type RoomMember } from "../../../../../models/rooms/RoomMember";
@@ -15,6 +15,8 @@ import AvatarPresenceIconView from "./common/PresenceIconView";
 import BaseAvatar from "../../../avatars/BaseAvatar";
 import { _t } from "../../../../../languageHandler";
 import { MemberTileView } from "./common/MemberTileView";
+import { NexusUserPresenceStore, NexusUserPresenceStoreEvent } from "../../../../../stores/NexusUserPresenceStore";
+import { useEventEmitterState } from "../../../../../hooks/useEventEmitter";
 import { InvitedIconView } from "./common/InvitedIconView";
 import { type MemberWithSeparator } from "../../../../viewmodels/memberlist/MemberListViewModel";
 import { DisambiguatedProfileViewModel } from "../../../../../viewmodels/profile/DisambiguatedProfileViewModel";
@@ -67,6 +69,12 @@ export function RoomMemberTileView(props: IProps): JSX.Element {
         presenceJSX = <AvatarPresenceIconView presenceState={presenceState} />;
     }
 
+    const nexusPresence = useEventEmitterState(
+        NexusUserPresenceStore.instance,
+        NexusUserPresenceStoreEvent.PresencesChanged,
+        useCallback(() => NexusUserPresenceStore.instance.getPresence(member.userId), [member.userId]),
+    );
+
     let iconJsx;
     if (vm.e2eStatus) {
         iconJsx = <E2EIconView status={vm.e2eStatus} />;
@@ -75,12 +83,16 @@ export function RoomMemberTileView(props: IProps): JSX.Element {
         iconJsx = <InvitedIconView isThreePid={false} />;
     }
 
+    const nexusStatusDot = (
+        <span className={`mx_NexusMemberTile_statusDot mx_NexusMemberTile_statusDot--${nexusPresence}`} />
+    );
+
     return (
         <MemberTileView
             onClick={vm.onClick}
             onFocus={(e) => props.onFocus(props.item, e)}
             avatarJsx={av}
-            presenceJsx={presenceJSX}
+            presenceJsx={presenceJSX ?? nexusStatusDot}
             nameJsx={nameJSX}
             userLabel={vm.userLabel}
             ariaLabel={name}

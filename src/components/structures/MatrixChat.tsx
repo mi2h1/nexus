@@ -146,6 +146,7 @@ import { isOnlyAdmin } from "../../utils/membership";
 import { ModuleApi } from "../../modules/Api.ts";
 import { NexusVoiceConnection } from "../../models/NexusVoiceConnection";
 import { NexusUserColorStore } from "../../stores/NexusUserColorStore";
+import { NexusUserPresenceStore } from "../../stores/NexusUserPresenceStore";
 
 // legacy export
 export { default as Views } from "../../Views";
@@ -1855,6 +1856,9 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
 
         // Nexus: fetch user display name colors from lk-jwt-service.
         NexusUserColorStore.instance.start(cli);
+
+        // Nexus: connect to presence SSE stream.
+        NexusUserPresenceStore.instance.start(cli);
     }
 
     public showScreen(screen: string, params?: { [key: string]: any }): void {

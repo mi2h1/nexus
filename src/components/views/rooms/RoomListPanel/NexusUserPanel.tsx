@@ -6,7 +6,6 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { SetPresence } from "matrix-js-sdk/src/matrix";
 import { IconMicrophone, IconMicrophoneOff, IconSettings, IconLogout, IconBell, IconLock, IconDownload } from "@tabler/icons-react";
 
 import { useActiveCall } from "../../../../hooks/useActiveCall";
@@ -37,7 +36,7 @@ import { type OpenToTabPayload } from "../../../../dispatcher/payloads/OpenToTab
 import Modal from "../../../../Modal";
 import LogoutDialog, { shouldShowLogoutDialog } from "../../dialogs/LogoutDialog";
 import NexusUpdateDialog from "../../dialogs/NexusUpdateDialog";
-import Presence, { PresenceStateEvent } from "../../../../Presence";
+import { NexusUserPresenceStore, NexusUserPresenceStoreEvent, type NexusPresenceStatus } from "../../../../stores/NexusUserPresenceStore";
 
 const NexusUserPanel: React.FC = () => {
     const call = useActiveCall();
@@ -71,11 +70,11 @@ const NexusUserPanel: React.FC = () => {
     ));
     const userId = MatrixClientPeg.safeGet().getSafeUserId();
 
-    // Presence state (reactive)
-    const presenceState = useEventEmitterState(
-        Presence,
-        PresenceStateEvent.StateChanged,
-        useCallback(() => Presence.getState(), []),
+    // Presence state (reactive, via SSE from lk-jwt-service)
+    const presenceStatus = useEventEmitterState(
+        NexusUserPresenceStore.instance,
+        NexusUserPresenceStoreEvent.PresencesChanged,
+        useCallback(() => NexusUserPresenceStore.instance.getMyPresence(), []),
     );
 
     // Update availability
@@ -115,8 +114,8 @@ const NexusUserPanel: React.FC = () => {
         setMenuOpen(false);
     }, []);
 
-    const onSetPresence = useCallback((presence: SetPresence) => {
-        Presence.setManualPresence(presence);
+    const onSetPresence = useCallback((status: NexusPresenceStatus) => {
+        NexusUserPresenceStore.instance.setMyPresence(status).catch(() => {});
         closeMenu();
     }, [closeMenu]);
 
@@ -165,20 +164,20 @@ const NexusUserPanel: React.FC = () => {
                     <IconizedContextMenuRadio
                         icon={<span className="mx_NexusUserPanel_statusIcon mx_NexusUserPanel_statusIcon--online" />}
                         label="オンライン"
-                        onClick={() => onSetPresence(SetPresence.Online)}
-                        active={presenceState === SetPresence.Online || presenceState === null}
+                        onClick={() => onSetPresence("online")}
+                        active={presenceStatus === "online"}
                     />
                     <IconizedContextMenuRadio
                         icon={<span className="mx_NexusUserPanel_statusIcon mx_NexusUserPanel_statusIcon--unavailable" />}
                         label="退席中"
-                        onClick={() => onSetPresence(SetPresence.Unavailable)}
-                        active={presenceState === SetPresence.Unavailable}
+                        onClick={() => onSetPresence("unavailable")}
+                        active={presenceStatus === "unavailable"}
                     />
                     <IconizedContextMenuRadio
                         icon={<span className="mx_NexusUserPanel_statusIcon mx_NexusUserPanel_statusIcon--offline" />}
                         label="非表示"
-                        onClick={() => onSetPresence(SetPresence.Offline)}
-                        active={presenceState === SetPresence.Offline}
+                        onClick={() => onSetPresence("offline")}
+                        active={presenceStatus === "offline"}
                     />
                 </IconizedContextMenuOptionList>
                 <IconizedContextMenuOptionList first>
@@ -231,7 +230,7 @@ const NexusUserPanel: React.FC = () => {
                                     url={avatarUrl}
                                     size="32px"
                                 />
-                                <span className={`mx_NexusUserPanel_statusDot mx_NexusUserPanel_statusDot--${presenceState ?? "online"}`} />
+                                <span className={`mx_NexusUserPanel_statusDot mx_NexusUserPanel_statusDot--${presenceStatus}`} />
                             </div>
                         </AccessibleButton>
                         <span className="mx_NexusUserPanel_displayName">{displayName ?? userId}</span>

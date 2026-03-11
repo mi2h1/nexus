@@ -10,7 +10,6 @@ Please see LICENSE files in the repository root for full details.
 
 import { logger } from "matrix-js-sdk/src/logger";
 import { SetPresence } from "matrix-js-sdk/src/matrix";
-import { TypedEventEmitter } from "matrix-js-sdk/src/matrix";
 
 import { MatrixClientPeg } from "./MatrixClientPeg";
 import dis from "./dispatcher/dispatcher";
@@ -21,19 +20,10 @@ import { Action } from "./dispatcher/actions.ts";
 // Time in ms after that a user is considered as unavailable/away
 const UNAVAILABLE_TIME_MS = 3 * 60 * 1000; // 3 mins
 
-export enum PresenceStateEvent {
-    StateChanged = "state_changed",
-}
-
-type PresenceEventMap = {
-    [PresenceStateEvent.StateChanged]: (state: SetPresence) => void;
-};
-
-class Presence extends TypedEventEmitter<PresenceStateEvent, PresenceEventMap> {
+class Presence {
     private unavailableTimer?: Timer;
     private dispatcherRef?: string;
     private state?: SetPresence;
-    private manualPresence: SetPresence | null = null;
 
     /**
      * Start listening the user activity to evaluate his presence state.
@@ -46,10 +36,7 @@ class Presence extends TypedEventEmitter<PresenceStateEvent, PresenceEventMap> {
         while (this.unavailableTimer) {
             try {
                 await this.unavailableTimer.finished();
-                // Skip auto-transitions when a manual presence is set
-                if (this.manualPresence === null) {
-                    this.setState(SetPresence.Unavailable);
-                }
+                this.setState(SetPresence.Unavailable);
             } catch {
                 /* aborted, stop got called */
             }
@@ -70,28 +57,12 @@ class Presence extends TypedEventEmitter<PresenceStateEvent, PresenceEventMap> {
      * Get the current presence state.
      * @returns {string} the presence state (see PRESENCE enum)
      */
-    public getState(): SetPresence | null {
-        return this.state ?? null;
-    }
-
-    /**
-     * Set a manual presence override. Pass null to return to automatic mode.
-     */
-    public setManualPresence(presence: SetPresence | null): void {
-        this.manualPresence = presence;
-        if (presence !== null) {
-            void this.setState(presence);
-        }
-    }
-
-    public getManualPresence(): SetPresence | null {
-        return this.manualPresence;
+    public getState(): SetPresence | undefined {
+        return this.state;
     }
 
     private onAction = (payload: ActionPayload): void => {
         if (payload.action === Action.UserActivity) {
-            // Skip auto-transitions when a manual presence is set
-            if (this.manualPresence !== null) return;
             this.setState(SetPresence.Online);
             this.unavailableTimer?.restart();
         }
@@ -109,7 +80,6 @@ class Presence extends TypedEventEmitter<PresenceStateEvent, PresenceEventMap> {
 
         const oldState = this.state;
         this.state = newState;
-        this.emit(PresenceStateEvent.StateChanged, this.state);
 
         if (MatrixClientPeg.safeGet().isGuest()) {
             return; // don't try to set presence when a guest; it won't work.

@@ -11,6 +11,7 @@ import { Flex, type VirtualizedListContext, VirtualizedList } from "@element-hq/
 
 import {
     type MemberWithSeparator,
+    type NexusSectionHeader,
     SEPARATOR,
     useMemberListViewModel,
 } from "../../../viewmodels/memberlist/MemberListViewModel";
@@ -42,10 +43,13 @@ const MemberListView: React.FC<IProps> = (props: IProps) => {
     const getItemKey = useCallback((item: MemberWithSeparator): string => {
         if (item === SEPARATOR) {
             return "separator";
-        } else if (item.member) {
-            return `member-${item.member.userId}`;
+        } else if ("nexusSectionHeader" in (item as object)) {
+            const header = item as NexusSectionHeader;
+            return `nexus-section-${header.nexusSectionHeader}`;
+        } else if ((item as any).member) {
+            return `member-${(item as any).member.userId}`;
         } else {
-            return `threePidInvite-${item.threePidInvite.event.getContent().public_key}`;
+            return `threePidInvite-${(item as any).threePidInvite.event.getContent().public_key}`;
         }
     }, []);
 
@@ -61,11 +65,19 @@ const MemberListView: React.FC<IProps> = (props: IProps) => {
             const focused = isRovingItem && context.focused;
             if (item === SEPARATOR) {
                 return <hr className="mx_MemberListView_separator" />;
-            } else if (item.member) {
+            } else if ("nexusSectionHeader" in (item as object)) {
+                const header = item as NexusSectionHeader;
+                const label = header.nexusSectionHeader === "online" ? "オンライン" : "オフライン";
+                return (
+                    <div className="mx_MemberListView_sectionHeader">
+                        <span>{label} — {header.count}</span>
+                    </div>
+                );
+            } else if ((item as any).member) {
                 return (
                     <RoomMemberTileView
                         item={item}
-                        member={item.member}
+                        member={(item as any).member}
                         showPresence={isPresenceEnabled}
                         focused={focused}
                         tabIndex={isRovingItem ? 0 : -1}
@@ -92,7 +104,9 @@ const MemberListView: React.FC<IProps> = (props: IProps) => {
     );
 
     const isItemFocusable = useCallback((item: MemberWithSeparator): boolean => {
-        return item !== SEPARATOR;
+        if (item === SEPARATOR) return false;
+        if ("nexusSectionHeader" in (item as object)) return false;
+        return true;
     }, []);
 
     return (
@@ -101,7 +115,7 @@ const MemberListView: React.FC<IProps> = (props: IProps) => {
             className="mx_MemberListView"
             ariaLabelledBy="memberlist-panel-tab"
             role="tabpanel"
-            header={_t("common|people")}
+            header="メンバー"
             onClose={props.onClose}
         >
             <Flex align="stretch" direction="column" className="mx_MemberListView_container">

@@ -42,3 +42,25 @@ Please see LICENSE files in the repository root for full details.
         width: 32px;
     }
 }
+
+.mx_NexusMemberTile_statusDot {
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 2px solid var(--cpd-color-bg-canvas-default);
+
+    &.mx_NexusMemberTile_statusDot--online {
+        background-color: #3ba55c;
+    }
+
+    &.mx_NexusMemberTile_statusDot--unavailable {
+        background-color: #faa61a;
+    }
+
+    &.mx_NexusMemberTile_statusDot--offline {
+        background-color: #747f8d;
+    }
+}

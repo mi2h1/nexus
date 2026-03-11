@@ -39,6 +39,7 @@ import { type ThreePIDInvite } from "../../../models/rooms/ThreePIDInvite";
 import { type XOR } from "../../../@types/common";
 import { useTypedEventEmitter } from "../../../hooks/useEventEmitter";
 import { useRoomMemberCount } from "../../../hooks/useRoomMembers";
+import { NexusUserPresenceStore, NexusUserPresenceStoreEvent } from "../../../stores/NexusUserPresenceStore";
 
 type Member = XOR<{ member: RoomMember }, { threePidInvite: ThreePIDInvite }>;
 
@@ -101,7 +102,8 @@ export function sdkRoomMemberToRoomMember(member: SdkRoomMember): Member {
 }
 
 export const SEPARATOR = "SEPARATOR";
-export type MemberWithSeparator = Member | typeof SEPARATOR;
+export type NexusSectionHeader = { nexusSectionHeader: "online" | "offline"; count: number };
+export type MemberWithSeparator = Member | typeof SEPARATOR | NexusSectionHeader;
 
 export interface MemberListViewState {
     members: MemberWithSeparator[];
@@ -149,10 +151,30 @@ export function useMemberListViewModel(roomId: string): MemberListViewState {
 
                     const newMemberMap = new Map<string, MemberWithSeparator>();
 
-                    // First add the joined room members
-                    for (const member of joinedSdk) {
-                        const roomMember = sdkRoomMemberToRoomMember(member);
-                        newMemberMap.set(member.userId, roomMember);
+                    // Split joined members into online (online/unavailable) and offline groups
+                    const onlineMembers = joinedSdk.filter(
+                        (m) => NexusUserPresenceStore.instance.getPresence(m.userId) !== "offline",
+                    );
+                    const offlineMembers = joinedSdk.filter(
+                        (m) => NexusUserPresenceStore.instance.getPresence(m.userId) === "offline",
+                    );
+
+                    if (onlineMembers.length > 0) {
+                        const header: NexusSectionHeader = { nexusSectionHeader: "online", count: onlineMembers.length };
+                        newMemberMap.set("nexus-section-online", header);
+                        for (const member of onlineMembers) {
+                            const roomMember = sdkRoomMemberToRoomMember(member);
+                            newMemberMap.set(member.userId, roomMember);
+                        }
+                    }
+
+                    if (offlineMembers.length > 0) {
+                        const header: NexusSectionHeader = { nexusSectionHeader: "offline", count: offlineMembers.length };
+                        newMemberMap.set("nexus-section-offline", header);
+                        for (const member of offlineMembers) {
+                            const roomMember = sdkRoomMemberToRoomMember(member);
+                            newMemberMap.set(member.userId, roomMember);
+                        }
                     }
 
                     // Then a separator if needed
@@ -248,6 +270,11 @@ export function useMemberListViewModel(roomId: string): MemberListViewState {
 
     useTypedEventEmitter(cli, UserEvent.CurrentlyActive, (_: MatrixEvent | undefined, user: User) => {
         if (memberMap.has(user.userId)) loadMembers();
+    });
+
+    // Re-sort when Nexus presence changes
+    useTypedEventEmitter(NexusUserPresenceStore.instance, NexusUserPresenceStoreEvent.PresencesChanged, () => {
+        loadMembers();
     });
 
     // Initial load of the memberlist
