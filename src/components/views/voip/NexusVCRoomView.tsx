@@ -20,7 +20,6 @@ import { ScreenShareTile, ScreenShareSnapshotTile } from "./NexusScreenShareView
 import { ParticipantTile } from "./NexusVoiceParticipantGrid";
 import { NexusVCControlBar } from "./NexusVCControlBar";
 import { NexusVoiceStore, NexusVoiceStoreEvent } from "../../../stores/NexusVoiceStore";
-import { NexusVoiceConnection } from "../../../models/NexusVoiceConnection";
 import type { ScreenShareInfo } from "../../../models/Call";
 import { stopBubble } from "../../../hooks/useMenuDismiss";
 import MemberAvatar from "../avatars/MemberAvatar";
@@ -64,7 +63,7 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     // Prefetch mic permission when the user opens a VC channel (before they join)
     useEffect(() => {
         if (!connected) {
-            NexusVoiceConnection.prefetchMicPermission();
+            NexusVoiceStore.instance.prefetchMicPermission();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // once on mount

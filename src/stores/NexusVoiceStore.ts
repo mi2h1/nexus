@@ -97,6 +97,14 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
     }
 
     /**
+     * Pre-acquire microphone permission so the browser caches the grant.
+     * Call when the user navigates to a VC channel.
+     */
+    public prefetchMicPermission(): void {
+        NexusVoiceConnection.prefetchMicPermission();
+    }
+
+    /**
      * Toggle speaker mute (deafen) for the active connection.
      */
     public toggleOutputMuted(): void {
