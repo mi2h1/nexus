@@ -44,11 +44,7 @@ interface IState {
  * reported.
  */
 export default class AutoRageshakeStore extends AsyncStoreWithClient<IState> {
-    private static readonly internalInstance = (() => {
-        const instance = new AutoRageshakeStore();
-        instance.start();
-        return instance;
-    })();
+    private static _internalInstance: AutoRageshakeStore | undefined;
 
     private constructor() {
         super(defaultDispatcher, {
@@ -62,7 +58,11 @@ export default class AutoRageshakeStore extends AsyncStoreWithClient<IState> {
     }
 
     public static get instance(): AutoRageshakeStore {
-        return AutoRageshakeStore.internalInstance;
+        if (!AutoRageshakeStore._internalInstance) {
+            AutoRageshakeStore._internalInstance = new AutoRageshakeStore();
+            void AutoRageshakeStore._internalInstance.start();
+        }
+        return AutoRageshakeStore._internalInstance;
     }
 
     protected async onAction(_payload: ActionPayload): Promise<void> {}
@@ -183,6 +183,3 @@ export default class AutoRageshakeStore extends AsyncStoreWithClient<IState> {
     }
 }
 
-window.addEventListener("load", () => {
-    window.mxAutoRageshakeStore = AutoRageshakeStore.instance;
-});

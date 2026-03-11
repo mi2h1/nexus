@@ -455,6 +455,3 @@ export default class RightPanelStore extends ReadyWatchingStore {
     }
 }
 
-window.addEventListener("load", () => {
-    window.mxRightPanelStore = RightPanelStore.instance;
-});

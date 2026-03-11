@@ -95,6 +95,3 @@ export class VoiceRecordingStore extends AsyncStoreWithClient<IState> {
     }
 }
 
-window.addEventListener("load", () => {
-    window.mxVoiceRecordingStore = VoiceRecordingStore.instance;
-});

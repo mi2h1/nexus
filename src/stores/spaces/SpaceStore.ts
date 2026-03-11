@@ -1432,14 +1432,14 @@ export class SpaceStoreClass extends AsyncStoreWithClient<EmptyObject> {
 }
 
 export default class SpaceStore {
-    private static readonly internalInstance = (() => {
-        const instance = new SpaceStoreClass();
-        instance.start();
-        return instance;
-    })();
+    private static _internalInstance: SpaceStoreClass | undefined;
 
     public static get instance(): SpaceStoreClass {
-        return SpaceStore.internalInstance;
+        if (!SpaceStore._internalInstance) {
+            SpaceStore._internalInstance = new SpaceStoreClass();
+            void SpaceStore._internalInstance.start();
+        }
+        return SpaceStore._internalInstance;
     }
 
     /**
@@ -1452,6 +1452,3 @@ export default class SpaceStore {
     }
 }
 
-window.addEventListener("load", () => {
-    window.mxSpaceStore = SpaceStore.instance;
-});

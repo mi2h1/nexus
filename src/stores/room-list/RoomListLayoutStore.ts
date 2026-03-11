@@ -62,6 +62,3 @@ export default class RoomListLayoutStore extends AsyncStoreWithClient<EmptyObjec
     protected async onAction(payload: ActionPayload): Promise<void> {}
 }
 
-window.addEventListener("load", () => {
-    window.mxRoomListLayoutStore = RoomListLayoutStore.instance;
-});

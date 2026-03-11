@@ -641,6 +641,3 @@ export default class RoomListStore {
     }
 }
 
-window.addEventListener("load", () => {
-    window.mxRoomListStore = RoomListStore.instance;
-});

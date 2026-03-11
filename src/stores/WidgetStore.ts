@@ -203,6 +203,3 @@ export default class WidgetStore extends AsyncStoreWithClient<EmptyObject> {
     }
 }
 
-window.addEventListener("load", () => {
-    window.mxWidgetStore = WidgetStore.instance;
-});
