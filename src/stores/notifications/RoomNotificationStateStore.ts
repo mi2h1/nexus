@@ -22,11 +22,7 @@ import SettingsStore from "../../settings/SettingsStore";
 export const UPDATE_STATUS_INDICATOR = Symbol("update-status-indicator");
 
 export class RoomNotificationStateStore extends AsyncStoreWithClient<EmptyObject> {
-    private static readonly internalInstance = (() => {
-        const instance = new RoomNotificationStateStore();
-        instance.start();
-        return instance;
-    })();
+    private static _internalInstance: RoomNotificationStateStore | undefined;
     private roomMap = new Map<Room, RoomNotificationState>();
 
     private listMap = new Map<TagID, ListNotificationState>();
@@ -93,7 +89,11 @@ export class RoomNotificationStateStore extends AsyncStoreWithClient<EmptyObject
     }
 
     public static get instance(): RoomNotificationStateStore {
-        return RoomNotificationStateStore.internalInstance;
+        if (!RoomNotificationStateStore._internalInstance) {
+            RoomNotificationStateStore._internalInstance = new RoomNotificationStateStore();
+            void RoomNotificationStateStore._internalInstance.start();
+        }
+        return RoomNotificationStateStore._internalInstance;
     }
 
     private onSync = (state: SyncState, prevState: SyncState | null): void => {

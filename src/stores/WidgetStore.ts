@@ -203,4 +203,6 @@ export default class WidgetStore extends AsyncStoreWithClient<EmptyObject> {
     }
 }
 
-window.mxWidgetStore = WidgetStore.instance;
+window.addEventListener("load", () => {
+    window.mxWidgetStore = WidgetStore.instance;
+});

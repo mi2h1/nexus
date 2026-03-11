@@ -123,11 +123,7 @@ const mkMessagePreview = (text: string, event: MatrixEvent): MessagePreview => {
 };
 
 export class MessagePreviewStore extends AsyncStoreWithClient<EmptyObject> {
-    private static readonly internalInstance = (() => {
-        const instance = new MessagePreviewStore();
-        instance.start();
-        return instance;
-    })();
+    private static _internalInstance: MessagePreviewStore | undefined;
 
     /**
      * @internal Public for test only
@@ -144,7 +140,11 @@ export class MessagePreviewStore extends AsyncStoreWithClient<EmptyObject> {
     }
 
     public static get instance(): MessagePreviewStore {
-        return MessagePreviewStore.internalInstance;
+        if (!MessagePreviewStore._internalInstance) {
+            MessagePreviewStore._internalInstance = new MessagePreviewStore();
+            void MessagePreviewStore._internalInstance.start();
+        }
+        return MessagePreviewStore._internalInstance;
     }
 
     public static getPreviewChangedEventName(room: Room): string {
