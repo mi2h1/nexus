@@ -69,11 +69,15 @@ export function RoomMemberTileView(props: IProps): JSX.Element {
         presenceJSX = <AvatarPresenceIconView presenceState={presenceState} />;
     }
 
-    const nexusPresence = useEventEmitterState(
+    // バージョンカウンターでpresence変化時に強制再レンダリング。
+    // useEventEmitterState は VirtualizedList のコンポーネントリサイクル時に
+    // stale な値を保持するため、同期的に読み取る方式を使用。
+    useEventEmitterState(
         NexusUserPresenceStore.instance,
         NexusUserPresenceStoreEvent.PresencesChanged,
-        useCallback(() => NexusUserPresenceStore.instance.getPresence(member.userId), [member.userId]),
+        useCallback(() => undefined, []),
     );
+    const nexusPresence = NexusUserPresenceStore.instance.getPresence(member.userId);
 
     let iconJsx;
     if (vm.e2eStatus) {

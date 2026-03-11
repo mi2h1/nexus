@@ -9,7 +9,7 @@ import { TypedEventEmitter } from "matrix-js-sdk/src/matrix";
 import { type MatrixClient } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
-import { corsFreePut } from "../utils/tauriHttp";
+import { corsFreePost, corsFreePut } from "../utils/tauriHttp";
 import { NEXUS_JWT_SERVICE_URL } from "../models/NexusVoiceConnection";
 
 export type NexusPresenceStatus = "online" | "unavailable" | "offline";
@@ -22,9 +22,12 @@ type NexusUserPresenceStoreEventHandlerMap = {
     [NexusUserPresenceStoreEvent.PresencesChanged]: () => void;
 };
 
+const HEARTBEAT_INTERVAL_MS = 60_000;
+
 /**
  * Singleton store for user presence status.
  * Presence is stored on the lk-jwt-service and distributed via SSE.
+ * Heartbeat keeps the session alive; sendBeacon fires on page close.
  */
 export class NexusUserPresenceStore extends TypedEventEmitter<
     NexusUserPresenceStoreEvent,
@@ -41,7 +44,15 @@ export class NexusUserPresenceStore extends TypedEventEmitter<
     private presences: Map<string, NexusPresenceStatus> = new Map();
     private client: MatrixClient | null = null;
     private eventSource: EventSource | null = null;
-    private myPresence: NexusPresenceStatus = "online";
+    private myPresence: NexusPresenceStatus = "offline";
+    private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    // Cached for use in sendBeacon (async token fetch not possible in pagehide)
+    private cachedOpenIdToken: {
+        access_token: string;
+        token_type: string;
+        matrix_server_name: string;
+        expires_in: number;
+    } | null = null;
 
     private constructor() {
         super();
@@ -66,11 +77,18 @@ export class NexusUserPresenceStore extends TypedEventEmitter<
         this.connectSSE();
         // 起動時に自動でオンラインにセット
         this.setMyPresence("online").catch(() => {});
+        this.startHeartbeat();
+        window.addEventListener("pagehide", this.onPageHide);
     }
 
     public stop(): void {
         this.eventSource?.close();
         this.eventSource = null;
+        if (this.heartbeatTimer !== null) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+        }
+        window.removeEventListener("pagehide", this.onPageHide);
     }
 
     private connectSSE(): void {
@@ -88,7 +106,7 @@ export class NexusUserPresenceStore extends TypedEventEmitter<
                 }
                 if (this.client) {
                     const myId = this.client.getSafeUserId();
-                    this.myPresence = this.presences.get(myId) ?? "online";
+                    this.myPresence = this.presences.get(myId) ?? "offline";
                 }
                 this.emit(NexusUserPresenceStoreEvent.PresencesChanged);
             } catch (e) {
@@ -104,6 +122,40 @@ export class NexusUserPresenceStore extends TypedEventEmitter<
         };
     }
 
+    private startHeartbeat(): void {
+        this.heartbeatTimer = setInterval(() => {
+            this.sendHeartbeat().catch(() => {});
+        }, HEARTBEAT_INTERVAL_MS);
+    }
+
+    private async sendHeartbeat(): Promise<void> {
+        if (!this.client) return;
+        try {
+            const token = await this.client.getOpenIdToken();
+            this.cachedOpenIdToken = token;
+            await corsFreePost<{ status: string }>(`${NEXUS_JWT_SERVICE_URL}/user-presence-heartbeat`, {
+                openid_token: {
+                    access_token: token.access_token,
+                    token_type: token.token_type,
+                    matrix_server_name: token.matrix_server_name,
+                    expires_in: token.expires_in,
+                },
+            });
+        } catch (e) {
+            logger.warn("NexusUserPresenceStore: heartbeat failed", e);
+        }
+    }
+
+    // sendBeacon: text/plain body → no CORS preflight → always delivered on page close
+    private onPageHide = (): void => {
+        if (!this.cachedOpenIdToken) return;
+        const body = JSON.stringify({ openid_token: this.cachedOpenIdToken });
+        navigator.sendBeacon(
+            `${NEXUS_JWT_SERVICE_URL}/user-presence-offline`,
+            new Blob([body], { type: "text/plain" }),
+        );
+    };
+
     /**
      * Set the current user's presence status.
      */
@@ -111,6 +163,7 @@ export class NexusUserPresenceStore extends TypedEventEmitter<
         if (!this.client) throw new Error("NexusUserPresenceStore not started");
 
         const openIdToken = await this.client.getOpenIdToken();
+        this.cachedOpenIdToken = openIdToken;
 
         await corsFreePut<{ status: string }>(`${NEXUS_JWT_SERVICE_URL}/user-presence`, {
             openid_token: {
