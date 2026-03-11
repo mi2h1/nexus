@@ -116,6 +116,9 @@ importers:
       '@matrix-org/react-sdk-module-api':
         specifier: ^2.4.0
         version: 2.5.0(patch_hash=016146c9cc96e6363609d2b2ac0896ccef567882eb1d73b75a77b8a30929de96)(react@19.2.4)
+      '@sapphi-red/web-noise-suppressor':
+        specifier: ^0.3.5
+        version: 0.3.5
       '@sentry/browser':
         specifier: ^10.0.0
         version: 10.38.0
@@ -253,7 +256,7 @@ importers:
         version: 1.0.3
       matrix-js-sdk:
         specifier: github:matrix-org/matrix-js-sdk#develop
-        version: https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/5739b59faaf33fa55457dcaa76ffebe0506d1466
+        version: https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/219eb617dc6d5f48c9424eae38b9863fd177f99c
       matrix-widget-api:
         specifier: ^1.16.1
         version: 1.17.0
@@ -3777,6 +3780,9 @@ packages:
 
   '@rushstack/ts-command-line@5.1.7':
     resolution: {integrity: sha512-Ugwl6flarZcL2nqH5IXFYk3UR3mBVDsVFlCQW/Oaqidvdb/5Ota6b/Z3JXWIdqV3rOR2/JrYoAHanWF5rgenXA==}
+
+  '@sapphi-red/web-noise-suppressor@0.3.5':
+    resolution: {integrity: sha512-jh3+V9yM+zxLriQexoGm0GatoPaJWjs6ypFIbFYwQp+AoUb55eUXrjKtKQyuC5zShzzeAQUl0M5JzqB7SSrsRA==}
 
   '@sentry-internal/browser-utils@10.38.0':
     resolution: {integrity: sha512-UOJtYmdcxHCcV0NPfXFff/a95iXl/E0EhuQ1y0uE0BuZDMupWSF5t2BgC4HaE5Aw3RTjDF3XkSHWoIF6ohy7eA==}
@@ -8018,9 +8024,9 @@ packages:
   matrix-events-sdk@0.0.1:
     resolution: {integrity: sha512-1QEOsXO+bhyCroIe2/A5OwaxHvBm7EsSQ46DEDn8RBIfQwN5HWBpFvyWWR4QY0KHPPnnJdI99wgRiAl7Ad5qaA==}
 
-  matrix-js-sdk@https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/5739b59faaf33fa55457dcaa76ffebe0506d1466:
-    resolution: {tarball: https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/5739b59faaf33fa55457dcaa76ffebe0506d1466}
-    version: 41.0.0
+  matrix-js-sdk@https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/219eb617dc6d5f48c9424eae38b9863fd177f99c:
+    resolution: {tarball: https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/219eb617dc6d5f48c9424eae38b9863fd177f99c}
+    version: 41.1.0
     engines: {node: '>=22.0.0'}
 
   matrix-web-i18n@3.6.0:
@@ -14052,6 +14058,8 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
 
+  '@sapphi-red/web-noise-suppressor@0.3.5': {}
+
   '@sentry-internal/browser-utils@10.38.0':
     dependencies:
       '@sentry/core': 10.38.0
@@ -19118,7 +19126,7 @@ snapshots:
 
   matrix-events-sdk@0.0.1: {}
 
-  matrix-js-sdk@https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/5739b59faaf33fa55457dcaa76ffebe0506d1466:
+  matrix-js-sdk@https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/219eb617dc6d5f48c9424eae38b9863fd177f99c:
     dependencies:
       '@babel/runtime': 7.28.6
       '@matrix-org/matrix-sdk-crypto-wasm': 17.1.0

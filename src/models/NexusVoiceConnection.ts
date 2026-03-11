@@ -34,6 +34,8 @@ import {
 } from "livekit-client";
 
 
+import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppressor";
+
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
 import SettingsStore from "../settings/SettingsStore";
 import { isTauri, corsFreePost } from "../utils/tauriHttp";
@@ -166,6 +168,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private sourceNode: MediaStreamAudioSourceNode | null = null;
     private highPassFilter: BiquadFilterNode | null = null;
     private delayNode: DelayNode | null = null;
+    // ─── RNNoise noise cancellation ───────────────────────────
+    private rnnoiseNode: RnnoiseWorkletNode | null = null;
+    /** Cached WASM binary — shared across reconnects. */
+    private static rnnoiseWasmBinary: ArrayBuffer | null = null;
+    /** Whether AudioWorklet registration succeeded (false on Tauri/WebView2). */
+    private static rnnoiseWorkletRegistered = false;
+    private static rnnoiseWorkletRegistrationAttempted = false;
     // ─── Voice EQ ─────────────────────────────────────────────
     private eqLowCut: BiquadFilterNode | null = null;
     private eqPresence: BiquadFilterNode | null = null;
@@ -1053,13 +1062,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * and localAudioTrack, both of which are ready before connect() starts.
      *
      * Pipeline:
-     *   source → HPF(80Hz) → analyser (即時レベル検出)
-     *                       → delay(50ms) → inputGain (voice gate)
-     *                       → eqLowCut (350Hz -3dB, こもり除去)
-     *                       → eqPresence (3kHz +2.5dB, 明瞭さ向上)
-     *                       → agcGain (VAD連動自動音量調整)
-     *                       → compressor (ピーク防止)
-     *                       → dest
+     *   source → HPF(80Hz) → [RNNoise (optional)] → analyser (即時レベル検出)
+     *                                              → delay(50ms) → inputGain (voice gate)
+     *                                              → eqLowCut (350Hz -3dB, こもり除去)
+     *                                              → eqPresence (3kHz +2.5dB, 明瞭さ向上)
+     *                                              → agcGain (VAD連動自動音量調整)
+     *                                              → compressor (ピーク防止)
+     *                                              → dest
      */
     private async buildInputPipeline(audioTrack: LocalAudioTrack): Promise<MediaStreamTrack> {
         if (!this.audioContext) throw new Error("AudioContext not initialized");
@@ -1073,6 +1082,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.highPassFilter.type = "highpass";
         this.highPassFilter.frequency.value = 80;
         this.highPassFilter.Q.value = 0.7;
+
+        // RNNoise AI noise cancellation (optional — fails gracefully on WebView2)
+        const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+        if (ncEnabled) {
+            await this.setupRnnoiseNode();
+        }
 
         // AnalyserNode — monitors input level (pre-delay for instant detection)
         this.analyserNode = this.audioContext.createAnalyser();
@@ -1122,9 +1137,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     /**
      * Connect the input audio pipeline chain:
-     *   source → HPF → analyser (no delay, instant level detection)
-     *                 → delay(50ms) → inputGain (voice gate)
-     *                 → eqLowCut → eqPresence → agcGain → compressor
+     *   source → HPF → [RNNoise] → analyser (no delay, instant level detection)
+     *                             → delay(50ms) → inputGain (voice gate)
+     *                             → eqLowCut → eqPresence → agcGain → compressor
+     *
+     * If RNNoise is not available (setting OFF, or worklet failed to load),
+     * HPF connects directly to analyser (bypass).
      */
     private connectInputPipeline(): void {
         if (!this.sourceNode || !this.highPassFilter
@@ -1133,12 +1151,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             || !this.compressorNode) return;
 
         this.sourceNode.connect(this.highPassFilter);
+
+        // RNNoise sits between HPF and analyser (if available)
+        const postHpf: AudioNode = this.rnnoiseNode ?? this.highPassFilter;
+        if (this.rnnoiseNode) {
+            this.highPassFilter.connect(this.rnnoiseNode);
+        }
+
         // Analyser taps the signal before the delay so level detection is immediate
-        this.highPassFilter.connect(this.analyserNode);
+        postHpf.connect(this.analyserNode);
         // DelayNode lookahead: speech is detected 50ms before it reaches the gate
         this.delayNode = this.audioContext.createDelay(0.1);
         this.delayNode.delayTime.value = NexusVoiceConnection.VOICE_GATE_LOOKAHEAD_SEC;
-        this.highPassFilter.connect(this.delayNode);
+        postHpf.connect(this.delayNode);
         this.delayNode.connect(this.inputGainNode);
         // Voice gate → EQ → AGC → Compressor
         this.inputGainNode.connect(this.eqLowCut);
@@ -1148,13 +1173,76 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
+     * Try to set up the RNNoise AudioWorklet node.
+     * Gracefully falls back (rnnoiseNode stays null) if:
+     *   - WASM loading fails
+     *   - AudioWorklet module registration fails (e.g. Tauri/WebView2)
+     */
+    private async setupRnnoiseNode(): Promise<void> {
+        if (!this.audioContext) return;
+
+        try {
+            // Load WASM binary (cached across reconnects)
+            if (!NexusVoiceConnection.rnnoiseWasmBinary) {
+                NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
+                    url: "noise-suppressor/rnnoise.wasm",
+                    simdUrl: "noise-suppressor/rnnoise_simd.wasm",
+                });
+                logger.info("RNNoise WASM loaded");
+            }
+
+            // Register AudioWorklet processor (once per app lifetime)
+            if (!NexusVoiceConnection.rnnoiseWorkletRegistered) {
+                if (NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
+                    // Previous attempt failed — don't retry
+                    logger.warn("RNNoise worklet registration previously failed, skipping");
+                    return;
+                }
+                NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
+                await this.audioContext.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
+                NexusVoiceConnection.rnnoiseWorkletRegistered = true;
+                logger.info("RNNoise AudioWorklet registered");
+            }
+
+            // Create worklet node
+            this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
+                maxChannels: 1,
+                wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
+            });
+            logger.info("RNNoise noise cancellation active");
+        } catch (e) {
+            // Graceful fallback — NC simply won't be applied
+            logger.warn("RNNoise setup failed, continuing without noise cancellation:", e);
+            this.rnnoiseNode = null;
+        }
+    }
+
+    /**
      * Prefetch VC resources at app startup (after login).
      * Runs in the background — failures are silently ignored.
-     * Warms up: OpenID token cache.
+     * Warms up: OpenID token cache + RNNoise WASM.
      */
     public static prefetch(client: MatrixClient): void {
         // Fire-and-forget — don't block the caller
         NexusVoiceConnection.prefetchOpenIdToken(client).catch(() => {});
+        NexusVoiceConnection.prefetchRnnoiseWasm().catch(() => {});
+    }
+
+    /**
+     * Prefetch RNNoise WASM binary so the first VC join doesn't need
+     * to download it. Runs silently in the background.
+     */
+    private static async prefetchRnnoiseWasm(): Promise<void> {
+        if (NexusVoiceConnection.rnnoiseWasmBinary) return;
+        try {
+            NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
+                url: "noise-suppressor/rnnoise.wasm",
+                simdUrl: "noise-suppressor/rnnoise_simd.wasm",
+            });
+            logger.info("RNNoise WASM prefetched");
+        } catch (e) {
+            logger.warn("Failed to prefetch RNNoise WASM:", e);
+        }
     }
 
     /**
@@ -1405,6 +1493,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.delayNode) {
             this.delayNode.disconnect();
             this.delayNode = null;
+        }
+        if (this.rnnoiseNode) {
+            this.rnnoiseNode.destroy();
+            this.rnnoiseNode = null;
         }
         this.eqLowCut = null;
         this.eqPresence = null;

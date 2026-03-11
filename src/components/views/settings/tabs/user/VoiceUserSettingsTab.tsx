@@ -293,12 +293,21 @@ function NexusVoiceGateSettings(): JSX.Element {
 
 /** EQ / AGC toggle settings. */
 function NexusAudioProcessingSettings(): JSX.Element {
+    const [ncEnabled, setNcEnabled] = useState<boolean>(
+        () => SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true,
+    );
     const [eqEnabled, setEqEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_voice_eq_enabled") ?? true,
     );
     const [agcEnabled, setAgcEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_voice_agc_enabled") ?? true,
     );
+
+    const onNcChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const enabled = e.target.checked;
+        setNcEnabled(enabled);
+        SettingsStore.setValue("nexus_noise_cancellation_enabled", null, SettingLevel.DEVICE, enabled);
+    }, []);
 
     const onEqChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const enabled = e.target.checked;
@@ -314,6 +323,13 @@ function NexusAudioProcessingSettings(): JSX.Element {
 
     return (
         <SettingsSubsection heading="音声処理" stretchContent>
+            <SettingsToggleInput
+                name="nx-noise-cancellation"
+                label="AI ノイズキャンセリング"
+                helpMessage="RNNoise を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。音質に問題がある場合は OFF にしてください。"
+                checked={ncEnabled}
+                onChange={onNcChange}
+            />
             <SettingsToggleInput
                 name="nx-voice-eq"
                 label="ボイス EQ"
