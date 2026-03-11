@@ -4,6 +4,14 @@
 
 ### 直近の作業（2026-03-11）
 
+**コードベース全体監査・クリーンアップ（v0.2.13+）**
+- Nexus カスタムコード全体（~35 TS/TSX、14 CSS）を精査し 23 件の問題を修正（ネット -318 行）
+- パフォーマンス: `useNexusVoice` の死んだ状態削除（毎秒 20-60 不要再レンダリング解消）、ホットパスキャッシュ
+- メモリリーク: Tauri `listen()` の `UnlistenFn` クリーンアップ追加
+- 重複排除: `useMenuDismiss.ts` 共有フック抽出、`tauriHttp.ts` 統合、重複 SE・ハンドラ削除
+- デッドコード: 未使用コンポーネント・メソッド・export 削除
+- CSS: SCSS 変数→CSS custom properties 修正、重複キーフレーム統合
+
 **音声入力パイプライン大幅改善（v0.2.12+）**
 - **RNNoise AI ノイズキャンセリング**: `@sapphi-red/web-noise-suppressor` で WASM AudioWorklet ノイキャン実装
   - 48kHz ネイティブ対応、リサンプル不要
@@ -100,6 +108,7 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 - `src/models/NexusVoiceConnection.ts` — LiveKit 直接接続 + MatrixRTC + Web Audio パイプライン
 - `src/stores/NexusVoiceStore.ts` — VC 接続管理シングルトン
 - `src/hooks/useNexus*.ts` — VC 関連カスタムフック
+- `src/hooks/useMenuDismiss.ts` — 共有メニュー dismiss ユーティリティ（useClickOutside, useEscapeKey, stopBubble）
 
 ### VC UI
 - `src/components/views/voip/NexusVC*.tsx` — VC ルームビュー関連

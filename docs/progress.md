@@ -35,7 +35,8 @@ nexus/                          # element-web フォーク
 │   │   ├── useNexusActiveSpeakers.ts# 発話検出フック
 │   │   ├── useNexusScreenShares.ts  # 画面共有フック
 │   │   ├── useNexusParticipantStates.ts # 参加者状態フック
-│   │   └── useNexusWatchingScreenShares.ts # 画面共有視聴状態フック
+│   │   ├── useNexusWatchingScreenShares.ts # 画面共有視聴状態フック
+│   │   └── useMenuDismiss.ts        # 共有メニュー dismiss フック (useClickOutside, useEscapeKey, stopBubble)
 │   └── components/views/
 │       ├── rooms/RoomListPanel/
 │       │   ├── NexusChannelListView.tsx  # テキスト/VC チャンネル分離
@@ -245,6 +246,33 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - スペース名フォントサイズをルームヘッダーに統一（`heading-sm` → `body-lg-semibold`）
   - VC 経過時間の位置調整（`right` 値変更）・ホバー時非表示（チャットボタンとの重なり解消）
   - VC 経過時間テキスト `line-height: 1` で垂直中央揃え
+
+#### 2026-03-11 (コードベース全体監査・クリーンアップ)
+- **包括的コード監査**: Nexus カスタムコード全体（~35 TS/TSX ファイル、14 CSS ファイル）を精査
+  - HIGH/MEDIUM/LOW 計 23 件の問題を特定・修正、ネットで 318 行削減（+144 / -462）
+- **パフォーマンス修正**:
+  - `useNexusVoice`: 死んだ `inputLevel`/`screenShares` 状態を削除（毎秒 20-60 回の不要再レンダリング解消）
+  - `NexusVoiceConnection`: ホットパス `Uint8Array` キャッシュ（50ms ポーリングでの GC 負荷軽減）
+  - `NexusVoiceConnection`: 重複 `resolveIdentityToUserId` 呼び出しを排除（`pollActiveSpeakers` 内）
+  - `NexusVoiceConnection`: 不要な `updateParticipants()` 呼び出しを `onTrackMuted/Unmuted` から削除
+- **メモリリーク修正**:
+  - `NexusVoiceConnection`: Tauri `listen()` の `UnlistenFn` を保持・クリーンアップ
+- **重複処理削除**:
+  - `NexusVoiceConnection`: `onMembershipsChanged` の重複 SE 再生を削除（LiveKit イベントに統一）
+  - `NexusVoiceConnection`: 冗長な `ActiveSpeakersChanged` イベントハンドラを削除（ポーリング方式に統一）
+- **コード重複排除**:
+  - `useMenuDismiss.ts` 新設: 3コンポーネントで重複していた `useClickOutside`/`useEscapeKey`/`stopBubble` を共有フックに抽出
+  - `tauriHttp.ts`: 3つの重複関数を共通 `corsFreeRequest` ヘルパーに統合
+  - `NEXUS_JWT_SERVICE_URL`: `NexusVoiceConnection` から export し `NexusUserColorStore` と共有
+- **デッドコード削除**:
+  - `NexusScreenShareContainer`/`NexusScreenShareView` の default export 削除
+  - `NexusVoiceParticipantGrid` コンポーネント本体削除（`ParticipantTile` のみ残存）
+  - `NexusUpdateStore.clearUpdate()` 削除（呼び出し元ゼロ）
+  - 不要な `export` 削除（`ScreenSharePresetConfig`, `VC_SCREEN_ON/OFF_SOUND`）
+- **CSS 修正**:
+  - `_NexusVoiceSettings.pcss`: SCSS 変数 → CSS custom properties（`$primary-content` 等がビルドで未解決だった）
+  - `_NexusUserPanel.pcss`: 重複 `@keyframes nexus-update-pulse` を `nexus-pulse` に統合、同一 signal クラスをマージ
+  - `_NexusVCRoomView.pcss`: 死んだ `.nx_VCRoomView_spotlightLabel` セレクタ削除
 
 #### 2026-03-11 (音声入力パイプライン Phase 1 + RNNoise ノイキャン)
 - **音声品質調査**: Win11 ユーザーの音質問題（こもり、音が大きい、環境音拾いすぎ）を調査
