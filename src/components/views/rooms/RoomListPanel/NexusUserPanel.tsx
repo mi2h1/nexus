@@ -6,6 +6,7 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { SetPresence } from "matrix-js-sdk/src/matrix";
 import { IconMicrophone, IconMicrophoneOff, IconSettings, IconLogout, IconBell, IconLock, IconDownload } from "@tabler/icons-react";
 
 import { useActiveCall } from "../../../../hooks/useActiveCall";
@@ -27,6 +28,7 @@ import PlatformPeg from "../../../../PlatformPeg";
 import IconizedContextMenu, {
     IconizedContextMenuOption,
     IconizedContextMenuOptionList,
+    IconizedContextMenuRadio,
 } from "../../context_menus/IconizedContextMenu";
 import { ChevronFace } from "../../../structures/ContextMenu";
 import { _t } from "../../../../languageHandler";
@@ -35,6 +37,7 @@ import { type OpenToTabPayload } from "../../../../dispatcher/payloads/OpenToTab
 import Modal from "../../../../Modal";
 import LogoutDialog, { shouldShowLogoutDialog } from "../../dialogs/LogoutDialog";
 import NexusUpdateDialog from "../../dialogs/NexusUpdateDialog";
+import Presence, { PresenceStateEvent } from "../../../../Presence";
 
 const NexusUserPanel: React.FC = () => {
     const call = useActiveCall();
@@ -67,6 +70,13 @@ const NexusUserPanel: React.FC = () => {
         [],
     ));
     const userId = MatrixClientPeg.safeGet().getSafeUserId();
+
+    // Presence state (reactive)
+    const presenceState = useEventEmitterState(
+        Presence,
+        PresenceStateEvent.StateChanged,
+        useCallback(() => Presence.getState(), []),
+    );
 
     // Update availability
     const updateAvailable = useEventEmitterState(
@@ -104,6 +114,11 @@ const NexusUserPanel: React.FC = () => {
     const closeMenu = useCallback(() => {
         setMenuOpen(false);
     }, []);
+
+    const onSetPresence = useCallback((presence: SetPresence) => {
+        Presence.setManualPresence(presence);
+        closeMenu();
+    }, [closeMenu]);
 
     const onSettingsOpen = useCallback((tabId?: string) => {
         const payload: OpenToTabPayload = { action: Action.ViewUserSettings, initialTabId: tabId };
@@ -147,6 +162,26 @@ const NexusUserPanel: React.FC = () => {
                     </div>
                 </div>
                 <IconizedContextMenuOptionList>
+                    <IconizedContextMenuRadio
+                        icon={<span className="mx_NexusUserPanel_statusIcon mx_NexusUserPanel_statusIcon--online" />}
+                        label="オンライン"
+                        onClick={() => onSetPresence(SetPresence.Online)}
+                        active={presenceState === SetPresence.Online || presenceState === null}
+                    />
+                    <IconizedContextMenuRadio
+                        icon={<span className="mx_NexusUserPanel_statusIcon mx_NexusUserPanel_statusIcon--unavailable" />}
+                        label="退席中"
+                        onClick={() => onSetPresence(SetPresence.Unavailable)}
+                        active={presenceState === SetPresence.Unavailable}
+                    />
+                    <IconizedContextMenuRadio
+                        icon={<span className="mx_NexusUserPanel_statusIcon mx_NexusUserPanel_statusIcon--offline" />}
+                        label="非表示"
+                        onClick={() => onSetPresence(SetPresence.Offline)}
+                        active={presenceState === SetPresence.Offline}
+                    />
+                </IconizedContextMenuOptionList>
+                <IconizedContextMenuOptionList first>
                     <IconizedContextMenuOption
                         icon={<IconBell size={20} />}
                         label={_t("notifications|enable_prompt_toast_title")}
@@ -189,12 +224,15 @@ const NexusUserPanel: React.FC = () => {
                             onClick={onAvatarClick}
                             title={_t("a11y|user_menu")}
                         >
-                            <BaseAvatar
-                                idName={userId}
-                                name={displayName ?? userId}
-                                url={avatarUrl}
-                                size="32px"
-                            />
+                            <div className="mx_NexusUserPanel_avatarWrapper">
+                                <BaseAvatar
+                                    idName={userId}
+                                    name={displayName ?? userId}
+                                    url={avatarUrl}
+                                    size="32px"
+                                />
+                                <span className={`mx_NexusUserPanel_statusDot mx_NexusUserPanel_statusDot--${presenceState ?? "online"}`} />
+                            </div>
                         </AccessibleButton>
                         <span className="mx_NexusUserPanel_displayName">{displayName ?? userId}</span>
                     </div>
