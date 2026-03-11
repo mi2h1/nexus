@@ -9,7 +9,7 @@ import { TypedEventEmitter } from "matrix-js-sdk/src/matrix";
 import { type MatrixClient } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
-import { corsFreePost, corsFreePut } from "../utils/tauriHttp";
+import { corsFreeGet, corsFreePost, corsFreePut } from "../utils/tauriHttp";
 import { NEXUS_JWT_SERVICE_URL } from "../models/NexusVoiceConnection";
 
 export type NexusPresenceStatus = "online" | "unavailable" | "offline";
@@ -75,10 +75,31 @@ export class NexusUserPresenceStore extends TypedEventEmitter<
     public start(client: MatrixClient): void {
         this.client = client;
         this.connectSSE();
-        // 起動時に自動でオンラインにセット
-        this.setMyPresence("online").catch(() => {});
+        this.initPresence().catch(() => {});
         this.startHeartbeat();
         window.addEventListener("pagehide", this.onPageHide);
+    }
+
+    /**
+     * 起動時のプレゼンス初期化。
+     * 手動で「非表示」に設定している場合はそのまま維持し、
+     * それ以外は「オンライン」にセットする。
+     */
+    private async initPresence(): Promise<void> {
+        if (!this.client) return;
+        try {
+            const data = await corsFreeGet<Record<string, string>>(`${NEXUS_JWT_SERVICE_URL}/user-presences`);
+            const myId = this.client.getSafeUserId();
+            const stored = data[myId] as NexusPresenceStatus | undefined;
+            if (stored === "offline") {
+                // 手動で非表示に設定済み → 維持（オンラインに戻さない）
+                this.myPresence = "offline";
+                return;
+            }
+        } catch {
+            // サーバー取得失敗時はオンラインにフォールバック
+        }
+        await this.setMyPresence("online");
     }
 
     public stop(): void {
