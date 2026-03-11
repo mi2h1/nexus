@@ -93,6 +93,7 @@ export enum CallEvent {
     ActiveSpeakers = "active_speakers",
     ParticipantStates = "participant_states",
     MicMuted = "mic_muted",
+    OutputMuted = "output_muted",
     InputLevel = "input_level",
     WatchingChanged = "watching_changed",
 }
@@ -124,6 +125,7 @@ export interface CallEventHandlerMap {
     [CallEvent.ActiveSpeakers]: (speakerIdentities: Set<string>) => void;
     [CallEvent.ParticipantStates]: (states: Map<string, ParticipantState>) => void;
     [CallEvent.MicMuted]: (muted: boolean) => void;
+    [CallEvent.OutputMuted]: (muted: boolean) => void;
     [CallEvent.InputLevel]: (level: number) => void;
     [CallEvent.WatchingChanged]: (watchingIds: ReadonlySet<string>) => void;
 }

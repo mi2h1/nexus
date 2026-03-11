@@ -15,6 +15,7 @@ interface NexusVoiceState {
     connection: NexusVoiceConnection | null;
     latencyMs: number | null;
     isMicMuted: boolean;
+    isOutputMuted: boolean;
     isScreenSharing: boolean;
 }
 
@@ -28,6 +29,7 @@ export function useNexusVoice(): NexusVoiceState {
     );
     const [latencyMs, setLatencyMs] = useState<number | null>(null);
     const [isMicMuted, setIsMicMuted] = useState(false);
+    const [isOutputMuted, setIsOutputMuted] = useState(false);
     const [isScreenSharing, setIsScreenSharing] = useState(false);
 
     const onActiveConnection = useCallback((conn: NexusVoiceConnection | null) => {
@@ -35,6 +37,7 @@ export function useNexusVoice(): NexusVoiceState {
         if (!conn) {
             setLatencyMs(null);
             setIsMicMuted(false);
+            setIsOutputMuted(false);
             setIsScreenSharing(false);
         }
     }, []);
@@ -57,6 +60,7 @@ export function useNexusVoice(): NexusVoiceState {
         // Initial read
         setLatencyMs(connection.latencyMs);
         setIsMicMuted(connection.isMicMuted);
+        setIsOutputMuted(connection.isOutputMuted);
 
         return () => clearInterval(interval);
     }, [connection]);
@@ -77,6 +81,18 @@ export function useNexusVoice(): NexusVoiceState {
         };
     }, [connection]);
 
+    // Listen for output mute changes
+    useEffect(() => {
+        if (!connection) return;
+
+        connection.on(CallEvent.OutputMuted, setIsOutputMuted);
+        setIsOutputMuted(connection.isOutputMuted);
+
+        return () => {
+            connection.off(CallEvent.OutputMuted, setIsOutputMuted);
+        };
+    }, [connection]);
+
     // Listen for screen share changes (isScreenSharing flag only)
     useEffect(() => {
         if (!connection) return;
@@ -93,5 +109,5 @@ export function useNexusVoice(): NexusVoiceState {
         };
     }, [connection]);
 
-    return { connection, latencyMs, isMicMuted, isScreenSharing };
+    return { connection, latencyMs, isMicMuted, isOutputMuted, isScreenSharing };
 }

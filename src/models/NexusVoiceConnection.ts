@@ -119,6 +119,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _participants = new Map<string, Set<string>>();
     private _latencyMs: number | null = null;
     private _isMicMuted = false;
+    private _isOutputMuted = false;
     /** Suppress SE in onMembershipsChanged during self join/leave */
     private _suppressMembershipSounds = false;
 
@@ -264,6 +265,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         return this._isMicMuted;
     }
 
+    public get isOutputMuted(): boolean {
+        return this._isOutputMuted;
+    }
+
     public get isScreenSharing(): boolean {
         return this._isScreenSharing;
     }
@@ -334,6 +339,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.on(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.on(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             this.livekitRoom.on(LivekitRoomEvent.DataReceived, this.onDataReceived);
+            this.livekitRoom.on(LivekitRoomEvent.Reconnecting, this.onLivekitReconnecting);
+            this.livekitRoom.on(LivekitRoomEvent.Reconnected, this.onLivekitReconnected);
 
             const pipelinePromise = this.buildInputPipeline(audioTrack);
             await this.livekitRoom.connect(url, jwt);
@@ -455,6 +462,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._isMicMuted = muted;
         this._voiceGateOpen = true;
         this.emit(CallEvent.MicMuted, muted);
+    }
+
+    public setOutputMuted(muted: boolean): void {
+        this._isOutputMuted = muted;
+        this.applyAllOutputVolumes();
+        this.emit(CallEvent.OutputMuted, muted);
     }
 
     /**
@@ -992,7 +1005,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         // Browser: videoEl.volume capped at 1.0
-        const effectiveVol = watching ? vol * this._masterOutputVolume : 0;
+        const effectiveMaster = this._isOutputMuted ? 0 : this._masterOutputVolume;
+        const effectiveVol = watching ? vol * effectiveMaster : 0;
         const videoEl = this.screenShareVideoElements.get(participantIdentity);
         if (videoEl) {
             videoEl.volume = Math.min(1, effectiveVol);
@@ -1048,16 +1062,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * audio outputs. Called when master volume changes or pipelines unmute.
      */
     private applyAllOutputVolumes(): void {
+        const effectiveMaster = this._isOutputMuted ? 0 : this._masterOutputVolume;
+
         // Tauri: outputMasterGain controls both participant + screen share audio
         if (this.outputMasterGain) {
-            this.outputMasterGain.gain.value = this._masterOutputVolume;
+            this.outputMasterGain.gain.value = effectiveMaster;
         }
 
         // Browser: participant audio.volume capped at 1.0
         if (!this.outputMasterGain) {
             for (const [identity, audio] of this.outputAudioElements) {
                 const vol = this.participantVolumes.get(identity) ?? 1;
-                audio.volume = Math.min(1, vol * this._masterOutputVolume);
+                audio.volume = Math.min(1, vol * effectiveMaster);
             }
         }
 
@@ -1591,6 +1607,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.livekitRoom.off(LivekitRoomEvent.ParticipantConnected, this.onParticipantConnected);
             this.livekitRoom.off(LivekitRoomEvent.ParticipantDisconnected, this.onParticipantDisconnected);
             this.livekitRoom.off(LivekitRoomEvent.DataReceived, this.onDataReceived);
+            this.livekitRoom.off(LivekitRoomEvent.Reconnecting, this.onLivekitReconnecting);
+            this.livekitRoom.off(LivekitRoomEvent.Reconnected, this.onLivekitReconnected);
             this.remoteMuteStates.clear();
             // Fire-and-forget — local tracks are already stopped, event
             // handlers removed. The WebSocket close handshake (~50-100ms)
@@ -1992,6 +2010,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         this.updateScreenShares();
+    };
+
+    // ─── Private: LiveKit reconnect ───────────────────────────
+
+    private onLivekitReconnecting = (): void => {
+        logger.info("LiveKit: 再接続中...");
+    };
+
+    private onLivekitReconnected = (): void => {
+        logger.info("LiveKit: 再接続成功");
+        void this.broadcastMuteState(this._isMicMuted);
     };
 
     // ─── Private: Data-channel mute signaling ─────────────────

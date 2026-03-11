@@ -97,6 +97,15 @@ export class NexusVoiceStore extends TypedEventEmitter<NexusVoiceStoreEvent, Nex
     }
 
     /**
+     * Toggle speaker mute (deafen) for the active connection.
+     */
+    public toggleOutputMuted(): void {
+        if (this.activeConnection) {
+            this.activeConnection.setOutputMuted(!this.activeConnection.isOutputMuted);
+        }
+    }
+
+    /**
      * Join a voice channel. If already in a VC, disconnect first.
      */
     public async joinVoiceChannel(room: Room): Promise<void> {

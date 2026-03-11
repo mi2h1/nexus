@@ -7,7 +7,7 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { useCallback, useRef, useState, type JSX } from "react";
 import classNames from "classnames";
-import { IconMicrophone, IconMicrophoneOff, IconScreenShare, IconDeviceDesktopCog, IconScreenShareOff, IconSettings, IconPhoneOff, IconWindowMaximize, IconWindowMinimize } from "@tabler/icons-react";
+import { IconMicrophone, IconMicrophoneOff, IconHeadphones, IconHeadphonesOff, IconScreenShare, IconDeviceDesktopCog, IconScreenShareOff, IconSettings, IconPhoneOff, IconWindowMaximize, IconWindowMinimize } from "@tabler/icons-react";
 
 import { useNexusVoice } from "../../../hooks/useNexusVoice";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
@@ -46,12 +46,16 @@ export function NexusVCControlBar({
     onToggleFocusMode,
     onStopWatching,
 }: NexusVCControlBarProps): JSX.Element {
-    const { isMicMuted, isScreenSharing } = useNexusVoice();
+    const { isMicMuted, isOutputMuted, isScreenSharing } = useNexusVoice();
     const [showSharePanel, setShowSharePanel] = useState(false);
     const shareButtonRef = useRef<HTMLButtonElement>(null);
 
     const onToggleMic = useCallback(() => {
         NexusVoiceStore.instance.toggleMic();
+    }, []);
+
+    const onToggleOutputMuted = useCallback(() => {
+        NexusVoiceStore.instance.toggleOutputMuted();
     }, []);
 
     const onScreenShareClick = useCallback(() => {
@@ -102,6 +106,22 @@ export function NexusVCControlBar({
                         <IconMicrophoneOff size={22} />
                     ) : (
                         <IconMicrophone size={22} />
+                    )}
+                </AccessibleButton>
+
+                {/* Speaker mute (deafen) */}
+                <AccessibleButton
+                    className={classNames("nx_VCControlBar_button", {
+                        "nx_VCControlBar_button--outputMuted": isOutputMuted,
+                    })}
+                    onClick={onToggleOutputMuted}
+                    title={isOutputMuted ? "スピーカーをオンにする" : "スピーカーをミュートする"}
+                    disableTooltip={isPopout}
+                >
+                    {isOutputMuted ? (
+                        <IconHeadphonesOff size={22} />
+                    ) : (
+                        <IconHeadphones size={22} />
                     )}
                 </AccessibleButton>
 
