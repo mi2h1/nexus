@@ -138,7 +138,10 @@ class LoggedInView extends React.Component<IProps, IState> {
     protected timezoneProfileUpdateRef?: string[];
     protected resizer?: Resizer<ICollapseConfig, CollapseItem>;
 
-    public static contextType = SDKContext;
+    // Use a getter to avoid TDZ errors from circular module evaluation
+    public static get contextType(): typeof SDKContext {
+        return SDKContext;
+    }
     declare public context: React.ContextType<typeof SDKContext>;
 
     public constructor(props: IProps, context: React.ContextType<typeof SDKContext>) {

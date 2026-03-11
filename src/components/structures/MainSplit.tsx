@@ -35,7 +35,10 @@ interface IProps {
 }
 
 export default class MainSplit extends React.Component<IProps> {
-    public static contextType = SDKContext;
+    // Use a getter to avoid TDZ errors from circular module evaluation
+    public static get contextType(): typeof SDKContext {
+        return SDKContext;
+    }
     declare public context: React.ContextType<typeof SDKContext>;
 
     public static defaultProps = {

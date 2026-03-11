@@ -520,4 +520,7 @@ export class WidgetLayoutStore extends ReadyWatchingStore {
     }
 }
 
-window.mxWidgetLayoutStore = WidgetLayoutStore.instance;
+// Deferred to avoid TDZ during module evaluation (MatrixClientPeg circular dependency)
+window.addEventListener("load", () => {
+    window.mxWidgetLayoutStore = WidgetLayoutStore.instance;
+});

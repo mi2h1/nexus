@@ -130,7 +130,10 @@ const ThemeSwitchButton = (): JSX.Element => {
 };
 
 export default class UserMenu extends React.Component<IProps, IState> {
-    public static contextType = SDKContext;
+    // Use a getter to avoid TDZ errors from circular module evaluation
+    public static get contextType(): typeof SDKContext {
+        return SDKContext;
+    }
     declare public context: React.ContextType<typeof SDKContext>;
 
     private dispatcherRef?: string;

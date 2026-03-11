@@ -443,7 +443,10 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
 
     private roomViewStore: RoomViewStore;
 
-    public static contextType = SDKContext;
+    // Use a getter to avoid TDZ errors from circular module evaluation
+    public static get contextType(): typeof SDKContext {
+        return SDKContext;
+    }
     declare public context: React.ContextType<typeof SDKContext>;
 
     public static readonly defaultProps = {

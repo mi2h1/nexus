@@ -184,7 +184,10 @@ export default class ScrollPanel extends React.Component<IProps> {
     private heightUpdateInProgress = false;
     public divScroll: HTMLDivElement | null = null;
 
-    public static contextType = SDKContext;
+    // Use a getter to avoid TDZ errors from circular module evaluation
+    public static get contextType(): typeof SDKContext {
+        return SDKContext;
+    }
     declare public context: React.ContextType<typeof SDKContext>;
 
     public constructor(props: IProps, context: React.ContextType<typeof SDKContext>) {
