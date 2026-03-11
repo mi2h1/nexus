@@ -21,7 +21,6 @@ import SidebarIcon from "@vector-im/compound-design-tokens/assets/web/icons/side
 import MicOnIcon from "@vector-im/compound-design-tokens/assets/web/icons/mic-on";
 import LockIcon from "@vector-im/compound-design-tokens/assets/web/icons/lock";
 import LabsIcon from "@vector-im/compound-design-tokens/assets/web/icons/labs";
-import BlockIcon from "@vector-im/compound-design-tokens/assets/web/icons/block";
 import HelpIcon from "@vector-im/compound-design-tokens/assets/web/icons/help";
 
 import TabbedView, { Tab, useActiveTabWithDefault } from "../../structures/TabbedView";
@@ -35,7 +34,6 @@ import NotificationUserSettingsTab from "../settings/tabs/user/NotificationUserS
 import PreferencesUserSettingsTab from "../settings/tabs/user/PreferencesUserSettingsTab";
 import VoiceUserSettingsTab from "../settings/tabs/user/VoiceUserSettingsTab";
 import HelpUserSettingsTab from "../settings/tabs/user/HelpUserSettingsTab";
-import MjolnirUserSettingsTab from "../settings/tabs/user/MjolnirUserSettingsTab";
 import { UIFeature } from "../../../settings/UIFeature";
 import BaseDialog from "./BaseDialog";
 import SidebarUserSettingsTab from "../settings/tabs/user/SidebarUserSettingsTab";
@@ -88,8 +86,6 @@ function titleForTabID(tabId: UserTab): React.ReactNode {
             return _t("settings|encryption|dialog_title", undefined, subs);
         case UserTab.Labs:
             return _t("settings|labs|dialog_title", undefined, subs);
-        case UserTab.Mjolnir:
-            return _t("settings|labs_mjolnir|dialog_title", undefined, subs);
         case UserTab.Help:
             return _t("setting|help_about|dialog_title", undefined, subs);
     }
@@ -97,7 +93,6 @@ function titleForTabID(tabId: UserTab): React.ReactNode {
 
 export default function UserSettingsDialog(props: IProps): JSX.Element {
     const voipEnabled = useSettingValue(UIFeature.Voip);
-    const mjolnirEnabled = useSettingValue("feature_mjolnir");
     // store these props in state as changing tabs back and forth should clear them
     const [showMsc4108QrCode, setShowMsc4108QrCode] = useState(props.showMsc4108QrCode);
     const [initialEncryptionState, setInitialEncryptionState] = useState(props.initialEncryptionState);
@@ -125,6 +120,7 @@ export default function UserSettingsDialog(props: IProps): JSX.Element {
     const getTabs = (): NonEmptyArray<Tab<UserTab>> => {
         const tabs: Tab<UserTab>[] = [];
 
+        // アカウント
         tabs.push(
             new Tab(
                 UserTab.Account,
@@ -134,61 +130,8 @@ export default function UserSettingsDialog(props: IProps): JSX.Element {
                 "UserSettingsGeneral",
             ),
         );
-        tabs.push(
-            new Tab(
-                UserTab.SessionManager,
-                _td("settings|sessions|title"),
-                <DevicesIcon />,
-                <SessionManagerTab showMsc4108QrCode={showMsc4108QrCode} />,
-                undefined,
-            ),
-        );
-        tabs.push(
-            new Tab(
-                UserTab.Appearance,
-                _td("common|appearance"),
-                <VisibilityOnIcon />,
-                <AppearanceUserSettingsTab />,
-                "UserSettingsAppearance",
-            ),
-        );
-        tabs.push(
-            new Tab(
-                UserTab.Notifications,
-                _td("notifications|enable_prompt_toast_title"),
-                <NotificationsIcon />,
-                <NotificationUserSettingsTab />,
-                "UserSettingsNotifications",
-            ),
-        );
-        tabs.push(
-            new Tab(
-                UserTab.Preferences,
-                _td("common|preferences"),
-                <PreferencesIcon />,
-                <PreferencesUserSettingsTab closeSettingsFn={props.onFinished} />,
-                "UserSettingsPreferences",
-            ),
-        );
-        tabs.push(
-            new Tab(
-                UserTab.Keyboard,
-                _td("settings|keyboard|title"),
-                <KeyboardIcon />,
-                <KeyboardUserSettingsTab />,
-                "UserSettingsKeyboard",
-            ),
-        );
-        tabs.push(
-            new Tab(
-                UserTab.Sidebar,
-                _td("settings|sidebar|title"),
-                <SidebarIcon />,
-                <SidebarUserSettingsTab />,
-                "UserSettingsSidebar",
-            ),
-        );
 
+        // 音声とビデオ
         if (voipEnabled) {
             tabs.push(
                 new Tab(
@@ -201,6 +144,29 @@ export default function UserSettingsDialog(props: IProps): JSX.Element {
             );
         }
 
+        // 外観
+        tabs.push(
+            new Tab(
+                UserTab.Appearance,
+                _td("common|appearance"),
+                <VisibilityOnIcon />,
+                <AppearanceUserSettingsTab />,
+                "UserSettingsAppearance",
+            ),
+        );
+
+        // 通知
+        tabs.push(
+            new Tab(
+                UserTab.Notifications,
+                _td("notifications|enable_prompt_toast_title"),
+                <NotificationsIcon />,
+                <NotificationUserSettingsTab />,
+                "UserSettingsNotifications",
+            ),
+        );
+
+        // セキュリティ
         tabs.push(
             new Tab(
                 UserTab.Security,
@@ -211,6 +177,7 @@ export default function UserSettingsDialog(props: IProps): JSX.Element {
             ),
         );
 
+        // 暗号化
         tabs.push(
             new Tab(
                 UserTab.Encryption,
@@ -222,22 +189,58 @@ export default function UserSettingsDialog(props: IProps): JSX.Element {
             ),
         );
 
+        // 環境設定
+        tabs.push(
+            new Tab(
+                UserTab.Preferences,
+                _td("common|preferences"),
+                <PreferencesIcon />,
+                <PreferencesUserSettingsTab closeSettingsFn={props.onFinished} />,
+                "UserSettingsPreferences",
+            ),
+        );
+
+        // キーボード
+        tabs.push(
+            new Tab(
+                UserTab.Keyboard,
+                _td("settings|keyboard|title"),
+                <KeyboardIcon />,
+                <KeyboardUserSettingsTab />,
+                "UserSettingsKeyboard",
+            ),
+        );
+
+        // サイドバー
+        tabs.push(
+            new Tab(
+                UserTab.Sidebar,
+                _td("settings|sidebar|title"),
+                <SidebarIcon />,
+                <SidebarUserSettingsTab />,
+                "UserSettingsSidebar",
+            ),
+        );
+
+        // セッション管理
+        tabs.push(
+            new Tab(
+                UserTab.SessionManager,
+                _td("settings|sessions|title"),
+                <DevicesIcon />,
+                <SessionManagerTab showMsc4108QrCode={showMsc4108QrCode} />,
+                undefined,
+            ),
+        );
+
+        // ラボ（有効な場合のみ）
         if (showLabsFlags() || SettingsStore.getFeatureSettingNames().some((k) => SettingsStore.getBetaInfo(k))) {
             tabs.push(
                 new Tab(UserTab.Labs, _td("common|labs"), <LabsIcon />, <LabsUserSettingsTab />, "UserSettingsLabs"),
             );
         }
-        if (mjolnirEnabled) {
-            tabs.push(
-                new Tab(
-                    UserTab.Mjolnir,
-                    _td("labs_mjolnir|title"),
-                    <BlockIcon />,
-                    <MjolnirUserSettingsTab />,
-                    "UserSettingMjolnir",
-                ),
-            );
-        }
+
+        // ヘルプ
         tabs.push(
             new Tab(
                 UserTab.Help,
