@@ -87,23 +87,38 @@
     }
 }
 
+/* Status icon in context menu — match SVG icon size (16px) so layout aligns */
 .mx_NexusUserPanel_statusIcon {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
 
-    &.mx_NexusUserPanel_statusIcon--online {
+    &::after {
+        content: "";
+        display: block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+
+    &.mx_NexusUserPanel_statusIcon--online::after {
         background-color: #3ba55c;
     }
 
-    &.mx_NexusUserPanel_statusIcon--unavailable {
+    &.mx_NexusUserPanel_statusIcon--unavailable::after {
         background-color: #faa61a;
     }
 
-    &.mx_NexusUserPanel_statusIcon--offline {
+    &.mx_NexusUserPanel_statusIcon--offline::after {
         background-color: #747f8d;
+    }
+
+    /* Same gap as svg + label in IconizedContextMenu */
+    & + .mx_IconizedContextMenu_label {
+        padding-left: 14px;
     }
 }
 
