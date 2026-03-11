@@ -48,10 +48,10 @@ export class NexusUserPresenceStore extends TypedEventEmitter<
     }
 
     /**
-     * Get the presence status for a user. Defaults to "online" if unknown.
+     * Get the presence status for a user. Defaults to "offline" if unknown (never set).
      */
     public getPresence(userId: string): NexusPresenceStatus {
-        return this.presences.get(userId) ?? "online";
+        return this.presences.get(userId) ?? "offline";
     }
 
     public getMyPresence(): NexusPresenceStatus {
@@ -64,6 +64,8 @@ export class NexusUserPresenceStore extends TypedEventEmitter<
     public start(client: MatrixClient): void {
         this.client = client;
         this.connectSSE();
+        // 起動時に自動でオンラインにセット
+        this.setMyPresence("online").catch(() => {});
     }
 
     public stop(): void {
