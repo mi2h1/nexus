@@ -97,4 +97,6 @@ export class ModalWidgetStore extends AsyncStoreWithClient<IState> {
     };
 }
 
-window.mxModalWidgetStore = ModalWidgetStore.instance;
+window.addEventListener("load", () => {
+    window.mxModalWidgetStore = ModalWidgetStore.instance;
+});

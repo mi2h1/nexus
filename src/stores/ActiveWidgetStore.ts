@@ -123,4 +123,6 @@ export default class ActiveWidgetStore extends EventEmitter {
     }
 }
 
-window.mxActiveWidgetStore = ActiveWidgetStore.instance;
+window.addEventListener("load", () => {
+    window.mxActiveWidgetStore = ActiveWidgetStore.instance;
+});

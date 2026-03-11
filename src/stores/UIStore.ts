@@ -97,4 +97,6 @@ export default class UIStore extends EventEmitter {
     };
 }
 
-window.mxUIStore = UIStore.instance;
+window.addEventListener("load", () => {
+    window.mxUIStore = UIStore.instance;
+});

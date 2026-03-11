@@ -183,4 +183,6 @@ export default class AutoRageshakeStore extends AsyncStoreWithClient<IState> {
     }
 }
 
-window.mxAutoRageshakeStore = AutoRageshakeStore.instance;
+window.addEventListener("load", () => {
+    window.mxAutoRageshakeStore = AutoRageshakeStore.instance;
+});

@@ -1452,4 +1452,6 @@ export default class SpaceStore {
     }
 }
 
-window.mxSpaceStore = SpaceStore.instance;
+window.addEventListener("load", () => {
+    window.mxSpaceStore = SpaceStore.instance;
+});
