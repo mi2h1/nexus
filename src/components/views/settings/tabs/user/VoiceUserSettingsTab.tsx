@@ -291,6 +291,46 @@ function NexusVoiceGateSettings(): JSX.Element {
     );
 }
 
+/** EQ / AGC toggle settings. */
+function NexusAudioProcessingSettings(): JSX.Element {
+    const [eqEnabled, setEqEnabled] = useState<boolean>(
+        () => SettingsStore.getValue("nexus_voice_eq_enabled") ?? true,
+    );
+    const [agcEnabled, setAgcEnabled] = useState<boolean>(
+        () => SettingsStore.getValue("nexus_voice_agc_enabled") ?? true,
+    );
+
+    const onEqChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const enabled = e.target.checked;
+        setEqEnabled(enabled);
+        SettingsStore.setValue("nexus_voice_eq_enabled", null, SettingLevel.DEVICE, enabled);
+    }, []);
+
+    const onAgcChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const enabled = e.target.checked;
+        setAgcEnabled(enabled);
+        SettingsStore.setValue("nexus_voice_agc_enabled", null, SettingLevel.DEVICE, enabled);
+    }, []);
+
+    return (
+        <SettingsSubsection heading="音声処理" stretchContent>
+            <SettingsToggleInput
+                name="nx-voice-eq"
+                label="ボイス EQ"
+                helpMessage="低中域のこもりをカットし、中高域をブーストして声の通りを改善します。マイク音質がこもって聞こえる場合に有効です。"
+                checked={eqEnabled}
+                onChange={onEqChange}
+            />
+            <SettingsToggleInput
+                name="nx-voice-agc"
+                label="自動音量調整（AGC）"
+                helpMessage="声の大きさを自動的に一定に保ちます。声が小さい人は増幅され、大きい人は抑えられます。静寂時のノイズ増幅はしません。"
+                checked={agcEnabled}
+                onChange={onAgcChange}
+            />
+        </SettingsSubsection>
+    );
+}
 
 export default class VoiceUserSettingsTab extends React.Component<EmptyObject, IState> {
     public static contextType = MatrixClientContext;
@@ -453,6 +493,7 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
                             </div>
                         </SettingsSubsection>
                         <NexusVoiceGateSettings />
+                        <NexusAudioProcessingSettings />
                     </SettingsSection>
 
                     <SettingsSection heading={_t("common|advanced")}>

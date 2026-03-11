@@ -1084,18 +1084,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.inputGainNode.gain.value = 0;
 
         // Voice EQ — de-mud: cut muddy low-mids for clarity
+        const eqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
         this.eqLowCut = this.audioContext.createBiquadFilter();
         this.eqLowCut.type = "peaking";
         this.eqLowCut.frequency.value = 350;
         this.eqLowCut.Q.value = 1.0;
-        this.eqLowCut.gain.value = -3;
+        this.eqLowCut.gain.value = eqEnabled ? -3 : 0;
 
         // Voice EQ — presence: boost upper-mids for intelligibility
         this.eqPresence = this.audioContext.createBiquadFilter();
         this.eqPresence.type = "peaking";
         this.eqPresence.frequency.value = 3000;
         this.eqPresence.Q.value = 0.8;
-        this.eqPresence.gain.value = 2.5;
+        this.eqPresence.gain.value = eqEnabled ? 2.5 : 0;
 
         // VAD-gated AGC — gain adjusted only during voice activity
         this.agcGainNode = this.audioContext.createGain();
@@ -1259,22 +1260,29 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // ── VAD-gated AGC ──
         // Only adjust gain when voice gate is open (speaking detected).
         // Never adjust during silence to prevent background noise amplification.
-        if (this._voiceGateOpen && !this._isMicMuted && this.agcGainNode && this.audioContext) {
-            const target = NexusVoiceConnection.AGC_TARGET_RMS;
-            if (this._inputLevel > 5) { // Only adjust on meaningful signal
-                const ratio = target / Math.max(1, this._inputLevel);
-                // Smoothly approach the desired gain
-                const desiredGain = this.agcCurrentGain * ratio;
-                const clamped = Math.max(
-                    NexusVoiceConnection.AGC_MIN_GAIN,
-                    Math.min(NexusVoiceConnection.AGC_MAX_GAIN, desiredGain),
-                );
-                // Exponential smoothing — only move a fraction toward the target per cycle
-                this.agcCurrentGain += (clamped - this.agcCurrentGain) * NexusVoiceConnection.AGC_ADJUSTMENT_RATE;
-                this.agcGainNode.gain.exponentialRampToValueAtTime(
-                    Math.max(0.01, this.agcCurrentGain), // exponentialRamp requires > 0
-                    this.audioContext.currentTime + 0.05,
-                );
+        const agcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
+        if (this.agcGainNode && this.audioContext) {
+            if (agcEnabled && this._voiceGateOpen && !this._isMicMuted) {
+                const target = NexusVoiceConnection.AGC_TARGET_RMS;
+                if (this._inputLevel > 5) { // Only adjust on meaningful signal
+                    const ratio = target / Math.max(1, this._inputLevel);
+                    // Smoothly approach the desired gain
+                    const desiredGain = this.agcCurrentGain * ratio;
+                    const clamped = Math.max(
+                        NexusVoiceConnection.AGC_MIN_GAIN,
+                        Math.min(NexusVoiceConnection.AGC_MAX_GAIN, desiredGain),
+                    );
+                    // Exponential smoothing — only move a fraction toward the target per cycle
+                    this.agcCurrentGain += (clamped - this.agcCurrentGain) * NexusVoiceConnection.AGC_ADJUSTMENT_RATE;
+                    this.agcGainNode.gain.exponentialRampToValueAtTime(
+                        Math.max(0.01, this.agcCurrentGain), // exponentialRamp requires > 0
+                        this.audioContext.currentTime + 0.05,
+                    );
+                }
+            } else if (!agcEnabled && this.agcCurrentGain !== 1.0) {
+                // AGC disabled — reset to unity gain
+                this.agcCurrentGain = 1.0;
+                this.agcGainNode.gain.setValueAtTime(1.0, this.audioContext.currentTime);
             }
         }
     }

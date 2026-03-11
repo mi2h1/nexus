@@ -378,6 +378,8 @@ export interface Settings {
     "nexus_input_volume": IBaseSetting<number>;
     "nexus_output_volume": IBaseSetting<number>;
     "nexus_screen_share_quality": IBaseSetting<string>;
+    "nexus_voice_eq_enabled": IBaseSetting<boolean>;
+    "nexus_voice_agc_enabled": IBaseSetting<boolean>;
 }
 
 export type SettingKey = keyof Settings;
@@ -1519,5 +1521,13 @@ export const SETTINGS: Settings = {
     "nexus_screen_share_quality": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: "standard",
+    },
+    "nexus_voice_eq_enabled": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: true,
+    },
+    "nexus_voice_agc_enabled": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: true,
     },
 };
