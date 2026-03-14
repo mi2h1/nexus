@@ -6,6 +6,11 @@ fn disable_audio_ducking() {
     audio_duck::disable_ducking();
 }
 
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -19,11 +24,13 @@ pub fn run() {
             capture::stop_capture,
             capture::switch_capture_target,
             disable_audio_ducking,
+            quit_app,
         ])
         .setup(|app| {
             use tauri::utils::config::Color;
             use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
-            use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+            use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
+            use tauri::menu::{Menu, MenuItem};
             use tauri::{Manager, WebviewUrl};
 
             let app_handle = app.handle().clone();
@@ -60,22 +67,32 @@ pub fn run() {
                 })
                 .build()?;
 
-            // Close to tray: hide window instead of quitting
+            // Close button: emit event to JS so it can check the "close to tray" setting
             let win = main_window.clone();
             main_window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
-                    let _ = win.hide();
+                    let _ = win.emit("nexus-close-requested", ());
                 }
             });
 
-            // System tray icon: click to show/hide main window
+            // System tray: right-click menu with quit option
+            let quit_item = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&quit_item])?;
+
             let tray_handle = app.handle().clone();
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Nexus")
+                .menu(&menu)
+                .on_menu_event(|app, event| {
+                    if event.id().as_ref() == "quit" {
+                        app.exit(0);
+                    }
+                })
                 .on_tray_icon_event(move |_tray, event| {
-                    if let TrayIconEvent::Click { .. } = event {
+                    // Only react on mouse button UP to avoid double-toggle from down+up
+                    if let TrayIconEvent::Click { button_state: MouseButtonState::Up, .. } = event {
                         if let Some(window) = tray_handle.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();

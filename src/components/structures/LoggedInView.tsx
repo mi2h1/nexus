@@ -47,6 +47,7 @@ import { getKeyBindingsManager } from "../../KeyBindingsManager";
 import { type IOpts } from "../../createRoom";
 import SpacePanel from "../views/spaces/SpacePanel";
 import NexusUserPanel from "../views/rooms/RoomListPanel/NexusUserPanel";
+import { isTauri } from "../../utils/tauriHttp";
 import LegacyCallHandler, { LegacyCallHandlerEvent } from "../../LegacyCallHandler";
 import AudioFeedArrayForLegacyCall from "../views/voip/AudioFeedArrayForLegacyCall";
 import { OwnProfileStore } from "../../stores/OwnProfileStore";
@@ -137,6 +138,7 @@ class LoggedInView extends React.Component<IProps, IState> {
     protected backgroundImageWatcherRef?: string;
     protected timezoneProfileUpdateRef?: string[];
     protected resizer?: Resizer<ICollapseConfig, CollapseItem>;
+    private trayCloseUnlisten?: () => void;
 
     // Use a getter to avoid TDZ errors from circular module evaluation
     public static get contextType(): typeof SDKContext {
@@ -200,6 +202,24 @@ class LoggedInView extends React.Component<IProps, IState> {
 
         OwnProfileStore.instance.on(UPDATE_EVENT, this.refreshBackgroundImage);
         this.refreshBackgroundImage();
+
+        // Tauri: handle X button according to "close to tray" setting
+        if (isTauri()) {
+            import("@tauri-apps/api/event").then(({ listen }) => {
+                listen("nexus-close-requested", () => {
+                    const closeToTray = SettingsStore.getValue("nexus_close_to_tray");
+                    import("@tauri-apps/api/core").then(({ invoke }) => {
+                        if (closeToTray) {
+                            invoke("plugin:window|hide", { label: "main" });
+                        } else {
+                            invoke("quit_app");
+                        }
+                    });
+                }).then((unlisten) => {
+                    this.trayCloseUnlisten = unlisten;
+                });
+            });
+        }
     }
 
     /**
@@ -260,6 +280,7 @@ class LoggedInView extends React.Component<IProps, IState> {
         SettingsStore.unwatchSetting(this.backgroundImageWatcherRef);
         this.timezoneProfileUpdateRef?.forEach((s) => SettingsStore.unwatchSetting(s));
         this.resizer?.detach();
+        this.trayCloseUnlisten?.();
     }
 
     private onCallState = (): void => {

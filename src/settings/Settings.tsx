@@ -381,6 +381,7 @@ export interface Settings {
     "nexus_voice_eq_enabled": IBaseSetting<boolean>;
     "nexus_voice_agc_enabled": IBaseSetting<boolean>;
     "nexus_noise_cancellation_enabled": IBaseSetting<boolean>;
+    "nexus_close_to_tray": IBaseSetting<boolean>;
 }
 
 export type SettingKey = keyof Settings;
@@ -1532,6 +1533,10 @@ export const SETTINGS: Settings = {
         default: true,
     },
     "nexus_noise_cancellation_enabled": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: true,
+    },
+    "nexus_close_to_tray": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: true,
     },

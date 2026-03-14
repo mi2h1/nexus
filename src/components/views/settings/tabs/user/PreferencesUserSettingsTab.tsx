@@ -35,6 +35,7 @@ import { type BooleanSettingKey } from "../../../../../settings/Settings.tsx";
 import { MediaPreviewAccountSettings } from "./MediaPreviewAccountSettings.tsx";
 import { InviteRulesAccountSetting } from "./InviteRulesAccountSettings.tsx";
 import SettingsDropdown from "../../../elements/SettingsDropdown.tsx";
+import { isTauri } from "../../../../../utils/tauriHttp";
 
 interface IProps {
     closeSettingsFn(success: boolean): void;
@@ -278,6 +279,16 @@ export default class PreferencesUserSettingsTab extends React.Component<IProps, 
                                 label={_t("settings|start_automatically|label", { brand })}
                                 level={SettingLevel.PLATFORM}
                                 hideIfCannotSet
+                            />
+                        </SettingsSubsection>
+                    )}
+
+                    {isTauri() && (
+                        <SettingsSubsection heading="アプリの動作" formWrap>
+                            <SettingsFlag
+                                name="nexus_close_to_tray"
+                                level={SettingLevel.DEVICE}
+                                label="閉じるボタンでタスクバーに収納する"
                             />
                         </SettingsSubsection>
                     )}
