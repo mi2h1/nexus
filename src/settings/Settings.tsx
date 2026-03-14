@@ -1538,6 +1538,6 @@ export const SETTINGS: Settings = {
     },
     "nexus_close_to_tray": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
-        default: true,
+        default: false,
     },
 };
