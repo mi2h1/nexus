@@ -31,7 +31,7 @@ pub fn run() {
             use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
             use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
             use tauri::menu::{Menu, MenuItem};
-            use tauri::{Manager, WebviewUrl};
+            use tauri::{Emitter, Manager, WebviewUrl};
 
             let app_handle = app.handle().clone();
             // Fallback background before JS applies the actual theme color
