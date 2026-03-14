@@ -29,7 +29,7 @@ pub fn run() {
         .setup(|app| {
             use tauri::utils::config::Color;
             use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
-            use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
             use tauri::menu::{Menu, MenuItem};
             use tauri::{Emitter, Manager, WebviewUrl};
 
@@ -91,8 +91,8 @@ pub fn run() {
                     }
                 })
                 .on_tray_icon_event(move |_tray, event| {
-                    // Only react on mouse button UP to avoid double-toggle from down+up
-                    if let TrayIconEvent::Click { button_state: MouseButtonState::Up, .. } = event {
+                    // Only react on left-click UP to avoid triggering on right-click or double-fire
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                         if let Some(window) = tray_handle.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
