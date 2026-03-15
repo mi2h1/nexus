@@ -1766,7 +1766,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // speaking 状態変化を 50ms 間隔（pollInputLevel の周期）で即座に emit する。
         const myUserId = this.client.getUserId();
         if (myUserId) {
-            const localSpeaking = !this._isMicMuted && this._inputLevel > 5 && this.localVoiceGateOpen;
+            const localSpeaking = !this._isMicMuted && this._inputLevel > 2 && this.localVoiceGateOpen;
             const wasSpeaking = this._activeSpeakers.has(myUserId);
             if (localSpeaking !== wasSpeaking) {
                 const updated = new Set(this._activeSpeakers);
@@ -2445,7 +2445,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Check local participant — use own input level because we publish a
         // processed MediaStreamTrack via Web Audio API, so LiveKit's
         // localParticipant.isSpeaking may not fire correctly.
-        const localSpeaking = !this._isMicMuted && this._inputLevel > 5 && this.localVoiceGateOpen;
+        const localSpeaking = !this._isMicMuted && this._inputLevel > 2 && this.localVoiceGateOpen;
         if (localSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
         }
@@ -2467,8 +2467,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             let isSpeaking: boolean;
             if (analyser) {
                 analyser.getByteTimeDomainData(this.outputAnalyserBuffer);
-                // 128 = silence; any deviation means audio is flowing
-                isSpeaking = this.outputAnalyserBuffer.some((v) => v !== 128);
+                // Use RMS threshold (~-43dBFS) to match the local speaking threshold.
+                // `some(v !== 128)` is too sensitive — quantization noise and NC residuals
+                // keep it true even when the sender is near-silent.
+                let outSum = 0;
+                for (const v of this.outputAnalyserBuffer) {
+                    const s = (v - 128) / 128;
+                    outSum += s * s;
+                }
+                isSpeaking = Math.sqrt(outSum / this.outputAnalyserBuffer.length) > 0.007;
             } else {
                 isSpeaking = participant.audioLevel > 0;
             }
