@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-15 (v0.2.16)
+> 最終更新: 2026-03-15 (v0.2.17)
 
 ## リポジトリ情報
 
@@ -368,6 +368,33 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
   - トレイアイコンクリック → 表示/非表示トグル
 
+#### 2026-03-15 (v0.2.17: 音声品質・安定性改善)
+
+- **ボイスゲート刷新**: dBFS + ヒステリシス + 声帯域フィルタ + アタックタイムで高精度化
+  - `fftSize 256→1024`（~46.9 Hz/bin で声帯域を精密に取得）
+  - `minDecibels=-90, maxDecibels=0` で dBFS スケールに統一
+  - 声帯域(100Hz-3kHz)の平均エネルギーを dBFS で計測してゲート判定
+  - スライダー 0-100 → -60〜0 dBFS に変換（旧: 線形 RMS）
+  - ヒステリシス: closeThreshold = openThreshold - 6dB（誤開閉防止）
+  - アタックタイム: 1ポール連続でゲートオープン（一時的なノイズ誤検知を低減）
+- **入力レベルメーター改善**: RNNoise 前の生信号 + dBFS 対数スケールで正確化
+  - `rawLevelAnalyser`（HPF 後・RNNoise 前）を追加してメーター専用タップを確保
+  - スケールを線形(`rms×300`)→ dBFS 対数(-60〜0dBFS → 0〜100%)に変更（ノイズも可視化）
+  - `_inputLevel`(線形)は AGC・発話閾値用として内部に保持
+- **入力感度 OFF 時に音声がミュートされるバグ修正**:
+  - ゲート閉鎖状態でOFF切り替えしても `inputGainNode.gain` が 0 のまま残る問題を修正
+  - `gateEnabled=false` の早期リターン時に gain を設定音量へ即時復元
+  - 保留中の `voiceGateReleaseTimeout` もキャンセル
+- **出力音声がモノラル（左のみ）になる問題修正**:
+  - `outputMasterGain` を `channelCount=2 / channelCountMode="explicit" / channelInterpretation="speakers"` で明示的ステレオ固定（Opus モノラルトラック複数接続時に WebView2 で左のみになる問題を解消）
+  - `onTrackSubscribed` で同一参加者IDの既存ノードを事前クリーンアップ（LiveKit 再接続時の二重接続リーク防止）
+- **急な大声がカットされる問題緩和**: コンプレッサー + AGC 調整
+  - compressor threshold: -18dB → -12dB（普通の声にかかりにくく）
+  - compressor ratio: 4:1 → 3:1（圧縮を緩やか）
+  - compressor attack: 3ms → 15ms（瞬間的な大声の頭を削らない）
+  - compressor release: 150ms → 250ms（ポンピング軽減）
+  - AGC_MAX_GAIN: 3.0x → 2.0x（過剰ブースト→急な大声→コンプ過多の連鎖を緩和）
+
 #### 2026-03-15 (v0.2.16: タスクバー収納改善)
 
 - **Xボタンの挙動を設定可能に**:
@@ -497,8 +524,8 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | VC 接続/切断トランジション UI | 接続中/切断中に参加者リストで自分をスピナー+グレーアウト表示 |
 | 入力音量調整 | Web Audio API `GainNode` — 0-200% スライダー |
 | 出力マスター音量 | `setMasterOutputVolume()` — 全リモート参加者の受信音量一括調整 |
-| 入力感度（ボイスゲート） | `AnalyserNode` RMS 計測 → 閾値以下で `GainNode.gain=0`（300ms リリース遅延） |
-| 発話検出 | ポーリング方式（250ms）— ローカルは自前 `inputLevel>5` / リモートは LiveKit `isSpeaking` |
+| 入力感度（ボイスゲート） | dBFS + 声帯域FFT(100Hz-3kHz) + ヒステリシス + アタックタイム — `GainNode.gain=0` でゲート（300ms リリース遅延） |
+| 発話検出 | ポーリング方式（50ms/250ms）— ローカルは自前 `inputLevel>5` / リモートは AnalyserNode 波形検出（Tauri）or LiveKit `audioLevel`（ブラウザ） |
 | 画面共有 SE | 画面共有開始/終了時に screen-on/screen-off SE（自分・他者共通） |
 | 入退室 SE | 押下時 standby SE → 接続確立時 join SE → 退室時 leave SE |
 | ミュート状態保持 | VC 中ミュート→切断後もミュート状態を維持（`_preMicMuted` 同期） |
