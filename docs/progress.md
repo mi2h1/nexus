@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-16 (v0.2.23)
+> 最終更新: 2026-03-16 (v0.2.23-hotfix)
 
 ## リポジトリ情報
 
@@ -368,7 +368,24 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
   - トレイアイコンクリック → 表示/非表示トグル
 
-#### 2026-03-16 (v0.2.23: Silero VAD による発話インジケーター精度向上)
+#### 2026-03-16 (v0.2.23: Silero VAD・音声設定UI・マイクテスト改善)
+
+- **音声設定UI修正**:
+  - スライダーのサムずれ修正: `height: 20px` + `margin-top: -6px` で正確センタリング
+  - スライダー filled track: 左=アクセントカラー、右=ボーダーカラー（CSS変数 `--nx-slider-fill` + track pseudo gradient）
+  - スライダートラック色を `--cpd-color-border-interactive-secondary` に変更（全テーマで視認可能）
+  - サムカラーを `--cpd-color-text-primary` に変更（dark=白、light=黒、fill色と区別）
+  - マイクテストボタン: "マイクテスト" / "テストを停止"、`kind="primary"` で塗りつぶしボタン、`min-width: 130px` で幅統一
+  - 「マイクモニター」ラベルを削除
+  - `audioAutoGainControl` 設定を非表示かつ強制オフ（Settings.tsx デフォルト変更 + MatrixChat.tsx 起動時上書き）
+- **マイクテスト音質改善**:
+  - `echoCancellation: false` に変更: AEC がスピーカー出力を「エコー」と判断してキャンセルしていたことによるこもり・ボワつきを解消
+  - 処理パイプラインは VC 送信と同等（HPF → RNNoise → postNcGate → EQ → AGC → compressor）を維持
+- **ブラウザ AGC 強制オフ**:
+  - Nexus 独自の AGC パイプラインと競合するため常時無効化
+  - `Settings.tsx` デフォルト値変更 + ログイン後に `MediaDeviceHandler.setAudioAutoGainControl(false)` で保存済み設定を上書き
+
+#### 2026-03-16 (v0.2.23-base: Silero VAD による発話インジケーター精度向上)
 
 - **Silero ML VAD 統合 (`@ricky0123/vad-web`)**:
   - RMS閾値ベースのVADをDiscord同等の ML VAD（Silero v5モデル）に置き換え
