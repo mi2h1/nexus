@@ -163,6 +163,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private outputMasterGain: GainNode | null = null;
     private outputMediaSources = new Map<string, AudioNode>();
     private outputParticipantGains = new Map<string, GainNode>();
+    private outputParticipantAnalysers = new Map<string, AnalyserNode>();
+    private readonly outputAnalyserBuffer = new Uint8Array(256);
     private watchingScreenShares = new Set<string>(); // opt-in watching state
     /** Timers that delay updateScreenShares() until audio track arrives. */
     private pendingScreenShareTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1565,6 +1567,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Clean up Tauri output audio pipeline (sources/gains first, then master)
         for (const source of this.outputMediaSources.values()) source.disconnect();
         this.outputMediaSources.clear();
+        for (const analyser of this.outputParticipantAnalysers.values()) analyser.disconnect();
+        this.outputParticipantAnalysers.clear();
         for (const gain of this.outputParticipantGains.values()) gain.disconnect();
         this.outputParticipantGains.clear();
 
@@ -1751,10 +1755,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const source = this.outputAudioContext.createMediaStreamSource(
                     audio.srcObject as MediaStream,
                 );
+                // AnalyserNode for low-latency speaking detection (bypasses LiveKit's ~1s stats cycle)
+                const analyser = this.outputAudioContext.createAnalyser();
+                analyser.fftSize = 256;
                 const gain = this.outputAudioContext.createGain();
                 gain.gain.value = initialVol;
-                source.connect(gain).connect(this.outputMasterGain);
+                source.connect(analyser).connect(gain).connect(this.outputMasterGain);
                 this.outputMediaSources.set(participant.identity, source);
+                this.outputParticipantAnalysers.set(participant.identity, analyser);
                 this.outputParticipantGains.set(participant.identity, gain);
                 // Suppress audio element's system output — all audio goes
                 // through the Web Audio graph. Element must still play() to
@@ -1830,6 +1838,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Clean up Tauri audio nodes
         this.outputMediaSources.get(participant.identity)?.disconnect();
         this.outputMediaSources.delete(participant.identity);
+        this.outputParticipantAnalysers.get(participant.identity)?.disconnect();
+        this.outputParticipantAnalysers.delete(participant.identity);
         this.outputParticipantGains.get(participant.identity)?.disconnect();
         this.outputParticipantGains.delete(participant.identity);
     };
@@ -1941,13 +1951,22 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         // Check remote participants
-        // Light up whenever audio data is flowing (any non-zero level).
-        // DTX is disabled so muted participants = 0, any speech (even quiet) = > 0.
+        // Tauri: read AnalyserNode waveform directly — zero-lag, no LiveKit stats cycle dependency.
+        // Browser fallback: participant.audioLevel > 0.
         for (const participant of this.livekitRoom.remoteParticipants.values()) {
             const userId = this.resolveIdentityToUserId(participant.identity);
             if (!userId) continue;
 
-            if (participant.audioLevel > 0) {
+            const analyser = this.outputParticipantAnalysers.get(participant.identity);
+            let isSpeaking: boolean;
+            if (analyser) {
+                analyser.getByteTimeDomainData(this.outputAnalyserBuffer);
+                // 128 = silence; any deviation means audio is flowing
+                isSpeaking = this.outputAnalyserBuffer.some((v) => v !== 128);
+            } else {
+                isSpeaking = participant.audioLevel > 0;
+            }
+            if (isSpeaking) {
                 speakingUserIds.add(userId);
             }
 
