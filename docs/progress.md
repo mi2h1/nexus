@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-15 (v0.2.18)
+> 最終更新: 2026-03-15 (v0.2.19)
 
 ## リポジトリ情報
 
@@ -367,6 +367,31 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - `TrayIconBuilder` でトレイアイコン作成
   - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
   - トレイアイコンクリック → 表示/非表示トグル
+
+#### 2026-03-15 (v0.2.19: マイクモニター不具合修正 + ESLint/Stylelint 全修正)
+
+- **マイクモニター: アプリ起動直後に無音になる問題を修正**:
+  - `createStandaloneMonitor` が AudioWorklet `addModule()` を本番 AudioContext で直接実行していたため、Tauri/WebView2 で失敗するとコンテキストが壊れた状態になり音が出なかった
+  - 修正: `addModule()` を使い捨てのプローブ AudioContext で先に試し、本番コンテキストは常にクリーンな状態で作成する方式に変更
+- **VC 接続中のモニターがボワボワする問題を修正**:
+  - `VOICE_GATE_LOOKAHEAD_SEC` を 50ms → 15ms に短縮
+  - モニターの遅延が 50ms → 15ms に大幅改善（ハウリング感・空洞感が解消）
+  - ボイスゲートのルックアヘッドとしては 15ms でも十分機能する
+- **スタンドアロンモニターで設定変更が即座に反映されない問題を修正**:
+  - EQ / AGC / NC強度の設定値をポーリングループ内で毎回 SettingsStore から再読み込みするよう変更
+  - スライダー操作が即座に反映されるようになった（以前は作成時に一度だけ読んでいた）
+  - AGC が OFF になった際にゲインを 1.0 にリセットする処理を追加
+- **コードブラッシュアップ（ESLint・Stylelint 全修正）**:
+  - CSS: `rgba()` → `rgb()` 記法統一（19箇所）
+  - 非存在の Compound デザイントークンを正しいトークンに修正（`--cpd-color-bg-success-primary` → `--cpd-color-bg-accent-rest`、`--cpd-color-text-tertiary` → `--cpd-color-text-secondary`）
+  - JS-ランタイム設定 CSS 変数（`--panel-w` / `--panel-h`）に `stylelint-disable` コメント追加
+  - `import/order` 修正: NexusChannelListView、VoiceChannelParticipants、useMenuDismiss
+  - `explicit-member-accessibility`: NexusNativeCapture のメソッドに `public` 修飾子追加
+  - `label-has-associated-control`: スライダーラベルに `htmlFor` / `id` 付与
+  - `no-restricted-properties` (`window.innerHeight` → `UIStore.instance.windowHeight`)
+  - `React.forwardRef` を React 19 の ref プロップ方式に移行（NexusVCViewContextMenu）
+  - `react-compiler` スキップ原因の `eslint-disable` コメント除去でコンパイラ最適化を復活
+  - 未使用プライベートメソッド3件削除（VoiceUserSettingsTab）
 
 #### 2026-03-15 (v0.2.18: AIノイキャン強度スライダー + マイクモニター)
 
