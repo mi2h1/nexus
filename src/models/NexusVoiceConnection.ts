@@ -1337,6 +1337,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 maxChannels: 1,
                 wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
             });
+            // AudioWorkletNode defaults to channelCount=2. Force mono to prevent
+            // a stereo pipeline with a silent R channel, which causes left-only
+            // audio on the receiving side when the track is published via LiveKit.
+            this.rnnoiseNode.channelCount = 1;
+            this.rnnoiseNode.channelCountMode = "explicit";
         } catch (e) {
             // Graceful fallback — NC simply won't be applied
             logger.warn("RNNoise setup failed, continuing without noise cancellation:", e);
@@ -1446,6 +1451,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                         maxChannels: 1,
                         wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
                     });
+                    rnnoiseNode.channelCount = 1;
+                    rnnoiseNode.channelCountMode = "explicit";
                     hpf.connect(rnnoiseNode);
                 } catch {
                     rnnoiseNode = null;
