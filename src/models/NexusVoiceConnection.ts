@@ -182,7 +182,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private rnnoiseNode: RnnoiseWorkletNode | null = null;
     /** Cached WASM binary — shared across reconnects. */
     private static rnnoiseWasmBinary: ArrayBuffer | null = null;
-    /** Whether AudioWorklet registration succeeded (false on Tauri/WebView2). */
+    /**
+     * Cached worklet JS text — fetched once, reused for all AudioContext registrations.
+     * Using a Blob URL instead of the direct file URL works around WebView2's restriction
+     * on loading AudioWorklet modules from the tauri:// protocol.
+     */
+    private static rnnoiseWorkletText: string | null = null;
+    /** Whether AudioWorklet is supported in this environment (confirmed by a successful addModule). */
     private static rnnoiseWorkletRegistered = false;
     private static rnnoiseWorkletRegistrationAttempted = false;
     // ─── Voice EQ ─────────────────────────────────────────────
@@ -1282,6 +1288,29 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
+     * Register the RNNoise AudioWorklet module on the given AudioContext.
+     *
+     * Uses a Blob URL instead of the direct file URL to work around WebView2's
+     * restriction on loading AudioWorklet modules from the tauri:// protocol.
+     * The worklet JS is fetched once and cached; each AudioContext still needs
+     * its own addModule() call (registration is per-context).
+     */
+    private static async addRnnoiseWorkletModule(ctx: AudioContext): Promise<void> {
+        if (!NexusVoiceConnection.rnnoiseWorkletText) {
+            const response = await fetch("noise-suppressor/workletProcessor.js");
+            if (!response.ok) throw new Error(`Failed to fetch RNNoise worklet: ${response.status}`);
+            NexusVoiceConnection.rnnoiseWorkletText = await response.text();
+        }
+        const blob = new Blob([NexusVoiceConnection.rnnoiseWorkletText], { type: "application/javascript" });
+        const url = URL.createObjectURL(blob);
+        try {
+            await ctx.audioWorklet.addModule(url);
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    /**
      * Try to set up the RNNoise AudioWorklet node.
      * Gracefully falls back (rnnoiseNode stays null) if:
      *   - WASM loading fails
@@ -1300,18 +1329,22 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 logger.info("RNNoise WASM loaded");
             }
 
-            // Register AudioWorklet processor (once per app lifetime)
-            if (!NexusVoiceConnection.rnnoiseWorkletRegistered) {
-                if (NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
-                    // Previous attempt failed — don't retry
-                    logger.warn("RNNoise worklet registration previously failed, skipping");
-                    return;
-                }
-                NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
-                await this.audioContext.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
-                NexusVoiceConnection.rnnoiseWorkletRegistered = true;
-                logger.info("RNNoise AudioWorklet registered");
+            // AudioWorklet registration is per-AudioContext — must call addModule on
+            // this.audioContext even if the probe context succeeded.
+            // rnnoiseWorkletRegistered = "supported by this browser/WebView"
+            // rnnoiseWorkletRegistrationAttempted = "a real (non-probe) attempt was made"
+            if (!NexusVoiceConnection.rnnoiseWorkletRegistered &&
+                NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
+                // A previous real attempt failed — environment doesn't support AudioWorklet
+                logger.warn("RNNoise worklet registration previously failed, skipping");
+                return;
             }
+            // Register on this specific AudioContext (each context needs its own registration).
+            // Uses Blob URL to bypass WebView2's tauri:// protocol restriction on AudioWorklet.
+            NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
+            await NexusVoiceConnection.addRnnoiseWorkletModule(this.audioContext);
+            NexusVoiceConnection.rnnoiseWorkletRegistered = true;
+            logger.info("RNNoise AudioWorklet registered on input context");
 
             // Create worklet node
             this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
@@ -1398,11 +1431,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 if (NexusVoiceConnection.rnnoiseWasmBinary) {
                     const probeCtx = new AudioContext();
                     try {
-                        await probeCtx.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
+                        // Use Blob URL to bypass WebView2's tauri:// protocol restriction
+                        await NexusVoiceConnection.addRnnoiseWorkletModule(probeCtx);
                         NexusVoiceConnection.rnnoiseWorkletRegistered = true;
                         logger.info("Standalone: RNNoise AudioWorklet available");
                     } catch {
-                        // AudioWorklet not supported (Tauri/WebView2) — continue without RNNoise
                         logger.info("Standalone: RNNoise AudioWorklet unavailable, continuing without NC");
                     }
                     probeCtx.close().catch(() => {});
@@ -1426,7 +1459,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             let rnnoiseNode: RnnoiseWorkletNode | null = null;
             if (NexusVoiceConnection.rnnoiseWorkletRegistered && NexusVoiceConnection.rnnoiseWasmBinary) {
                 try {
-                    await ctx.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
+                    await NexusVoiceConnection.addRnnoiseWorkletModule(ctx);
                     rnnoiseNode = new RnnoiseWorkletNode(ctx, {
                         maxChannels: 1,
                         wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
@@ -2180,7 +2213,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 gain.channelCount = 2;
                 gain.channelCountMode = "explicit";
                 gain.channelInterpretation = "speakers";
-                source.connect(analyser).connect(gain).connect(this.outputMasterGain);
+                // Analyser as side-tap (not in main chain) — if analyser sits between
+                // source and gain it acts as a mono pass-through (Opus 1ch source →
+                // analyser with default channelCountMode="max" → 1ch → gain sees 1ch
+                // and outputs left-only even with channelCount=2).
+                source.connect(analyser);
+                source.connect(gain).connect(this.outputMasterGain);
                 this.outputMediaSources.set(participant.identity, source);
                 this.outputParticipantAnalysers.set(participant.identity, analyser);
                 this.outputParticipantGains.set(participant.identity, gain);
