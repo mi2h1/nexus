@@ -7,10 +7,10 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type ChangeEventHandler, type JSX, type ReactNode, useState, useCallback, useRef, useEffect } from "react";
+import React, { type ChangeEventHandler, type JSX, type ReactNode, useState, useCallback, useRef, useEffect, useId } from "react";
 import { logger } from "matrix-js-sdk/src/logger";
 import { type EmptyObject } from "matrix-js-sdk/src/matrix";
-import { Form, SettingsToggleInput } from "@vector-im/compound-web";
+import { Form, SettingsToggleInput, ToggleInput, InlineField, HelpMessage, Label } from "@vector-im/compound-web";
 
 import { _t } from "../../../../../languageHandler";
 import MediaDeviceHandler, { type IMediaDevices, MediaDeviceKindEnum } from "../../../../../MediaDeviceHandler";
@@ -380,6 +380,7 @@ function NexusMicMonitorSettings(): JSX.Element {
 
 /** EQ / AGC / NC strength toggle settings. */
 function NexusAudioProcessingSettings(): JSX.Element {
+    const ncToggleId = useId();
     const [ncEnabled, setNcEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true,
     );
@@ -419,13 +420,18 @@ function NexusAudioProcessingSettings(): JSX.Element {
 
     return (
         <SettingsSubsection heading="音声処理" stretchContent>
-            <SettingsToggleInput
+            <InlineField
                 name="nx-noise-cancellation"
-                label="AI ノイズキャンセリング"
-                helpMessage="RNNoise を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。音質に問題がある場合は OFF にしてください。※ VC 接続中に変更した場合は再入室が必要です。"
-                checked={ncEnabled}
-                onChange={onNcChange}
-            />
+                control={<ToggleInput id={ncToggleId} checked={ncEnabled} onChange={onNcChange} />}
+            >
+                <Label htmlFor={ncToggleId}>
+                    <span className="nx_VoiceSettings_reconnectBadge">VC再接続が必要</span>
+                    AI ノイズキャンセリング
+                </Label>
+                <HelpMessage>
+                    RNNoise を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。音質に問題がある場合は OFF にしてください。
+                </HelpMessage>
+            </InlineField>
             {ncEnabled && (
                 <div className="nx_VoiceSettings_sliderRow">
                     <label htmlFor="nx_nc_strength" className="nx_VoiceSettings_label">NC 強度</label>
