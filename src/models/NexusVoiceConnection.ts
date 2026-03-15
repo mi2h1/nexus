@@ -590,7 +590,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 }
             });
             const unlistenWasapi = await listen<string>("wasapi-info", (event) => {
-                logger.info(event.payload);
+                logger.debug("WASAPI:", event.payload);
             });
             this.tauriUnlistenFns.push(unlistenStopped, unlistenWasapi);
 
@@ -639,14 +639,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     await this.livekitRoom.localParticipant.publishTrack(this.localScreenAudioTrack, {
                         source: Track.Source.ScreenShareAudio,
                     });
-                    logger.info("Native screen share audio captured (WASAPI)");
                 }
             }
 
             this._isScreenSharing = true;
             this._isNativeCapture = true;
             this.updateScreenShares();
-            logger.info("Native screen share started:", targetId);
 
         } catch (e) {
             logger.warn("Failed to start native screen share", e);
@@ -670,7 +668,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const { invoke } = await import("@tauri-apps/api/core");
             const preset = this.getScreenSharePreset();
             await invoke("switch_capture_target", { targetId, fps: preset.fps, targetProcessId });
-            logger.info("Switched native capture target to:", targetId);
         } finally {
             this._isSwitchingTarget = false;
         }
@@ -701,7 +698,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 });
             } catch (e) {
                 if (e instanceof DOMException && e.name === "NotReadableError") {
-                    logger.info("Screen share audio unavailable, retrying video-only");
+                    logger.warn("Screen share audio unavailable, retrying video-only");
                     stream = await navigator.mediaDevices.getDisplayMedia({
                         video: {
                             width: { ideal: preset.width },
@@ -743,9 +740,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 await this.livekitRoom.localParticipant.publishTrack(this.localScreenAudioTrack, {
                     source: Track.Source.ScreenShareAudio,
                 });
-                logger.info("Screen share audio captured");
-            } else {
-                logger.info("Screen share started without audio (not available for this source)");
             }
 
             this._isScreenSharing = true;
@@ -783,7 +777,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             degradationPreference: "maintain-framerate",
         });
 
-        logger.info(`Screen share quality changed to ${preset.label} (${preset.description})`);
     }
 
     public async stopScreenShare(): Promise<void> {
@@ -1088,6 +1081,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         return this._voiceGateOpen;
     }
 
+    /** Returns true if audio is currently passing through the voice gate (or gate is disabled). */
+    private get localVoiceGateOpen(): boolean {
+        return !SettingsStore.getValue("nexus_voice_gate_enabled") || this._voiceGateOpen;
+    }
+
     /** Update mic monitor gain in real time (called from settings UI). */
     public setMicMonitor(enabled: boolean, volume: number): void {
         if (this.monitorGainNode && this.audioContext) {
@@ -1209,11 +1207,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Compressor/Limiter — prevents peaks, placed AFTER gate so
         // background noise is already gated and won't be amplified
         this.compressorNode = this.audioContext.createDynamicsCompressor();
-        this.compressorNode.threshold.value = -12; // -18→-12: more headroom before compression kicks in
-        this.compressorNode.knee.value = 15;       // softer onset
-        this.compressorNode.ratio.value = 3;       // 4:1→3:1: lighter compression
-        this.compressorNode.attack.value = 0.015;  // 3ms→15ms: preserve transients (sudden loud voice)
-        this.compressorNode.release.value = 0.25;  // 150ms→250ms: less pumping artifact
+        this.compressorNode.threshold.value = -12; // headroom before compression kicks in
+        this.compressorNode.knee.value = 15;       // soft onset
+        this.compressorNode.ratio.value = 3;       // 3:1 ratio — light compression
+        this.compressorNode.attack.value = 0.015;  // 15ms — preserve transients
+        this.compressorNode.release.value = 0.25;  // 250ms — avoid pumping artifact
 
         // Post-NC gate — start open (gain=1); pollInputLevel() controls it per-poll
         this.postNcGainNode = this.audioContext.createGain();
@@ -1318,7 +1316,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     url: "noise-suppressor/rnnoise.wasm",
                     simdUrl: "noise-suppressor/rnnoise_simd.wasm",
                 });
-                logger.info("RNNoise WASM loaded");
             }
 
             // AudioWorklet registration is per-AudioContext — must call addModule on
@@ -1332,18 +1329,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 return;
             }
             // Register on this specific AudioContext (each context needs its own registration).
-            // Uses Blob URL to bypass WebView2's tauri:// protocol restriction on AudioWorklet.
             NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
             await NexusVoiceConnection.addRnnoiseWorkletModule(this.audioContext);
             NexusVoiceConnection.rnnoiseWorkletRegistered = true;
-            logger.info("RNNoise AudioWorklet registered on input context");
-
             // Create worklet node
             this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
                 maxChannels: 1,
                 wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
             });
-            logger.info("RNNoise noise cancellation active");
         } catch (e) {
             // Graceful fallback — NC simply won't be applied
             logger.warn("RNNoise setup failed, continuing without noise cancellation:", e);
@@ -1372,7 +1365,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             .getUserMedia({ audio: true })
             .then((stream) => {
                 stream.getTracks().forEach((t) => t.stop());
-                logger.info("Mic permission prefetched");
             })
             .catch(() => {
                 // Permission denied or device unavailable — ignore silently
@@ -1423,12 +1415,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 if (NexusVoiceConnection.rnnoiseWasmBinary) {
                     const probeCtx = new AudioContext();
                     try {
-                        // Use Blob URL to bypass WebView2's tauri:// protocol restriction
-                        await NexusVoiceConnection.addRnnoiseWorkletModule(probeCtx);
+                            await NexusVoiceConnection.addRnnoiseWorkletModule(probeCtx);
                         NexusVoiceConnection.rnnoiseWorkletRegistered = true;
-                        logger.info("Standalone: RNNoise AudioWorklet available");
                     } catch {
-                        logger.info("Standalone: RNNoise AudioWorklet unavailable, continuing without NC");
+                        logger.warn("Standalone: RNNoise AudioWorklet unavailable, continuing without NC");
                     }
                     probeCtx.close().catch(() => {});
                 }
@@ -1457,7 +1447,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                         wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
                     });
                     hpf.connect(rnnoiseNode);
-                    logger.info("Standalone: RNNoise active");
                 } catch {
                     rnnoiseNode = null;
                 }
@@ -1603,7 +1592,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 url: "noise-suppressor/rnnoise.wasm",
                 simdUrl: "noise-suppressor/rnnoise_simd.wasm",
             });
-            logger.info("RNNoise WASM prefetched");
         } catch (e) {
             logger.warn("Failed to prefetch RNNoise WASM:", e);
         }
@@ -1618,7 +1606,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const token = await client.getOpenIdToken();
             const expiresIn = (token.expires_in ?? 3600) * 0.8 * 1000;
             NexusVoiceConnection.openIdTokenCache = { token, expiresAt: Date.now() + expiresIn };
-            logger.info("OpenID token prefetched");
         } catch (e) {
             logger.warn("Failed to prefetch OpenID token", e);
         }
@@ -1717,9 +1704,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.rnnoiseFailedPollCount = rawActive && rnnoiseNearlySilent
                 ? this.rnnoiseFailedPollCount + 1
                 : 0;
-            if (this.rnnoiseFailedPollCount % 10 === 1 && rawActive) {
-                logger.debug(`RNNoise check: rawRms=${rawRms.toFixed(4)} postRms=${rms.toFixed(4)} failCount=${this.rnnoiseFailedPollCount}`);
-            }
             if (this.rnnoiseFailedPollCount > 20) { // 20 × 50ms = 1 second
                 logger.warn("RNNoise is suppressing all audio despite active mic input — disabling and bypassing");
                 this.bypassRnnoise();
@@ -1765,12 +1749,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // speaking 状態変化を 50ms 間隔（pollInputLevel の周期）で即座に emit する。
         const myUserId = this.client.getUserId();
         if (myUserId) {
-            // _voiceGateOpen reflects whether the gate is actually passing audio.
-            // This prevents the indicator from lighting up on background noise when
-            // the gate is closed (especially after RNNoise bypass where _inputLevel
-            // reads raw mic signal including ambient noise).
-            const gateIsOpen = !SettingsStore.getValue("nexus_voice_gate_enabled") || this._voiceGateOpen;
-            const localSpeaking = !this._isMicMuted && this._inputLevel > 5 && gateIsOpen;
+            const localSpeaking = !this._isMicMuted && this._inputLevel > 5 && this.localVoiceGateOpen;
             const wasSpeaking = this._activeSpeakers.has(myUserId);
             if (localSpeaking !== wasSpeaking) {
                 const updated = new Set(this._activeSpeakers);
@@ -2449,8 +2428,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Check local participant — use own input level because we publish a
         // processed MediaStreamTrack via Web Audio API, so LiveKit's
         // localParticipant.isSpeaking may not fire correctly.
-        const gateIsOpen = !SettingsStore.getValue("nexus_voice_gate_enabled") || this._voiceGateOpen;
-        const localSpeaking = !this._isMicMuted && this._inputLevel > 5 && gateIsOpen;
+        const localSpeaking = !this._isMicMuted && this._inputLevel > 5 && this.localVoiceGateOpen;
         if (localSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
         }
@@ -2564,11 +2542,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Private: LiveKit reconnect ───────────────────────────
 
     private onLivekitReconnecting = (): void => {
-        logger.info("LiveKit: 再接続中...");
+        logger.warn("LiveKit: 再接続中...");
     };
 
     private onLivekitReconnected = (): void => {
-        logger.info("LiveKit: 再接続成功");
+        logger.warn("LiveKit: 再接続成功");
         void this.broadcastMuteState(this._isMicMuted);
     };
 
@@ -2613,7 +2591,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // re-joining (force re-join on "Missing own membership"). Retry
         // to pick up the re-sent state event once the next sync arrives.
         if (this.connected && newCount === 0) {
-            logger.info("Memberships dropped to 0 while connected, scheduling retry");
             this.retryUpdateParticipants();
         }
     };
