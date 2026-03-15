@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-15 (v0.2.19)
+> 最終更新: 2026-03-16 (v0.2.22)
 
 ## リポジトリ情報
 
@@ -367,6 +367,22 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - `TrayIconBuilder` でトレイアイコン作成
   - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
   - トレイアイコンクリック → 表示/非表示トグル
+
+#### 2026-03-16 (v0.2.22: 発話インジケーター改善・音声設定UI修正)
+
+- **発話インジケーター: VADとオーディオゲーティングを分離**:
+  - 「入力感度（ボイスゲート）」設定が持っていた2つの役割を分離
+  - VAD（`_voiceGateOpen` の更新）: ゲート設定ON/OFFに関わらず常に実行
+  - `inputGainNode` の制御: ゲート設定が有効な時のみ実行
+  - インジケーターは `_voiceGateOpen`（VAD結果）を直接使用
+  - これにより NC ON + 静音時でも誤点灯しなくなった
+- **入力レベルメーターとゲートしきい値のスケールを統一**:
+  - スタンドアロンモード（VC非接続時）: `getByteFrequencyData`（周波数平均）→ `getByteTimeDomainData` + RMS → dBFS に変更し VC 接続時と同一スケールに統一
+  - VC接続時メーター: pre-NC（rawLevelAnalyser）→ post-NC（analyserNode）ベースに変更
+  - ゲート判定も post-NC 信号を使うため、メーターのバーとしきい値ラインが実際の動作と一致するように
+- **NC設定にVC再接続バッジを追加**:
+  - 「AI ノイズキャンセリング」ラベル右に「VC再接続が必要」バッジを表示
+  - `SettingsToggleInput`（label=string固定）を `InlineField` + `Label` + `ToggleInput` の手動構成に変更
 
 #### 2026-03-15 (v0.2.19: マイクモニター不具合修正 + ESLint/Stylelint 全修正)
 
