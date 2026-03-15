@@ -182,12 +182,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private rnnoiseNode: RnnoiseWorkletNode | null = null;
     /** Cached WASM binary — shared across reconnects. */
     private static rnnoiseWasmBinary: ArrayBuffer | null = null;
-    /**
-     * Cached worklet JS text — fetched once, reused for all AudioContext registrations.
-     * Using a Blob URL instead of the direct file URL works around WebView2's restriction
-     * on loading AudioWorklet modules from the tauri:// protocol.
-     */
-    private static rnnoiseWorkletText: string | null = null;
     /** Whether AudioWorklet is supported in this environment (confirmed by a successful addModule). */
     private static rnnoiseWorkletRegistered = false;
     private static rnnoiseWorkletRegistrationAttempted = false;
@@ -1291,25 +1285,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     /**
      * Register the RNNoise AudioWorklet module on the given AudioContext.
+     * Each AudioContext requires its own addModule() call (registration is per-context).
      *
-     * Uses a Blob URL instead of the direct file URL to work around WebView2's
-     * restriction on loading AudioWorklet modules from the tauri:// protocol.
-     * The worklet JS is fetched once and cached; each AudioContext still needs
-     * its own addModule() call (registration is per-context).
+     * Direct URL is used intentionally — Blob URL causes WASM initialization failure
+     * because import.meta.url in the worklet resolves to blob:// which breaks the
+     * Emscripten-generated relative WASM path resolution.
      */
     private static async addRnnoiseWorkletModule(ctx: AudioContext): Promise<void> {
-        if (!NexusVoiceConnection.rnnoiseWorkletText) {
-            const response = await fetch("noise-suppressor/workletProcessor.js");
-            if (!response.ok) throw new Error(`Failed to fetch RNNoise worklet: ${response.status}`);
-            NexusVoiceConnection.rnnoiseWorkletText = await response.text();
-        }
-        const blob = new Blob([NexusVoiceConnection.rnnoiseWorkletText], { type: "application/javascript" });
-        const url = URL.createObjectURL(blob);
-        try {
-            await ctx.audioWorklet.addModule(url);
-        } finally {
-            URL.revokeObjectURL(url);
-        }
+        await ctx.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
     }
 
     /**
