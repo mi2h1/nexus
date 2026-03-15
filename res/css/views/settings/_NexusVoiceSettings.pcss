@@ -76,9 +76,46 @@ Please see LICENSE files in the repository root for full details.
 
     input[type="range"] {
         flex: 1;
-        height: 4px;
-        accent-color: var(--cpd-color-icon-accent-primary);
         cursor: pointer;
+
+        /* Custom track + thumb to fix vertical alignment across browsers */
+        -webkit-appearance: none;
+        appearance: none;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--cpd-color-bg-subtle-secondary);
+        outline: none;
+
+        &::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--cpd-color-icon-accent-primary);
+            cursor: pointer;
+            /* No margin-top needed — Chromium centers thumb on the element when appearance:none */
+        }
+
+        &::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--cpd-color-icon-accent-primary);
+            cursor: pointer;
+            border: none;
+        }
+
+        &::-webkit-slider-runnable-track {
+            height: 4px;
+            border-radius: 2px;
+            background: var(--cpd-color-bg-subtle-secondary);
+        }
+
+        &::-moz-range-track {
+            height: 4px;
+            border-radius: 2px;
+            background: var(--cpd-color-bg-subtle-secondary);
+        }
     }
 }
 
@@ -99,6 +136,11 @@ Please see LICENSE files in the repository root for full details.
         font: var(--cpd-font-body-sm-semibold);
         color: var(--cpd-color-text-primary);
     }
+}
+
+.nx_VoiceSettings_levelMeterLabel {
+    font: var(--cpd-font-body-sm-semibold);
+    color: var(--cpd-color-text-primary);
 }
 
 .nx_VoiceSettings_levelMeter_track {
@@ -140,4 +182,56 @@ Please see LICENSE files in the repository root for full details.
     background: var(--cpd-color-icon-critical-primary);
     border-radius: 1px;
     pointer-events: none;
+}
+
+/* ── Mic monitor ─────────────────────────────────────────── */
+
+.nx_VoiceSettings_micMonitor {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.nx_VoiceSettings_micMonitorRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nx_VoiceSettings_micMonitorLabel {
+    font: var(--cpd-font-body-sm-semibold);
+    color: var(--cpd-color-text-primary);
+    white-space: nowrap;
+    min-width: 80px;
+}
+
+.nx_VoiceSettings_micMonitorBtn {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.nx_VoiceSettings_micMonitorVolume {
+    margin-bottom: 0;
+}
+
+/* Discord-style vertical bar level meter */
+.nx_VoiceSettings_barMeter {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 28px;
+    flex: 1;
+}
+
+.nx_VoiceSettings_barMeter_bar {
+    flex: 1;
+    border-radius: 2px;
+    background: var(--cpd-color-bg-subtle-secondary);
+    transition: height 60ms ease-out;
+    min-height: 8%;
+}
+
+.nx_VoiceSettings_barMeter_bar--active {
+    background: var(--cpd-color-icon-success-primary);
 }

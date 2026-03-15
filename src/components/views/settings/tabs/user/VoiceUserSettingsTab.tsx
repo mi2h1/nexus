@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type ChangeEventHandler, type JSX, type ReactNode, useState, useCallback, useRef, useEffect, useId } from "react";
+import React, { type JSX, type ReactNode, useState, useCallback, useRef, useEffect, useId } from "react";
 import { logger } from "matrix-js-sdk/src/logger";
 import { type EmptyObject } from "matrix-js-sdk/src/matrix";
 import { Form, SettingsToggleInput, ToggleInput, InlineField, HelpMessage, Label } from "@vector-im/compound-web";
@@ -293,9 +293,13 @@ function NexusVoiceGateSettings(): JSX.Element {
     );
 }
 
+// Bar max-heights (%) for the Discord-style level meter — dome shape
+const MONITOR_BAR_HEIGHTS = [28, 42, 58, 72, 84, 92, 98, 100, 100, 98, 92, 84, 72, 58, 42, 28, 20, 14] as const;
+
 /** Mic monitor — routes processed audio to local speakers for self-monitoring. */
 function NexusMicMonitorSettings(): JSX.Element {
     const { connection } = useNexusVoice();
+    const inputLevel = useSettingsInputLevel(connection);
     const [monitorEnabled, setMonitorEnabled] = useState<boolean>(false);
     const [monitorVolume, setMonitorVolume] = useState<number>(
         () => SettingsStore.getValue("nexus_mic_monitor_volume") ?? 30,
@@ -323,21 +327,18 @@ function NexusMicMonitorSettings(): JSX.Element {
         };
     }, [connection, stopStandalone]);
 
-    const onMonitorChange = useCallback(
-        async (e: React.ChangeEvent<HTMLInputElement>) => {
-            const enabled = e.target.checked;
-            setMonitorEnabled(enabled);
-            SettingsStore.setValue("nexus_mic_monitor_enabled", null, SettingLevel.DEVICE, enabled);
-            if (connection) {
-                connection.setMicMonitor(enabled, monitorVolume);
-            } else if (enabled) {
-                await startStandalone(monitorVolume);
-            } else {
-                stopStandalone();
-            }
-        },
-        [connection, monitorVolume, startStandalone, stopStandalone],
-    );
+    const onMonitorClick = useCallback(async () => {
+        const enabled = !monitorEnabled;
+        setMonitorEnabled(enabled);
+        SettingsStore.setValue("nexus_mic_monitor_enabled", null, SettingLevel.DEVICE, enabled);
+        if (connection) {
+            connection.setMicMonitor(enabled, monitorVolume);
+        } else if (enabled) {
+            await startStandalone(monitorVolume);
+        } else {
+            stopStandalone();
+        }
+    }, [connection, monitorEnabled, monitorVolume, startStandalone, stopStandalone]);
 
     const onMonitorVolumeChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -354,31 +355,44 @@ function NexusMicMonitorSettings(): JSX.Element {
     );
 
     return (
-        <SettingsSubsection heading="マイクテスト" stretchContent>
-            <SettingsToggleInput
-                name="nx-mic-monitor"
-                label="自分の声を聞く"
-                helpMessage="設定中の音声処理（ノイキャン・EQ・AGC）を施した音声をスピーカーに出力します。設定画面を閉じると自動的にOFFになります。ヘッドフォン推奨（スピーカー使用時はハウリングに注意）。"
-                checked={monitorEnabled}
-                onChange={onMonitorChange}
-            />
+        <div className="nx_VoiceSettings_micMonitor">
+            <div className="nx_VoiceSettings_micMonitorRow">
+                <span className="nx_VoiceSettings_micMonitorLabel">マイクモニター</span>
+                <AccessibleButton
+                    onClick={onMonitorClick}
+                    kind={monitorEnabled ? "primary" : "secondary"}
+                    className="nx_VoiceSettings_micMonitorBtn"
+                >
+                    {monitorEnabled ? "停止" : "自分の声を確認"}
+                </AccessibleButton>
+                <div className="nx_VoiceSettings_barMeter" aria-hidden="true">
+                    {MONITOR_BAR_HEIGHTS.map((maxH, i) => (
+                        <div
+                            key={i}
+                            className={`nx_VoiceSettings_barMeter_bar${monitorEnabled && inputLevel > 2 ? " nx_VoiceSettings_barMeter_bar--active" : ""}`}
+                            style={{ height: `${Math.max(8, (inputLevel / 100) * maxH)}%` }}
+                        />
+                    ))}
+                </div>
+            </div>
             {monitorEnabled && (
-                <div className="nx_VoiceSettings_sliderRow">
-                    <label htmlFor="nx_monitor_volume" className="nx_VoiceSettings_label">モニター音量</label>
-                    <input
-                        id="nx_monitor_volume"
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={monitorVolume}
-                        onChange={onMonitorVolumeChange}
-                        className="nx_VoiceSettings_slider"
-                    />
-                    <span className="nx_VoiceSettings_value">{monitorVolume}%</span>
+                <div className="nx_VoiceSettings_slider nx_VoiceSettings_micMonitorVolume">
+                    <label htmlFor="nx_monitor_volume">モニター音量</label>
+                    <div className="nx_VoiceSettings_sliderRow">
+                        <input
+                            id="nx_monitor_volume"
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={monitorVolume}
+                            onChange={onMonitorVolumeChange}
+                        />
+                        <span className="nx_VoiceSettings_sliderValue">{monitorVolume}%</span>
+                    </div>
                 </div>
             )}
-        </SettingsSubsection>
+        </div>
     );
 }
 
@@ -437,19 +451,20 @@ function NexusAudioProcessingSettings(): JSX.Element {
                 </HelpMessage>
             </InlineField>
             {ncEnabled && (
-                <div className="nx_VoiceSettings_sliderRow">
-                    <label htmlFor="nx_nc_strength" className="nx_VoiceSettings_label">NC 強度</label>
-                    <input
-                        id="nx_nc_strength"
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="5"
-                        value={ncStrength}
-                        onChange={onNcStrengthChange}
-                        className="nx_VoiceSettings_slider"
-                    />
-                    <span className="nx_VoiceSettings_value">{ncStrength}%</span>
+                <div className="nx_VoiceSettings_slider">
+                    <label htmlFor="nx_nc_strength">NC 強度</label>
+                    <div className="nx_VoiceSettings_sliderRow">
+                        <input
+                            id="nx_nc_strength"
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={ncStrength}
+                            onChange={onNcStrengthChange}
+                        />
+                        <span className="nx_VoiceSettings_sliderValue">{ncStrength}%</span>
+                    </div>
                 </div>
             )}
             <SettingsToggleInput
@@ -555,12 +570,6 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
         );
     }
 
-    private onAutoGainChanged: ChangeEventHandler<HTMLInputElement> = async (event) => {
-        const enable = event.target.checked;
-        await MediaDeviceHandler.setAudioAutoGainControl(enable);
-        this.setState({ audioAutoGainControl: MediaDeviceHandler.getAudioAutoGainControl() });
-    };
-
     public render(): ReactNode {
         let requestButton: ReactNode | undefined;
         let speakerDropdown: ReactNode | undefined;
@@ -600,12 +609,6 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
                                     <h4 className="nx_VoiceSettings_columnHeading">入力デバイス</h4>
                                     {microphoneDropdown}
                                     <NexusInputVolume />
-                                    <SettingsToggleInput
-                                        name="voice-auto-gain"
-                                        label={_t("settings|voip|voice_agc")}
-                                        checked={this.state.audioAutoGainControl}
-                                        onChange={this.onAutoGainChanged}
-                                    />
                                 </div>
                                 <div className="nx_VoiceSettings_column">
                                     <h4 className="nx_VoiceSettings_columnHeading">出力デバイス</h4>
@@ -613,9 +616,9 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
                                     <NexusOutputVolume />
                                 </div>
                             </div>
+                            <NexusMicMonitorSettings />
                         </SettingsSubsection>
                         <NexusVoiceGateSettings />
-                        <NexusMicMonitorSettings />
                         <NexusAudioProcessingSettings />
                     </SettingsSection>
 
