@@ -322,7 +322,12 @@ function NexusMicMonitorSettings(): JSX.Element {
         stopStandalone();
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                audio: { echoCancellation: true, noiseSuppression: true },
+                audio: {
+                    echoCancellation: true,  // ハウリング防止のため ON（ヘッドフォン推奨だが保険）
+                    noiseSuppression: false, // ブラウザ NS は音をこもらせるため OFF
+                    autoGainControl: false,  // AGC による音変質を防ぐため OFF
+                    sampleRate: 48000,
+                },
             });
             const ctx = new AudioContext();
             const source = ctx.createMediaStreamSource(stream);
