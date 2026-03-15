@@ -79,6 +79,7 @@ function NexusInputVolume(): JSX.Element {
                     max={200}
                     step={1}
                     value={inputVolume}
+                    style={sliderFill(inputVolume, 0, 200)}
                     onChange={onChange}
                 />
                 <span className="nx_VoiceSettings_sliderValue">{inputVolume}%</span>
@@ -115,6 +116,7 @@ function NexusOutputVolume(): JSX.Element {
                     max={200}
                     step={1}
                     value={outputVolume}
+                    style={sliderFill(outputVolume, 0, 200)}
                     onChange={onChange}
                 />
                 <span className="nx_VoiceSettings_sliderValue">{outputVolume}%</span>
@@ -267,6 +269,7 @@ function NexusVoiceGateSettings(): JSX.Element {
                             max={100}
                             step={1}
                             value={gateThreshold}
+                            style={sliderFill(gateThreshold, 0, 100)}
                             onChange={onGateThresholdChange}
                         />
                         <span className="nx_VoiceSettings_sliderValue">{gateThreshold}</span>
@@ -295,6 +298,12 @@ function NexusVoiceGateSettings(): JSX.Element {
 
 // Bar max-heights (%) for the Discord-style level meter — dome shape
 const MONITOR_BAR_HEIGHTS = [28, 42, 58, 72, 84, 92, 98, 100, 100, 98, 92, 84, 72, 58, 42, 28, 20, 14] as const;
+
+/** Compute inline style for a range input: fills left of thumb with accent color. */
+function sliderFill(value: number, min: number, max: number): React.CSSProperties {
+    const pct = Math.round(((value - min) / (max - min)) * 100);
+    return { "--nx-slider-fill": `${pct}%` } as React.CSSProperties;
+}
 
 /** Mic monitor — routes processed audio to local speakers for self-monitoring. */
 function NexusMicMonitorSettings(): JSX.Element {
@@ -357,13 +366,12 @@ function NexusMicMonitorSettings(): JSX.Element {
     return (
         <div className="nx_VoiceSettings_micMonitor">
             <div className="nx_VoiceSettings_micMonitorRow">
-                <span className="nx_VoiceSettings_micMonitorLabel">マイクモニター</span>
                 <AccessibleButton
                     onClick={onMonitorClick}
-                    kind={monitorEnabled ? "primary" : "secondary"}
+                    kind="secondary"
                     className="nx_VoiceSettings_micMonitorBtn"
                 >
-                    {monitorEnabled ? "停止" : "自分の声を確認"}
+                    {monitorEnabled ? "テストを停止" : "マイクテスト"}
                 </AccessibleButton>
                 <div className="nx_VoiceSettings_barMeter" aria-hidden="true">
                     {MONITOR_BAR_HEIGHTS.map((maxH, i) => (
@@ -386,6 +394,7 @@ function NexusMicMonitorSettings(): JSX.Element {
                             max={100}
                             step={1}
                             value={monitorVolume}
+                            style={sliderFill(monitorVolume, 0, 100)}
                             onChange={onMonitorVolumeChange}
                         />
                         <span className="nx_VoiceSettings_sliderValue">{monitorVolume}%</span>
@@ -461,6 +470,7 @@ function NexusAudioProcessingSettings(): JSX.Element {
                             max={100}
                             step={5}
                             value={ncStrength}
+                            style={sliderFill(ncStrength, 0, 100)}
                             onChange={onNcStrengthChange}
                         />
                         <span className="nx_VoiceSettings_sliderValue">{ncStrength}%</span>

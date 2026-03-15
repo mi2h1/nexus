@@ -1490,15 +1490,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             eqPresence.Q.value = 0.8;
             eqPresence.gain.value = 2.5;
 
-            // AGC
-            const agcGainNode = ctx.createGain();
-            agcGainNode.gain.value = 1.0;
-            let agcCurrentGain = 1.0;
-            const AGC_MIN = 0.5;
-            const AGC_MAX = 2.0;
-            const AGC_TARGET_DB = -18;
-            const SILENCE_DB = -55;
-
             // Compressor
             const compressor = ctx.createDynamicsCompressor();
             compressor.threshold.value = -12;
@@ -1511,24 +1502,23 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const outputGain = ctx.createGain();
             outputGain.gain.value = Math.max(0, volume) / 100;
 
-            // Connect: postHpf → analyser(tap) → postNcGain → EQ → AGC → compressor → outputGain → dest
+            // Connect: postHpf → analyser(tap) → postNcGain → EQ → compressor → outputGain → dest
+            // NOTE: AGC is intentionally omitted — it causes oscillation via mic→speaker feedback loop.
             postHpf.connect(postNcGain);
             postNcGain.connect(eqLowCut);
             eqLowCut.connect(eqPresence);
-            eqPresence.connect(agcGainNode);
-            agcGainNode.connect(compressor);
+            eqPresence.connect(compressor);
             compressor.connect(outputGain);
             outputGain.connect(ctx.destination);
 
-            // Polling — drives postNcGate and AGC.
+            // Polling — drives postNcGate and EQ.
             // Settings are RE-READ every cycle so slider changes apply immediately.
+            // NOTE: No AGC here — it would oscillate via mic→speaker acoustic feedback.
             const timeBuffer = new Uint8Array(analyser.fftSize);
             const pollTimer = setInterval(() => {
-                // Re-read all processing settings dynamically
                 const currentNcEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
                 const currentNcStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
                 const currentEqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
-                const currentAgcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
 
                 // Update EQ gains in real time
                 eqLowCut.gain.value = currentEqEnabled ? -3 : 0;
@@ -1556,23 +1546,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 } else {
                     // NC off / strength=0 / no RNNoise — gate fully open
                     postNcGain.gain.setValueAtTime(1.0, now);
-                }
-
-                // AGC — only adjust when signal is above silence threshold
-                if (currentAgcEnabled && voiceDb > SILENCE_DB) {
-                    const diff = AGC_TARGET_DB - voiceDb;
-                    const adjustment = Math.pow(10, diff / 20);
-                    const newGain = Math.max(AGC_MIN, Math.min(AGC_MAX, agcCurrentGain * Math.pow(adjustment, 0.1)));
-                    if (Math.abs(newGain - agcCurrentGain) > 0.01) {
-                        agcCurrentGain = newGain;
-                        agcGainNode.gain.exponentialRampToValueAtTime(agcCurrentGain, now + 0.1);
-                    }
-                } else if (!currentAgcEnabled) {
-                    // AGC turned off — reset gain to unity
-                    if (agcCurrentGain !== 1.0) {
-                        agcCurrentGain = 1.0;
-                        agcGainNode.gain.setValueAtTime(1.0, now);
-                    }
                 }
             }, 50);
 

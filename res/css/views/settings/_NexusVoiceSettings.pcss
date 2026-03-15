@@ -78,13 +78,11 @@ Please see LICENSE files in the repository root for full details.
         flex: 1;
         cursor: pointer;
 
-        /* Custom track + thumb to fix vertical alignment across browsers */
+        /* appearance: none without height — lets the element auto-size to contain the thumb */
         -webkit-appearance: none;
         appearance: none;
-        height: 4px;
-        border-radius: 2px;
-        background: var(--cpd-color-bg-subtle-secondary);
         outline: none;
+        background: transparent;
 
         &::-webkit-slider-thumb {
             -webkit-appearance: none;
@@ -93,7 +91,6 @@ Please see LICENSE files in the repository root for full details.
             border-radius: 50%;
             background: var(--cpd-color-icon-accent-primary);
             cursor: pointer;
-            /* No margin-top needed — Chromium centers thumb on the element when appearance:none */
         }
 
         &::-moz-range-thumb {
@@ -105,16 +102,28 @@ Please see LICENSE files in the repository root for full details.
             border: none;
         }
 
+        /* Filled track: left = accent, right = border color.
+           --nx-slider-fill is set via inline style from JSX. */
         &::-webkit-slider-runnable-track {
             height: 4px;
             border-radius: 2px;
-            background: var(--cpd-color-bg-subtle-secondary);
+            background: linear-gradient(
+                to right,
+                var(--cpd-color-icon-accent-primary) var(--nx-slider-fill, 0%),
+                var(--cpd-color-border-interactive-secondary) var(--nx-slider-fill, 0%)
+            );
         }
 
         &::-moz-range-track {
             height: 4px;
             border-radius: 2px;
-            background: var(--cpd-color-bg-subtle-secondary);
+            background: var(--cpd-color-border-interactive-secondary);
+        }
+
+        &::-moz-range-progress {
+            height: 4px;
+            border-radius: 2px;
+            background: var(--cpd-color-icon-accent-primary);
         }
     }
 }
@@ -199,16 +208,11 @@ Please see LICENSE files in the repository root for full details.
     gap: 12px;
 }
 
-.nx_VoiceSettings_micMonitorLabel {
-    font: var(--cpd-font-body-sm-semibold);
-    color: var(--cpd-color-text-primary);
-    white-space: nowrap;
-    min-width: 80px;
-}
-
 .nx_VoiceSettings_micMonitorBtn {
     white-space: nowrap;
     flex-shrink: 0;
+    min-width: 130px;
+    justify-content: center;
 }
 
 .nx_VoiceSettings_micMonitorVolume {
