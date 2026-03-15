@@ -193,13 +193,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _inputLevel = 0; // 0-100 real-time input level
     /** Reusable buffer for analyser data — avoids allocation in hot polling loop. */
     private analyserBuffer: Uint8Array<ArrayBuffer> | null = null;
+    private freqBuffer: Uint8Array | null = null;
     private _voiceGateOpen = true;
     private voiceGateReleaseTimeout: ReturnType<typeof setTimeout> | null = null;
+    private voiceGateAttackCount = 0;
     private static readonly VOICE_GATE_RELEASE_MS = 300;
     /** Gain ramp duration for voice gate close (fade-out). */
     private static readonly VOICE_GATE_RAMP_SEC = 0.05;
     /** DelayNode lookahead so analyser detects speech before audio reaches the gate. */
     private static readonly VOICE_GATE_LOOKAHEAD_SEC = 0.05;
+    /** Consecutive polls above open threshold required before opening gate (~50ms attack). */
+    private static readonly VOICE_GATE_ATTACK_POLLS = 1;
+    /** Hysteresis gap in dBFS between open and close threshold. */
+    private static readonly VOICE_GATE_HYSTERESIS_DB = 6;
     // ─── AGC constants ────────────────────────────────────────
     /** Target RMS level for AGC (0-100 scale). */
     private static readonly AGC_TARGET_RMS = 25;
@@ -1121,7 +1127,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         // AnalyserNode — monitors input level (pre-delay for instant detection)
         this.analyserNode = this.audioContext.createAnalyser();
-        this.analyserNode.fftSize = 256;
+        this.analyserNode.fftSize = 1024;       // 512 bins @ 48kHz → ~46.9 Hz/bin
+        this.analyserNode.minDecibels = -90;    // maps byte 0 → -90 dBFS
+        this.analyserNode.maxDecibels = 0;      // maps byte 255 → 0 dBFS
 
         // Input GainNode — voice gate (0 = gate closed, inputVol = gate open)
         // Start muted — unmutePipelines() restores the real volume.
@@ -1363,36 +1371,77 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
         if (!gateEnabled || this._isMicMuted) {
             this._voiceGateOpen = true;
+            this.voiceGateAttackCount = 0;
             return;
         }
 
-        const threshold = SettingsStore.getValue("nexus_voice_gate_threshold") ?? 40;
-        if (this._inputLevel > threshold) {
-            // Above threshold → open gate, reset release timer
-            this._voiceGateOpen = true;
-            if (this.inputGainNode && this.audioContext) {
-                // DelayNode lookahead lets us open instantly without clipping the onset
-                const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
-                this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-                this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
-            }
+        // ── Voice-band frequency energy (100 Hz – 3 kHz) ──────────────────────
+        // Reject low-frequency rumble and high-frequency noise before gate decision.
+        const freqBinCount = this.analyserNode.frequencyBinCount; // fftSize / 2
+        if (!this.freqBuffer || this.freqBuffer.length !== freqBinCount) {
+            this.freqBuffer = new Uint8Array(freqBinCount);
+        }
+        this.analyserNode.getByteFrequencyData(this.freqBuffer);
+
+        const sampleRate = this.audioContext?.sampleRate ?? 48000;
+        const hzPerBin = sampleRate / this.analyserNode.fftSize;
+        const lowBin = Math.max(1, Math.round(100 / hzPerBin));
+        const highBin = Math.min(freqBinCount - 1, Math.round(3000 / hzPerBin));
+        let freqSum = 0;
+        for (let i = lowBin; i <= highBin; i++) freqSum += this.freqBuffer[i];
+        const avgByte = freqSum / (highBin - lowBin + 1);
+
+        // Convert byte → dBFS (byte 0 = minDecibels, 255 = maxDecibels)
+        const minDb = this.analyserNode.minDecibels; // -90
+        const maxDb = this.analyserNode.maxDecibels; // 0
+        const voiceBandDb = minDb + (avgByte / 255) * (maxDb - minDb);
+
+        // ── Threshold (slider 0-100 → -60 to 0 dBFS) + Hysteresis ───────────
+        const sliderVal = SettingsStore.getValue("nexus_voice_gate_threshold") ?? 40;
+        const openThresholdDb = (sliderVal / 100) * 60 - 60;   // e.g. 40 → -36 dBFS
+        const closeThresholdDb = openThresholdDb - NexusVoiceConnection.VOICE_GATE_HYSTERESIS_DB;
+
+        if (voiceBandDb >= openThresholdDb) {
+            // ── Above open threshold: count toward attack ──────────────────
+            this.voiceGateAttackCount++;
+            // Cancel any pending release (level is back above open threshold)
             if (this.voiceGateReleaseTimeout) {
                 clearTimeout(this.voiceGateReleaseTimeout);
                 this.voiceGateReleaseTimeout = null;
             }
-        } else if (this._voiceGateOpen && !this.voiceGateReleaseTimeout) {
-            // Below threshold → close gate after release delay
-            this.voiceGateReleaseTimeout = setTimeout(() => {
-                this._voiceGateOpen = false;
-                if (this.inputGainNode && this.audioContext && !this._isMicMuted) {
+            // Open gate after attack period (prevents brief transients from triggering)
+            if (!this._voiceGateOpen && this.voiceGateAttackCount >= NexusVoiceConnection.VOICE_GATE_ATTACK_POLLS) {
+                this._voiceGateOpen = true;
+                if (this.inputGainNode && this.audioContext) {
+                    const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
                     this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-                    this.inputGainNode.gain.linearRampToValueAtTime(
-                        0,
-                        this.audioContext.currentTime + NexusVoiceConnection.VOICE_GATE_RAMP_SEC,
-                    );
+                    this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
                 }
+            }
+        } else if (voiceBandDb < closeThresholdDb) {
+            // ── Below close threshold: start release timer ─────────────────
+            this.voiceGateAttackCount = 0;
+            if (this._voiceGateOpen && !this.voiceGateReleaseTimeout) {
+                this.voiceGateReleaseTimeout = setTimeout(() => {
+                    this._voiceGateOpen = false;
+                    if (this.inputGainNode && this.audioContext && !this._isMicMuted) {
+                        this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                        this.inputGainNode.gain.linearRampToValueAtTime(
+                            0,
+                            this.audioContext.currentTime + NexusVoiceConnection.VOICE_GATE_RAMP_SEC,
+                        );
+                    }
+                    this.voiceGateReleaseTimeout = null;
+                }, NexusVoiceConnection.VOICE_GATE_RELEASE_MS);
+            }
+        } else {
+            // ── Hysteresis zone: maintain current state ────────────────────
+            this.voiceGateAttackCount = 0;
+            // Gate is open and we're in the hysteresis zone → cancel pending close
+            if (this._voiceGateOpen && this.voiceGateReleaseTimeout) {
+                clearTimeout(this.voiceGateReleaseTimeout);
                 this.voiceGateReleaseTimeout = null;
-            }, NexusVoiceConnection.VOICE_GATE_RELEASE_MS);
+            }
         }
 
         // ── VAD-gated AGC ──
@@ -1555,6 +1604,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.agcCurrentGain = 1.0;
         this._inputLevel = 0;
         this._voiceGateOpen = true;
+        this.voiceGateAttackCount = 0;
 
         // Clean up output <audio> elements
         for (const audio of this.outputAudioElements.values()) {
