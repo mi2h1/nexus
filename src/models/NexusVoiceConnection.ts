@@ -1725,17 +1725,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const closeThresholdDb = openThresholdDb - 5; // 5dB hysteresis prevents rapid toggling
                 const now = this.audioContext.currentTime;
                 if (!this._postNcGateOpen && voiceDb >= openThresholdDb) {
-                    // Gate opens: soft 20ms attack to avoid pop/click
+                    // Gate opens instantly — the 50ms delayNode lookahead ensures the gate is
+                    // fully open before the corresponding audio arrives, so no pop occurs.
+                    // A soft ramp here would create audible waviness as voice amplitude fluctuates.
                     this._postNcGateOpen = true;
                     this.postNcGainNode.gain.cancelScheduledValues(now);
-                    this.postNcGainNode.gain.linearRampToValueAtTime(1.0, now + 0.020);
+                    this.postNcGainNode.gain.setValueAtTime(1.0, now);
                 } else if (this._postNcGateOpen && voiceDb < closeThresholdDb) {
-                    // Gate closes: 50ms release
+                    // Gate closes with a short fade to avoid a click on release.
                     this._postNcGateOpen = false;
                     this.postNcGainNode.gain.cancelScheduledValues(now);
                     this.postNcGainNode.gain.linearRampToValueAtTime(0.0, now + 0.050);
                 }
-                // else: no state change — do not reschedule (would interrupt ongoing ramp)
+                // else: hysteresis zone — no change (do not reschedule ongoing ramp)
             } else {
                 // NC off or strength=0 — bypass (pass through)
                 this._postNcGateOpen = true;
