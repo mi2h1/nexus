@@ -322,6 +322,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 this.outputAudioContext = new AudioContext();
                 this.outputMasterGain = this.outputAudioContext.createGain();
                 this.outputMasterGain.gain.value = 0; // starts muted
+                // Force stereo output — without explicit channelCount the node defaults to
+                // channelCountMode="max", which collapses to mono when all participant tracks
+                // are mono (Opus voice), causing left-only audio in WebView2.
+                this.outputMasterGain.channelCount = 2;
+                this.outputMasterGain.channelCountMode = "explicit";
+                this.outputMasterGain.channelInterpretation = "speakers";
                 this.outputMasterGain.connect(this.outputAudioContext.destination);
             }
 
@@ -1854,6 +1860,26 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // reliably redirect audio in WebView2, causing audio to bypass
             // the GainNode chain entirely.
             if (this.outputAudioContext && this.outputMasterGain) {
+                // Evict stale nodes for this participant (e.g. after LiveKit reconnect
+                // where onTrackUnsubscribed may not have fired). Without this cleanup,
+                // old nodes stay connected to outputMasterGain, causing double audio,
+                // phase interference, or mono/left-only output.
+                const staleSource = this.outputMediaSources.get(participant.identity);
+                if (staleSource) {
+                    staleSource.disconnect();
+                    this.outputMediaSources.delete(participant.identity);
+                    this.outputParticipantAnalysers.get(participant.identity)?.disconnect();
+                    this.outputParticipantAnalysers.delete(participant.identity);
+                    this.outputParticipantGains.get(participant.identity)?.disconnect();
+                    this.outputParticipantGains.delete(participant.identity);
+                }
+                const staleAudio = this.outputAudioElements.get(participant.identity);
+                if (staleAudio) {
+                    staleAudio.pause();
+                    staleAudio.srcObject = null;
+                    this.outputAudioElements.delete(participant.identity);
+                }
+
                 const source = this.outputAudioContext.createMediaStreamSource(
                     audio.srcObject as MediaStream,
                 );
