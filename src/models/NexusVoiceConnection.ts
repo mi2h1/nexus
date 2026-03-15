@@ -190,6 +190,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private eqPresence: BiquadFilterNode | null = null;
     // ─── Compressor (limiter) ─────────────────────────────────
     private compressorNode: DynamicsCompressorNode | null = null;
+    /** AnalyserNode tapped after compressor — measures what actually goes to LiveKit. Used for speaking indicator. */
+    private outputSelfAnalyserNode: AnalyserNode | null = null;
+    private readonly outputSelfAnalyserBuffer = new Uint8Array(256);
     // ─── Post-NC gate (residual noise suppression) ────────────
     /** GainNode placed after delay, before voiceGate — cuts residual noise that RNNoise reduces but doesn't eliminate. */
     private postNcGainNode: GainNode | null = null;
@@ -1234,6 +1237,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Create processed stream destination (for LiveKit)
         const dest = this.audioContext.createMediaStreamDestination();
         this.compressorNode.connect(dest);
+        // Side-tap after compressor — measures the actual signal sent to LiveKit (all gates/NC applied).
+        // Used for speaking indicator so no gate state tracking is needed.
+        this.outputSelfAnalyserNode = this.audioContext.createAnalyser();
+        this.outputSelfAnalyserNode.fftSize = 256;
+        this.compressorNode.connect(this.outputSelfAnalyserNode);
         // Mic monitor: parallel output to local speakers
         this.compressorNode.connect(this.monitorGainNode);
         this.monitorGainNode.connect(this.audioContext.destination);
@@ -1682,7 +1690,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         this.emit(CallEvent.InputLevel, this._meterLevel);
 
-        // ── Internal linear level (post-RNNoise, for AGC and speaking threshold) ─
+        // ── Internal linear level (post-RNNoise, for AGC / gate decisions) ──────
         if (!this.analyserBuffer || this.analyserBuffer.length !== this.analyserNode.fftSize) {
             this.analyserBuffer = new Uint8Array(this.analyserNode.fftSize) as Uint8Array<ArrayBuffer>;
         }
@@ -1695,7 +1703,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             sum += normalized * normalized;
         }
         const rms = Math.sqrt(sum / data.length);
-        this._inputLevel = Math.min(100, Math.round(rms * 300));
+
+        // ── Speaking indicator level (output tap — what actually goes to LiveKit) ─
+        // Tapped after compressor so all gates (voice gate, postNcGate) are already applied.
+        // No gate-state tracking needed: if any gate is closed, this reads near-zero.
+        if (this.outputSelfAnalyserNode) {
+            this.outputSelfAnalyserNode.getByteTimeDomainData(this.outputSelfAnalyserBuffer);
+            let outSum = 0;
+            for (const v of this.outputSelfAnalyserBuffer) {
+                const s = (v - 128) / 128;
+                outSum += s * s;
+            }
+            const outputRms = Math.sqrt(outSum / this.outputSelfAnalyserBuffer.length);
+            this._inputLevel = Math.min(100, Math.round(outputRms * 300));
+        }
 
         // ── Voice EQ (dynamic) ───────────────────────────────────────────────
         // EQ nodes are always in the chain; toggling is done by zeroing their gain.
@@ -1766,17 +1787,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // speaking 状態変化を 50ms 間隔（pollInputLevel の周期）で即座に emit する。
         const myUserId = this.client.getUserId();
         if (myUserId) {
-            // NC有効時: _postNcGateOpen（NC強度ゲート）が開いている時のみ点灯。
-            // NC無効時: _inputLevel > 1 だけで判定し、環境音・タイプ音も拾う。
-            const ncPostGateActive =
-                (SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true) &&
-                (SettingsStore.getValue("nexus_nc_strength") ?? 50) > 0 &&
-                this.rnnoiseNode !== null;
-            const localSpeaking =
-                !this._isMicMuted &&
-                this._inputLevel > 1 &&
-                this.localVoiceGateOpen &&
-                (!ncPostGateActive || this._postNcGateOpen);
+            // _inputLevel はコンプレッサー後の出力タップ値。
+            // 全ゲート（voiceGate / postNcGate）が閉じていれば出力は 0 になるため、
+            // ゲート状態を別途追跡する必要がない。
+            const localSpeaking = !this._isMicMuted && this._inputLevel > 1 && this.localVoiceGateOpen;
             const wasSpeaking = this._activeSpeakers.has(myUserId);
             if (localSpeaking !== wasSpeaking) {
                 const updated = new Set(this._activeSpeakers);
@@ -2030,6 +2044,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.rawLevelAnalyser = null;
         this.rawLevelBuffer = null;
         this.analyserBuffer = null;
+        this.outputSelfAnalyserNode?.disconnect();
+        this.outputSelfAnalyserNode = null;
         this.postNcGainNode?.disconnect();
         this.postNcGainNode = null;
         this.monitorGainNode?.disconnect();
@@ -2455,15 +2471,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Check local participant — use own input level because we publish a
         // processed MediaStreamTrack via Web Audio API, so LiveKit's
         // localParticipant.isSpeaking may not fire correctly.
-        const ncPostGateActive =
-            (SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true) &&
-            (SettingsStore.getValue("nexus_nc_strength") ?? 50) > 0 &&
-            this.rnnoiseNode !== null;
-        const localSpeaking =
-            !this._isMicMuted &&
-            this._inputLevel > 1 &&
-            this.localVoiceGateOpen &&
-            (!ncPostGateActive || this._postNcGateOpen);
+        // _inputLevel はコンプレッサー後の出力タップ値なのでゲート状態の追跡不要。
+        const localSpeaking = !this._isMicMuted && this._inputLevel > 1 && this.localVoiceGateOpen;
         if (localSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
         }
