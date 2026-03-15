@@ -206,6 +206,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private agcGainNode: GainNode | null = null;
     private agcCurrentGain = 1.0;
     private voiceGateTimer: ReturnType<typeof setInterval> | null = null;
+    /** Consecutive polls where raw mic has audio but post-RNNoise is silent (WASM failure detection). */
+    private rnnoiseFailedPollCount = 0;
     private _inputLevel = 0; // 0-100 internal linear level (AGC/threshold only)
     private _meterLevel = 0; // 0-100 dBFS log-scaled level emitted for display
     /** AnalyserNode tapped before RNNoise — reads true mic signal for the display meter. */
@@ -1649,12 +1651,35 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
     }
 
+    /**
+     * Emergency bypass: disconnect RNNoise from the signal chain and connect
+     * the highPassFilter directly to the analyserNode and delayNode.
+     * Called when RNNoise is detected to be outputting silence (WASM init failure).
+     */
+    private bypassRnnoise(): void {
+        if (!this.rnnoiseNode || !this.highPassFilter || !this.delayNode || !this.analyserNode) return;
+        try {
+            this.highPassFilter.disconnect(this.rnnoiseNode);
+            this.rnnoiseNode.disconnect();
+            this.rnnoiseNode.destroy();
+        } catch {
+            // Ignore disconnect errors
+        }
+        this.rnnoiseNode = null;
+        this.rnnoiseFailedPollCount = 0;
+        // Reconnect HPF directly to the analyser tap and main chain delay
+        this.highPassFilter.connect(this.analyserNode);
+        this.highPassFilter.connect(this.delayNode);
+        logger.warn("RNNoise bypassed — audio pipeline restored via HPF direct path");
+    }
+
     private pollInputLevel(): void {
         if (!this.analyserNode) return;
 
         // ── Display meter (pre-RNNoise raw signal, dBFS log scale) ──────────────
         // Uses rawLevelAnalyser tapped before noise cancellation so the meter
         // accurately reflects what the microphone is actually picking up.
+        let rawRms = 0;
         if (this.rawLevelAnalyser) {
             const bufLen = this.rawLevelAnalyser.fftSize;
             if (!this.rawLevelBuffer || this.rawLevelBuffer.length !== bufLen) {
@@ -1666,7 +1691,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const n = (s - 128) / 128;
                 rawSum += n * n;
             }
-            const rawRms = Math.sqrt(rawSum / this.rawLevelBuffer.length);
+            rawRms = Math.sqrt(rawSum / this.rawLevelBuffer.length);
             // Convert RMS → dBFS, map -60dBFS…0dBFS → 0…100
             const dBFS = rawRms > 0 ? 20 * Math.log10(rawRms) : -96;
             this._meterLevel = Math.min(100, Math.max(0, Math.round((dBFS + 60) / 60 * 100)));
@@ -1687,6 +1712,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         const rms = Math.sqrt(sum / data.length);
         this._inputLevel = Math.min(100, Math.round(rms * 300));
+
+        // ── RNNoise silence detection ─────────────────────────────────────────
+        // If raw mic has audio but post-RNNoise is silent, the WASM processor
+        // is not functioning (common when worklet WASM init fails silently).
+        // After 1 second of this discrepancy, bypass RNNoise and reconnect HPF
+        // directly so audio can flow through the rest of the pipeline.
+        if (this.rnnoiseNode) {
+            const rawActive = rawRms > 0.003; // ~-50dBFS: mic is clearly picking up sound
+            if (rawActive && rms === 0) {
+                this.rnnoiseFailedPollCount++;
+                if (this.rnnoiseFailedPollCount > 20) { // 20 × 50ms = 1 second
+                    logger.warn("RNNoise is outputting silence despite active mic input — disabling and bypassing");
+                    this.bypassRnnoise();
+                }
+            } else {
+                this.rnnoiseFailedPollCount = 0;
+            }
+        }
 
         // ── NC Strength post-gate ────────────────────────────────────────────
         // Gates residual noise that RNNoise attenuates but doesn't fully eliminate.
@@ -1961,6 +2004,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.rnnoiseNode.destroy();
             this.rnnoiseNode = null;
         }
+        this.rnnoiseFailedPollCount = 0;
         this.eqLowCut = null;
         this.eqPresence = null;
         this.compressorNode = null;
