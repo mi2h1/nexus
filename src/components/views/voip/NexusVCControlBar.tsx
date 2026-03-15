@@ -196,8 +196,9 @@ export function NexusVCControlBar({
             </div>
 
             {showSharePanel && shareButtonRef.current && (() => {
-                const rect = shareButtonRef.current!.getBoundingClientRect();
-                const win = shareButtonRef.current!.ownerDocument.defaultView ?? window;
+                const btn = shareButtonRef.current;
+                const rect = btn.getBoundingClientRect();
+                const win = btn.ownerDocument.defaultView ?? window;
                 return (
                     <NexusScreenSharePanel
                         isScreenSharing={isScreenSharing}

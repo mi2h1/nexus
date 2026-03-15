@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useEffect } from "react";
+import { useEffect, type RefObject, type SyntheticEvent } from "react";
 
 /**
  * Close when clicking/tapping outside the given ref element.
@@ -13,7 +13,7 @@ import React, { useEffect } from "react";
  * mouse events from range-input drags that can close the menu.
  */
 export function useClickOutside(
-    ref: React.RefObject<HTMLElement | null>,
+    ref: RefObject<HTMLElement | null>,
     onClose: () => void,
     portalContainer?: HTMLElement,
 ): void {
@@ -44,7 +44,7 @@ export function useEscapeKey(onClose: () => void, portalContainer?: HTMLElement)
 }
 
 /** Stop pointer/mouse/focus events from bubbling to RovingTabIndex ancestors. */
-export function stopBubble(e: React.SyntheticEvent): void {
+export function stopBubble(e: SyntheticEvent): void {
     e.stopPropagation();
     e.nativeEvent.stopImmediatePropagation();
 }

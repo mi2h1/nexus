@@ -5,8 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import { TypedEventEmitter } from "matrix-js-sdk/src/matrix";
-import { type Room } from "matrix-js-sdk/src/matrix";
+import { TypedEventEmitter, type Room } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
 import { NexusVoiceConnection, playVcSound, VC_STANDBY_SOUND, VC_JOIN_SOUND, VC_LEAVE_SOUND, VC_MUTE_SOUND, VC_UNMUTE_SOUND } from "../models/NexusVoiceConnection";

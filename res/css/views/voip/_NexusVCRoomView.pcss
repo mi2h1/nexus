@@ -205,7 +205,9 @@
     overflow: hidden;
     cursor: pointer;
     flex-shrink: 0;
+    /* stylelint-disable-next-line csstools/value-no-unknown-custom-properties */
     width: var(--panel-w);
+    /* stylelint-disable-next-line csstools/value-no-unknown-custom-properties */
     height: var(--panel-h);
     border: 3px solid transparent;
     transition: border-color 0.2s ease;
@@ -250,7 +252,7 @@
     align-items: center;
     justify-content: center;
     padding-bottom: var(--cpd-space-4x);
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
+    background: linear-gradient(transparent, rgb(0, 0, 0, 0.5));
     opacity: 0;
     transition: opacity 0.15s ease;
     pointer-events: none;
@@ -266,13 +268,13 @@
     padding: var(--cpd-space-1x) var(--cpd-space-3x);
     border: none;
     border-radius: 9999px;
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: rgb(0, 0, 0, 0.7);
     color: #fff;
     font: var(--cpd-font-body-sm-semibold);
     cursor: pointer;
 
     &:hover {
-        background-color: rgba(0, 0, 0, 0.85);
+        background-color: rgb(0, 0, 0, 0.85);
     }
 }
 
@@ -317,7 +319,7 @@
 .nx_VCRoomView_screenSharePreview_overlay {
     position: absolute;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.6);
+    background-color: rgb(0, 0, 0, 0.6);
     display: flex;
     align-items: center;
     justify-content: center;

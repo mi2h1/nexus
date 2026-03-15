@@ -9,7 +9,6 @@ Please see LICENSE files in the repository root for full details.
 
 import React, { type ChangeEventHandler, type JSX, type ReactNode, useState, useCallback, useRef, useEffect } from "react";
 import { logger } from "matrix-js-sdk/src/logger";
-import { FALLBACK_ICE_SERVER } from "matrix-js-sdk/src/webrtc/call";
 import { type EmptyObject } from "matrix-js-sdk/src/matrix";
 import { Form, SettingsToggleInput } from "@vector-im/compound-web";
 
@@ -17,7 +16,6 @@ import { _t } from "../../../../../languageHandler";
 import MediaDeviceHandler, { type IMediaDevices, MediaDeviceKindEnum } from "../../../../../MediaDeviceHandler";
 import AccessibleButton from "../../../elements/AccessibleButton";
 import { SettingLevel } from "../../../../../settings/SettingLevel";
-import SettingsFlag from "../../../elements/SettingsFlag";
 import { requestMediaPermissions } from "../../../../../utils/media/requestMediaPermissions";
 import SettingsTab from "../SettingsTab";
 import { SettingsSection } from "../../shared/SettingsSection";
@@ -152,7 +150,7 @@ function useSettingsInputLevel(connection: NexusVoiceConnection | null): number 
         const start = async (): Promise<void> => {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: true, noiseSuppression: true },
+                    audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false, sampleRate: 48000, channelCount: 1 },
                 });
                 if (cancelled) {
                     stream.getTracks().forEach((t) => t.stop());
@@ -272,7 +270,7 @@ function NexusVoiceGateSettings(): JSX.Element {
                 </div>
             )}
             <div className="nx_VoiceSettings_levelMeter">
-                <label>入力レベル</label>
+                <span className="nx_VoiceSettings_levelMeterLabel">入力レベル</span>
                 <div className="nx_VoiceSettings_levelMeter_track">
                     <div
                         ref={levelBarRef}
@@ -362,8 +360,9 @@ function NexusMicMonitorSettings(): JSX.Element {
             />
             {monitorEnabled && (
                 <div className="nx_VoiceSettings_sliderRow">
-                    <label className="nx_VoiceSettings_label">モニター音量</label>
+                    <label htmlFor="nx_monitor_volume" className="nx_VoiceSettings_label">モニター音量</label>
                     <input
+                        id="nx_monitor_volume"
                         type="range"
                         min="0"
                         max="100"
@@ -429,8 +428,9 @@ function NexusAudioProcessingSettings(): JSX.Element {
             />
             {ncEnabled && (
                 <div className="nx_VoiceSettings_sliderRow">
-                    <label className="nx_VoiceSettings_label">NC 強度</label>
+                    <label htmlFor="nx_nc_strength" className="nx_VoiceSettings_label">NC 強度</label>
                     <input
+                        id="nx_nc_strength"
                         type="range"
                         min="0"
                         max="100"
@@ -519,10 +519,6 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
         }
     };
 
-    private changeWebRtcMethod = (p2p: boolean): void => {
-        this.context.setForceTURN(!p2p);
-    };
-
     private renderDeviceOptions(devices: Array<MediaDeviceInfo>, category: MediaDeviceKindEnum): Array<JSX.Element> {
         return devices.map((d) => {
             return (
@@ -553,18 +549,6 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
         const enable = event.target.checked;
         await MediaDeviceHandler.setAudioAutoGainControl(enable);
         this.setState({ audioAutoGainControl: MediaDeviceHandler.getAudioAutoGainControl() });
-    };
-
-    private onNoiseSuppressionChanged: ChangeEventHandler<HTMLInputElement> = async (event) => {
-        const enable = event.target.checked;
-        await MediaDeviceHandler.setAudioNoiseSuppression(enable);
-        this.setState({ audioNoiseSuppression: MediaDeviceHandler.getAudioNoiseSuppression() });
-    };
-
-    private onEchoCancellationChanged: ChangeEventHandler<HTMLInputElement> = async (event) => {
-        const enable = event.target.checked;
-        await MediaDeviceHandler.setAudioEchoCancellation(enable);
-        this.setState({ audioEchoCancellation: MediaDeviceHandler.getAudioEchoCancellation() });
     };
 
     public render(): ReactNode {

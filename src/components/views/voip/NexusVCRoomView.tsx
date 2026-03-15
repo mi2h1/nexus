@@ -9,6 +9,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, type 
 import ReactDOM from "react-dom";
 import classNames from "classnames";
 import { type RoomMember } from "matrix-js-sdk/src/matrix";
+import { IconEyeOff } from "@tabler/icons-react";
 
 import { useMatrixClientContext } from "../../../contexts/MatrixClientContext";
 import { useVCParticipants } from "../../../hooks/useVCParticipants";
@@ -24,7 +25,6 @@ import type { ScreenShareInfo } from "../../../models/Call";
 import { stopBubble } from "../../../hooks/useMenuDismiss";
 import MemberAvatar from "../avatars/MemberAvatar";
 import AccessibleButton from "../elements/AccessibleButton";
-import { IconEyeOff } from "@tabler/icons-react";
 
 interface NexusVCRoomViewProps {
     roomId: string;
@@ -60,13 +60,11 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     const activeSpeakers = useNexusActiveSpeakers();
     const participantStates = useNexusParticipantStates();
 
-    // Prefetch mic permission when the user opens a VC channel (before they join)
+    // Prefetch mic permission when the user opens a VC channel (before they join).
+    // NexusVoiceStore.instance is a stable singleton — empty deps is correct.
     useEffect(() => {
-        if (!connected) {
-            NexusVoiceStore.instance.prefetchMicPermission();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // once on mount
+        NexusVoiceStore.instance.prefetchMicPermission();
+    }, []);
 
     // Sync popout state from store (store is the source of truth)
     useEffect(() => {
@@ -277,9 +275,12 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     );
 
     return (
-        <div className={classNames("nx_VCRoomView", {
-            "nx_VCRoomView--focusMode": layoutMode === "spotlight" && focusMode,
-        })} ref={setViewEl}>
+        <div
+            className={classNames("nx_VCRoomView", {
+                "nx_VCRoomView--focusMode": layoutMode === "spotlight" && focusMode,
+            })}
+            ref={setViewEl}
+        >
             <div className="nx_VCRoomView_content" onContextMenu={onViewContextMenu}>
                 {layoutMode === "spotlight" ? (
                     <SpotlightLayout
@@ -343,13 +344,12 @@ interface NexusVCViewContextMenuProps {
     onClose: () => void;
     /** Portal target — defaults to document.body, but should be the popout's body when isPopout. */
     portalContainer?: HTMLElement;
+    ref?: React.Ref<HTMLDivElement>;
 }
 
-const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewContextMenuProps>(
-    function NexusVCViewContextMenu(
-        { left, top, share, hideNonScreenSharePanels, onHideNonScreenSharePanelsChange, onStopWatching, onClose, portalContainer },
-        ref,
-    ) {
+function NexusVCViewContextMenu(
+    { left, top, share, hideNonScreenSharePanels, onHideNonScreenSharePanelsChange, onStopWatching, onClose, portalContainer, ref }: NexusVCViewContextMenuProps,
+): JSX.Element {
         const conn = NexusVoiceStore.instance.getActiveConnection();
         const initialVolume = share ? (conn?.getScreenShareVolume(share.participantIdentity) ?? 1) : 1;
         const volumeRef = useRef(initialVolume);
@@ -428,8 +428,7 @@ const NexusVCViewContextMenu = React.forwardRef<HTMLDivElement, NexusVCViewConte
             </div>,
             portalContainer ?? document.body,
         );
-    },
-);
+}
 
 // ─── Spotlight layout ─────────────────────────────────────────
 

@@ -32,8 +32,6 @@ import {
     ScreenSharePresets,
     VideoPreset,
 } from "livekit-client";
-
-
 import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppressor";
 
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
@@ -930,7 +928,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
-     * Get the current audio volume for a remote participant (0.0–2.0).
+     * Get the current audio volume for a remote participant (0.0–4.0).
      * Returns 1 if participant not found.
      */
     public getParticipantVolume(userId: string): number {
@@ -960,7 +958,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     }
 
     /**
-     * Get the current audio volume for a remote screen share (0.0–2.0).
+     * Get the current audio volume for a remote screen share (0.0–4.0).
      * Returns 1 if not set.
      */
     public getScreenShareVolume(participantIdentity: string): number {
@@ -1138,8 +1136,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * and localAudioTrack, both of which are ready before connect() starts.
      *
      * Pipeline:
-     *   source → HPF(80Hz) → [RNNoise (optional)] → analyser (即時レベル検出)
-     *                                              → delay(50ms) → inputGain (voice gate)
+     *   source → HPF(80Hz) ┬→ rawLevelAnalyser (メーター表示用、RNNoise前の生信号)
+     *                      └→ [RNNoise (optional)] → analyser (ゲート判定用、NC後信号)
+     *                                              → delay(50ms) → postNcGain → inputGain (voice gate)
      *                                              → eqLowCut (350Hz -3dB, こもり除去)
      *                                              → eqPresence (3kHz +2.5dB, 明瞭さ向上)
      *                                              → agcGain (VAD連動自動音量調整)
@@ -1234,7 +1233,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     /**
      * Connect the input audio pipeline chain:
-     *   source → HPF → [RNNoise] → analyser (level tap, pre-gate)
+     *   source → HPF ┬→ rawLevelAnalyser (メーター用タップ)
+     *                └→ [RNNoise] → analyser (ゲート判定用タップ)
      *                             → delay(50ms) → postNcGain (NC strength gate)
      *                             → inputGain (voice gate)
      *                             → eqLowCut → eqPresence → agcGain → compressor
@@ -1246,7 +1246,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.sourceNode || !this.highPassFilter
             || !this.analyserNode || !this.inputGainNode || !this.audioContext
             || !this.eqLowCut || !this.eqPresence || !this.agcGainNode
-            || !this.compressorNode) return;
+            || !this.compressorNode || !this.postNcGainNode) return;
 
         this.sourceNode.connect(this.highPassFilter);
 
@@ -1270,8 +1270,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Post-NC gate sits between delay and voice gate:
         //   delay → postNcGate → voiceGate (inputGainNode) → ...
         // pollInputLevel() reads analyserNode (pre-delay tap) and controls postNcGainNode.
-        this.delayNode.connect(this.postNcGainNode!);
-        this.postNcGainNode!.connect(this.inputGainNode);
+        this.delayNode.connect(this.postNcGainNode);
+        this.postNcGainNode.connect(this.inputGainNode);
         // Voice gate → EQ → AGC → Compressor
         this.inputGainNode.connect(this.eqLowCut);
         this.eqLowCut.connect(this.eqPresence);
@@ -1892,6 +1892,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.rawLevelAnalyser?.disconnect();
         this.rawLevelAnalyser = null;
         this.rawLevelBuffer = null;
+        this.analyserBuffer = null;
         this.postNcGainNode?.disconnect();
         this.postNcGainNode = null;
         this.monitorGainNode?.disconnect();

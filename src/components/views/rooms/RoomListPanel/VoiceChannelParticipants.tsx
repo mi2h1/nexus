@@ -6,7 +6,6 @@
  */
 
 import React, { type JSX, useCallback, useState } from "react";
-
 import classNames from "classnames";
 import { IconMicrophoneOff } from "@tabler/icons-react";
 

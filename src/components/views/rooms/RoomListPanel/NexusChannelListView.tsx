@@ -16,6 +16,8 @@ import {
     type Room as SharedRoom,
 } from "@element-hq/web-shared-components";
 import { type Room } from "matrix-js-sdk/src/matrix";
+import { IconMessageCircleFilled } from "@tabler/icons-react";
+import { Tooltip } from "@vector-im/compound-web";
 
 import { useChannelSeparation } from "../../../../hooks/useChannelSeparation";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
@@ -26,8 +28,6 @@ import { CallEvent, ConnectionState } from "../../../../models/Call";
 import { useVCParticipants } from "../../../../hooks/useVCParticipants";
 import defaultDispatcher from "../../../../dispatcher/dispatcher";
 import { Action } from "../../../../dispatcher/actions";
-import { IconMessageCircleFilled } from "@tabler/icons-react";
-import { Tooltip } from "@vector-im/compound-web";
 import RightPanelStore from "../../../../stores/right-panel/RightPanelStore";
 import { RightPanelPhases } from "../../../../stores/right-panel/RightPanelStorePhases";
 

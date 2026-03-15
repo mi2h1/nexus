@@ -23,6 +23,7 @@ import { useConnectionState, useParticipatingMembers } from "../../../../hooks/u
 import { useNexusVoice } from "../../../../hooks/useNexusVoice";
 import { useMatrixClientContext } from "../../../../contexts/MatrixClientContext";
 import { NexusVoiceStore } from "../../../../stores/NexusVoiceStore";
+import UIStore from "../../../../stores/UIStore";
 import AccessibleButton from "../../elements/AccessibleButton";
 import { NexusScreenSharePanel } from "../../voip/NexusScreenSharePanel";
 
@@ -140,12 +141,13 @@ const NexusCallStatusPanel: React.FC<NexusCallStatusPanelProps> = ({ call }) => 
                 {isScreenSharing ? <IconScreenShareOff size={20} /> : <IconScreenShare size={20} />}
             </AccessibleButton>
             {showSharePanel && shareButtonRef.current && (() => {
-                const rect = shareButtonRef.current!.getBoundingClientRect();
+                const btn = shareButtonRef.current;
+                const rect = btn.getBoundingClientRect();
                 return (
                     <NexusScreenSharePanel
                         isScreenSharing={isScreenSharing}
                         anchorLeft={rect.left + rect.width / 2}
-                        anchorBottom={window.innerHeight - rect.top + 8}
+                        anchorBottom={UIStore.instance.windowHeight - rect.top + 8}
                         onFinished={() => setShowSharePanel(false)}
                     />
                 );

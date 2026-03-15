@@ -49,7 +49,7 @@ export class NativeVideoCaptureStream {
     private unlisten: (() => void) | null = null;
     private stopped = false;
 
-    constructor(initialWidth: number, initialHeight: number, fps: number) {
+    public constructor(initialWidth: number, initialHeight: number, fps: number) {
         this.canvas = document.createElement("canvas");
         this.canvas.width = initialWidth || 1920;
         this.canvas.height = initialHeight || 1080;
@@ -59,7 +59,7 @@ export class NativeVideoCaptureStream {
         this.stream = this.canvas.captureStream(fps);
     }
 
-    async start(): Promise<void> {
+    public async start(): Promise<void> {
         const { listen } = await import("@tauri-apps/api/event");
         const unlisten = await listen<FramePayload>("capture-frame", async (event) => {
             if (this.stopped) return;
@@ -95,12 +95,12 @@ export class NativeVideoCaptureStream {
         bitmap.close();
     }
 
-    getVideoTrack(): MediaStreamTrack | null {
+    public getVideoTrack(): MediaStreamTrack | null {
         const tracks = this.stream.getVideoTracks();
         return tracks.length > 0 ? tracks[0] : null;
     }
 
-    stop(): void {
+    public stop(): void {
         this.stopped = true;
         if (this.unlisten) {
             this.unlisten();
@@ -120,8 +120,8 @@ interface MediaStreamTrackGeneratorInit {
     kind: "audio" | "video";
 }
 declare class MediaStreamTrackGenerator extends MediaStreamTrack {
-    constructor(init: MediaStreamTrackGeneratorInit);
-    readonly writable: WritableStream<AudioData>;
+    public constructor(init: MediaStreamTrackGeneratorInit);
+    public readonly writable: WritableStream<AudioData>;
 }
 
 /**
@@ -143,7 +143,7 @@ export class NativeAudioCaptureStream {
     private stopped = false;
     private dataReceived = false;
 
-    constructor(_audioContext: AudioContext, sampleRate = 48000, channels = 2) {
+    public constructor(_audioContext: AudioContext, sampleRate = 48000, channels = 2) {
         this.sampleRate = sampleRate;
         this.channels = channels;
         this.generator = new MediaStreamTrackGenerator({ kind: "audio" });
@@ -151,7 +151,7 @@ export class NativeAudioCaptureStream {
         logger.info(`Audio capture: using MediaStreamTrackGenerator, ${sampleRate}Hz ${channels}ch`);
     }
 
-    async start(): Promise<void> {
+    public async start(): Promise<void> {
         const { listen } = await import("@tauri-apps/api/event");
         const unlisten = await listen<AudioPayload>("capture-audio", (event) => {
             if (this.stopped) return;
@@ -185,11 +185,11 @@ export class NativeAudioCaptureStream {
         this.writer.write(audioData).catch(() => {});
     }
 
-    getAudioTrack(): MediaStreamTrack | null {
+    public getAudioTrack(): MediaStreamTrack | null {
         return this.generator;
     }
 
-    stop(): void {
+    public stop(): void {
         this.stopped = true;
         if (this.unlisten) {
             this.unlisten();

@@ -1,5 +1,14 @@
 # Nexus — CLAUDE.md
 
+## Commands
+- `pnpm start`: 開発サーバー起動（ポート 1420）
+- `pnpm build`: プロダクションビルド
+- `NODE_OPTIONS="--max-old-space-size=4096" npx tsc --noEmit`: 型チェック
+- `pnpm tauri:dev`: Tauri 開発ビルド起動
+- `pnpm test`: ユニットテスト実行
+- `pnpm lint:js`: ESLint + Prettier チェック
+- `pnpm lint:style`: Stylelint（CSS）チェック
+
 ## Project Goal
 - **目的**: Element Web をフォークし、Discord 風 UI のチャットアプリを作る
 - **成果物**: GitHub Pages でホストする Web アプリ（将来 Tauri 2 でネイティブ化）
