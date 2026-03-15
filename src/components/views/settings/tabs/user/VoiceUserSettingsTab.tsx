@@ -291,10 +291,78 @@ function NexusVoiceGateSettings(): JSX.Element {
     );
 }
 
-/** EQ / AGC toggle settings. */
+/** Mic monitor — routes processed audio to local speakers for self-monitoring. */
+function NexusMicMonitorSettings(): JSX.Element {
+    const { connection } = useNexusVoice();
+    const [monitorEnabled, setMonitorEnabled] = useState<boolean>(false);
+    const [monitorVolume, setMonitorVolume] = useState<number>(
+        () => SettingsStore.getValue("nexus_mic_monitor_volume") ?? 30,
+    );
+
+    // Always off on mount; forced off when component unmounts (settings tab closes)
+    useEffect(() => {
+        return () => {
+            // Settings tab closed — force monitor off
+            SettingsStore.setValue("nexus_mic_monitor_enabled", null, SettingLevel.DEVICE, false);
+            connection?.setMicMonitor(false, 0);
+        };
+    }, [connection]);
+
+    const onMonitorChange = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const enabled = e.target.checked;
+            setMonitorEnabled(enabled);
+            SettingsStore.setValue("nexus_mic_monitor_enabled", null, SettingLevel.DEVICE, enabled);
+            connection?.setMicMonitor(enabled, monitorVolume);
+        },
+        [connection, monitorVolume],
+    );
+
+    const onMonitorVolumeChange = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const vol = Number(e.target.value);
+            setMonitorVolume(vol);
+            SettingsStore.setValue("nexus_mic_monitor_volume", null, SettingLevel.DEVICE, vol);
+            if (monitorEnabled) connection?.setMicMonitor(true, vol);
+        },
+        [connection, monitorEnabled],
+    );
+
+    return (
+        <SettingsSubsection heading="マイクテスト" stretchContent>
+            <SettingsToggleInput
+                name="nx-mic-monitor"
+                label="自分の声を聞く"
+                helpMessage="処理後の音声をスピーカーに出力します。ノイキャン・EQ・AGC の効果を自分でリアルタイム確認できます。設定画面を閉じると自動的にOFFになります。ヘッドフォン推奨（スピーカー使用時はハウリングに注意）。"
+                checked={monitorEnabled}
+                onChange={onMonitorChange}
+            />
+            {monitorEnabled && (
+                <div className="nx_VoiceSettings_sliderRow">
+                    <label className="nx_VoiceSettings_label">モニター音量</label>
+                    <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={monitorVolume}
+                        onChange={onMonitorVolumeChange}
+                        className="nx_VoiceSettings_slider"
+                    />
+                    <span className="nx_VoiceSettings_value">{monitorVolume}%</span>
+                </div>
+            )}
+        </SettingsSubsection>
+    );
+}
+
+/** EQ / AGC / NC strength toggle settings. */
 function NexusAudioProcessingSettings(): JSX.Element {
     const [ncEnabled, setNcEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true,
+    );
+    const [ncStrength, setNcStrength] = useState<number>(
+        () => SettingsStore.getValue("nexus_nc_strength") ?? 50,
     );
     const [eqEnabled, setEqEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_voice_eq_enabled") ?? true,
@@ -307,6 +375,12 @@ function NexusAudioProcessingSettings(): JSX.Element {
         const enabled = e.target.checked;
         setNcEnabled(enabled);
         SettingsStore.setValue("nexus_noise_cancellation_enabled", null, SettingLevel.DEVICE, enabled);
+    }, []);
+
+    const onNcStrengthChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = Number(e.target.value);
+        setNcStrength(val);
+        SettingsStore.setValue("nexus_nc_strength", null, SettingLevel.DEVICE, val);
     }, []);
 
     const onEqChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -330,6 +404,21 @@ function NexusAudioProcessingSettings(): JSX.Element {
                 checked={ncEnabled}
                 onChange={onNcChange}
             />
+            {ncEnabled && (
+                <div className="nx_VoiceSettings_sliderRow">
+                    <label className="nx_VoiceSettings_label">NC 強度</label>
+                    <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={ncStrength}
+                        onChange={onNcStrengthChange}
+                        className="nx_VoiceSettings_slider"
+                    />
+                    <span className="nx_VoiceSettings_value">{ncStrength}%</span>
+                </div>
+            )}
             <SettingsToggleInput
                 name="nx-voice-eq"
                 label="ボイス EQ"
@@ -509,6 +598,7 @@ export default class VoiceUserSettingsTab extends React.Component<EmptyObject, I
                             </div>
                         </SettingsSubsection>
                         <NexusVoiceGateSettings />
+                        <NexusMicMonitorSettings />
                         <NexusAudioProcessingSettings />
                     </SettingsSection>
 

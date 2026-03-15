@@ -381,6 +381,9 @@ export interface Settings {
     "nexus_voice_eq_enabled": IBaseSetting<boolean>;
     "nexus_voice_agc_enabled": IBaseSetting<boolean>;
     "nexus_noise_cancellation_enabled": IBaseSetting<boolean>;
+    "nexus_nc_strength": IBaseSetting<number>;
+    "nexus_mic_monitor_enabled": IBaseSetting<boolean>;
+    "nexus_mic_monitor_volume": IBaseSetting<number>;
     "nexus_close_to_tray": IBaseSetting<boolean>;
 }
 
@@ -1535,6 +1538,18 @@ export const SETTINGS: Settings = {
     "nexus_noise_cancellation_enabled": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: true,
+    },
+    "nexus_nc_strength": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: 50, // 0-100; maps to post-NC gate threshold -70 to -20 dBFS
+    },
+    "nexus_mic_monitor_enabled": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: false,
+    },
+    "nexus_mic_monitor_volume": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: 30, // 0-100
     },
     "nexus_close_to_tray": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,

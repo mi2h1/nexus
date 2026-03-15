@@ -186,6 +186,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private eqPresence: BiquadFilterNode | null = null;
     // ─── Compressor (limiter) ─────────────────────────────────
     private compressorNode: DynamicsCompressorNode | null = null;
+    // ─── Post-NC gate (residual noise suppression) ────────────
+    /** GainNode placed after delay, before voiceGate — cuts residual noise that RNNoise reduces but doesn't eliminate. */
+    private postNcGainNode: GainNode | null = null;
+    // ─── Mic monitor (self-monitoring) ────────────────────────
+    /** GainNode routing processed audio to local speakers for self-monitoring. */
+    private monitorGainNode: GainNode | null = null;
     // ─── VAD-gated AGC ────────────────────────────────────────
     private agcGainNode: GainNode | null = null;
     private agcCurrentGain = 1.0;
@@ -1061,6 +1067,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         return this._voiceGateOpen;
     }
 
+    /** Update mic monitor gain in real time (called from settings UI). */
+    public setMicMonitor(enabled: boolean, volume: number): void {
+        if (this.monitorGainNode && this.audioContext) {
+            const gain = enabled ? Math.max(0, Math.min(1, volume / 100)) : 0;
+            this.monitorGainNode.gain.setValueAtTime(gain, this.audioContext.currentTime);
+        }
+    }
+
     /** Update input gain in real time (called from settings UI). */
     public setInputVolume(volume: number): void {
         if (this.inputGainNode) {
@@ -1179,19 +1193,33 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.compressorNode.attack.value = 0.015;  // 3ms→15ms: preserve transients (sudden loud voice)
         this.compressorNode.release.value = 0.25;  // 150ms→250ms: less pumping artifact
 
+        // Post-NC gate — start open (gain=1); pollInputLevel() controls it per-poll
+        this.postNcGainNode = this.audioContext.createGain();
+        this.postNcGainNode.gain.value = 1;
+
+        // Mic monitor — routes final processed signal to local speakers for self-monitoring
+        this.monitorGainNode = this.audioContext.createGain();
+        const monitorEnabled = SettingsStore.getValue("nexus_mic_monitor_enabled") ?? false;
+        const monitorVol = (SettingsStore.getValue("nexus_mic_monitor_volume") ?? 30) / 100;
+        this.monitorGainNode.gain.value = monitorEnabled ? monitorVol : 0;
+
         // Connect the pipeline chain
         this.connectInputPipeline();
 
-        // Create processed stream destination
+        // Create processed stream destination (for LiveKit)
         const dest = this.audioContext.createMediaStreamDestination();
         this.compressorNode.connect(dest);
+        // Mic monitor: parallel output to local speakers
+        this.compressorNode.connect(this.monitorGainNode);
+        this.monitorGainNode.connect(this.audioContext.destination);
         return dest.stream.getAudioTracks()[0];
     }
 
     /**
      * Connect the input audio pipeline chain:
-     *   source → HPF → [RNNoise] → analyser (no delay, instant level detection)
-     *                             → delay(50ms) → inputGain (voice gate)
+     *   source → HPF → [RNNoise] → analyser (level tap, pre-gate)
+     *                             → delay(50ms) → postNcGain (NC strength gate)
+     *                             → inputGain (voice gate)
      *                             → eqLowCut → eqPresence → agcGain → compressor
      *
      * If RNNoise is not available (setting OFF, or worklet failed to load),
@@ -1216,13 +1244,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.highPassFilter.connect(this.rnnoiseNode);
         }
 
-        // Gate analyser taps post-RNNoise signal (cleaned) before the delay
+        // Gate analyser taps post-RNNoise signal (cleaned) — side-tap, not in main chain
         postHpf.connect(this.analyserNode);
         // DelayNode lookahead: speech is detected 50ms before it reaches the gate
         this.delayNode = this.audioContext.createDelay(0.1);
         this.delayNode.delayTime.value = NexusVoiceConnection.VOICE_GATE_LOOKAHEAD_SEC;
         postHpf.connect(this.delayNode);
-        this.delayNode.connect(this.inputGainNode);
+        // Post-NC gate sits between delay and voice gate:
+        //   delay → postNcGate → voiceGate (inputGainNode) → ...
+        // pollInputLevel() reads analyserNode (pre-delay tap) and controls postNcGainNode.
+        this.delayNode.connect(this.postNcGainNode!);
+        this.postNcGainNode!.connect(this.inputGainNode);
         // Voice gate → EQ → AGC → Compressor
         this.inputGainNode.connect(this.eqLowCut);
         this.eqLowCut.connect(this.eqPresence);
@@ -1390,6 +1422,33 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         const rms = Math.sqrt(sum / data.length);
         this._inputLevel = Math.min(100, Math.round(rms * 300));
+
+        // ── NC Strength post-gate ────────────────────────────────────────────
+        // Gates residual noise that RNNoise attenuates but doesn't fully eliminate.
+        // Only active when RNNoise is actually running (rnnoiseNode !== null) and strength > 0.
+        // Uses the same RMS from analyserNode (post-RNNoise pre-delay tap) for gate decisions.
+        if (this.postNcGainNode && this.audioContext) {
+            const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+            const ncStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
+            const postNcActive = ncEnabled && ncStrength > 0 && this.rnnoiseNode !== null;
+            if (postNcActive) {
+                const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
+                // Map strength 0-100 → threshold -70 to -20 dBFS
+                const thresholdDb = -70 + (ncStrength / 100) * 50;
+                const now = this.audioContext.currentTime;
+                if (voiceDb >= thresholdDb) {
+                    this.postNcGainNode.gain.cancelScheduledValues(now);
+                    this.postNcGainNode.gain.setValueAtTime(1.0, now);
+                } else {
+                    this.postNcGainNode.gain.cancelScheduledValues(now);
+                    this.postNcGainNode.gain.linearRampToValueAtTime(0.0, now + 0.05);
+                }
+            } else {
+                // NC off or strength=0 — bypass (pass through)
+                this.postNcGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                this.postNcGainNode.gain.setValueAtTime(1.0, this.audioContext.currentTime);
+            }
+        }
 
         // ── ローカル発話状態の即時更新（高速パス）──
         // pollActiveSpeakers() の 250ms ポーリングを待たずに、ローカルユーザーの
@@ -1647,6 +1706,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.rawLevelAnalyser?.disconnect();
         this.rawLevelAnalyser = null;
         this.rawLevelBuffer = null;
+        this.postNcGainNode?.disconnect();
+        this.postNcGainNode = null;
+        this.monitorGainNode?.disconnect();
+        this.monitorGainNode = null;
         this._voiceGateOpen = true;
         this.voiceGateAttackCount = 0;
 
