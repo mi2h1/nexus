@@ -425,8 +425,8 @@ function NexusAudioProcessingSettings(): JSX.Element {
                 control={<ToggleInput id={ncToggleId} checked={ncEnabled} onChange={onNcChange} />}
             >
                 <Label htmlFor={ncToggleId}>
-                    <span className="nx_VoiceSettings_reconnectBadge">VC再接続が必要</span>
                     AI ノイズキャンセリング
+                    <span className="nx_VoiceSettings_reconnectBadge">VC再接続が必要</span>
                 </Label>
                 <HelpMessage>
                     RNNoise を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。音質に問題がある場合は OFF にしてください。
