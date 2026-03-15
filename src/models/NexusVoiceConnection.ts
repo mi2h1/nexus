@@ -1398,9 +1398,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      */
     public static async createStandaloneMonitor(volume: number): Promise<StandaloneMonitorHandle | null> {
         try {
+            // echoCancellation MUST be off: with monitoring active the browser's AEC treats
+            // speaker output as "echo" and cancels it, causing severe muffling/artifacts.
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
-                    echoCancellation: true,
+                    echoCancellation: false,
                     noiseSuppression: false,
                     autoGainControl: false,
                     sampleRate: 48000,
@@ -1408,156 +1410,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 },
             });
 
-            // ── Worklet availability probe ────────────────────────────────────────
-            // Run on a throwaway AudioContext so that a failed addModule() on
-            // Tauri/WebView2 cannot leave the main processing context in a bad state.
-            if (!NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
-                NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
-                if (!NexusVoiceConnection.rnnoiseWasmBinary) {
-                    try {
-                        NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
-                            url: "noise-suppressor/rnnoise.wasm",
-                            simdUrl: "noise-suppressor/rnnoise_simd.wasm",
-                        });
-                    } catch {
-                        // WASM unavailable — continue without RNNoise
-                    }
-                }
-                if (NexusVoiceConnection.rnnoiseWasmBinary) {
-                    const probeCtx = new AudioContext();
-                    try {
-                            await NexusVoiceConnection.addRnnoiseWorkletModule(probeCtx);
-                        NexusVoiceConnection.rnnoiseWorkletRegistered = true;
-                    } catch {
-                        logger.warn("Standalone: RNNoise AudioWorklet unavailable, continuing without NC");
-                    }
-                    probeCtx.close().catch(() => {});
-                }
-            }
-
-            // ── Main audio pipeline context (always created fresh and clean) ──────
             const ctx = new AudioContext();
             await ctx.resume();
 
+            // Minimal pipeline: raw mic → volume control → output.
+            // No EQ, AGC, compressor, or NC — these all degrade self-monitoring quality.
             const source = ctx.createMediaStreamSource(stream);
-
-            // HPF (80Hz highpass — removes low rumble)
-            const hpf = ctx.createBiquadFilter();
-            hpf.type = "highpass";
-            hpf.frequency.value = 80;
-            hpf.Q.value = 0.7;
-            source.connect(hpf);
-
-            // RNNoise — register module on main context if probe confirmed it works
-            let rnnoiseNode: RnnoiseWorkletNode | null = null;
-            if (NexusVoiceConnection.rnnoiseWorkletRegistered && NexusVoiceConnection.rnnoiseWasmBinary) {
-                try {
-                    await NexusVoiceConnection.addRnnoiseWorkletModule(ctx);
-                    rnnoiseNode = new RnnoiseWorkletNode(ctx, {
-                        maxChannels: 1,
-                        wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
-                    });
-                    rnnoiseNode.channelCount = 1;
-                    rnnoiseNode.channelCountMode = "explicit";
-                    hpf.connect(rnnoiseNode);
-                } catch {
-                    rnnoiseNode = null;
-                }
-            }
-            const postHpf: AudioNode = rnnoiseNode ?? hpf;
-
-            // Analyser — side-tap for AGC + postNcGate polling (not in main chain)
-            const analyser = ctx.createAnalyser();
-            analyser.fftSize = 1024;
-            analyser.minDecibels = -90;
-            analyser.maxDecibels = 0;
-            postHpf.connect(analyser);
-
-            // PostNcGate (residual noise suppression after RNNoise)
-            const postNcGain = ctx.createGain();
-            postNcGain.gain.value = 1;
-
-            // EQ — initial values set here; gain is updated dynamically in polling loop
-            const eqLowCut = ctx.createBiquadFilter();
-            eqLowCut.type = "peaking";
-            eqLowCut.frequency.value = 350;
-            eqLowCut.Q.value = 1.0;
-            eqLowCut.gain.value = -3;
-
-            const eqPresence = ctx.createBiquadFilter();
-            eqPresence.type = "peaking";
-            eqPresence.frequency.value = 3000;
-            eqPresence.Q.value = 0.8;
-            eqPresence.gain.value = 2.5;
-
-            // Compressor
-            const compressor = ctx.createDynamicsCompressor();
-            compressor.threshold.value = -12;
-            compressor.knee.value = 15;
-            compressor.ratio.value = 3;
-            compressor.attack.value = 0.015;
-            compressor.release.value = 0.25;
-
-            // Output gain (volume control)
             const outputGain = ctx.createGain();
             outputGain.gain.value = Math.max(0, volume) / 100;
-
-            // Connect: postHpf → analyser(tap) → postNcGain → EQ → compressor → outputGain → dest
-            // NOTE: AGC is intentionally omitted — it causes oscillation via mic→speaker feedback loop.
-            postHpf.connect(postNcGain);
-            postNcGain.connect(eqLowCut);
-            eqLowCut.connect(eqPresence);
-            eqPresence.connect(compressor);
-            compressor.connect(outputGain);
+            source.connect(outputGain);
             outputGain.connect(ctx.destination);
-
-            // Polling — drives postNcGate and EQ.
-            // Settings are RE-READ every cycle so slider changes apply immediately.
-            // NOTE: No AGC here — it would oscillate via mic→speaker acoustic feedback.
-            const timeBuffer = new Uint8Array(analyser.fftSize);
-            const pollTimer = setInterval(() => {
-                const currentNcEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
-                const currentNcStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
-                const currentEqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
-
-                // Update EQ gains in real time
-                eqLowCut.gain.value = currentEqEnabled ? -3 : 0;
-                eqPresence.gain.value = currentEqEnabled ? 2.5 : 0;
-
-                analyser.getByteTimeDomainData(timeBuffer);
-                let sumSq = 0;
-                for (let i = 0; i < timeBuffer.length; i++) {
-                    const s = (timeBuffer[i] - 128) / 128;
-                    sumSq += s * s;
-                }
-                const rms = Math.sqrt(sumSq / timeBuffer.length);
-                const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
-                const now = ctx.currentTime;
-
-                // PostNcGate — only active when RNNoise is actually running
-                if (currentNcEnabled && currentNcStrength > 0 && rnnoiseNode !== null) {
-                    const thresholdDb = -70 + (currentNcStrength / 100) * 50;
-                    if (voiceDb >= thresholdDb) {
-                        postNcGain.gain.cancelScheduledValues(now);
-                        postNcGain.gain.setValueAtTime(1.0, now);
-                    } else {
-                        postNcGain.gain.linearRampToValueAtTime(0.0, now + 0.05);
-                    }
-                } else {
-                    // NC off / strength=0 / no RNNoise — gate fully open
-                    postNcGain.gain.setValueAtTime(1.0, now);
-                }
-            }, 50);
 
             return {
                 setVolume: (v: number) => {
                     outputGain.gain.setValueAtTime(Math.max(0, v) / 100, ctx.currentTime);
                 },
                 stop: () => {
-                    clearInterval(pollTimer);
                     outputGain.gain.value = 0;
                     stream.getTracks().forEach((t) => t.stop());
-                    rnnoiseNode?.destroy();
                     ctx.close().catch(() => {});
                 },
             };

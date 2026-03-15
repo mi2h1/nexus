@@ -368,7 +368,7 @@ function NexusMicMonitorSettings(): JSX.Element {
             <div className="nx_VoiceSettings_micMonitorRow">
                 <AccessibleButton
                     onClick={onMonitorClick}
-                    kind="secondary"
+                    kind="primary"
                     className="nx_VoiceSettings_micMonitorBtn"
                 >
                     {monitorEnabled ? "テストを停止" : "マイクテスト"}

@@ -77,27 +77,30 @@ Please see LICENSE files in the repository root for full details.
     input[type="range"] {
         flex: 1;
         cursor: pointer;
-
-        /* appearance: none without height — lets the element auto-size to contain the thumb */
         -webkit-appearance: none;
         appearance: none;
-        outline: none;
+        /* 20px gives the thumb (16px) enough room to stay within the element bounds */
+        height: 20px;
         background: transparent;
+        outline: none;
 
         &::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background: var(--cpd-color-icon-accent-primary);
+            /* Theme-adaptive: white in dark themes, near-black in light */
+            background: var(--cpd-color-text-primary);
             cursor: pointer;
+            /* Center thumb on the 4px track: (4px - 16px) / 2 = -6px */
+            margin-top: -6px;
         }
 
         &::-moz-range-thumb {
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background: var(--cpd-color-icon-accent-primary);
+            background: var(--cpd-color-text-primary);
             cursor: pointer;
             border: none;
         }
