@@ -754,6 +754,23 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
                         context: path.resolve(__dirname, "node_modules/@sapphi-red/web-noise-suppressor"),
                         to: "noise-suppressor/[name][ext]",
                     },
+                    // Silero VAD worklet + model
+                    {
+                        from: "dist/vad.worklet.bundle.min.js",
+                        context: path.resolve(__dirname, "node_modules/@ricky0123/vad-web"),
+                        to: "vad/[name][ext]",
+                    },
+                    {
+                        from: "dist/silero_vad_v5.onnx",
+                        context: path.resolve(__dirname, "node_modules/@ricky0123/vad-web"),
+                        to: "vad/[name][ext]",
+                    },
+                    // ONNX Runtime WASM (used by Silero VAD for inference)
+                    {
+                        from: "dist/ort-wasm-simd-threaded.wasm",
+                        context: path.resolve(__dirname, "node_modules/onnxruntime-web"),
+                        to: "vad/[name][ext]",
+                    },
                 ],
             }),
 

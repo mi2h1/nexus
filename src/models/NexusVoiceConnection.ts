@@ -33,6 +33,7 @@ import {
     VideoPreset,
 } from "livekit-client";
 import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppressor";
+import { MicVAD } from "@ricky0123/vad-web";
 
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
 import SettingsStore from "../settings/SettingsStore";
@@ -144,6 +145,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _participantStates = new Map<string, ParticipantState>();
     /** Remote mute states received via data messages (identity → muted) */
     private remoteMuteStates = new Map<string, boolean>();
+    /** Remote speaking states received via data messages (identity → speaking) */
+    private remoteSpeakingStates = new Map<string, boolean>();
+    // ─── Silero VAD ──────────────────────────────────────────
+    private sileroVad: MicVAD | null = null;
+    /** True when Silero VAD is running and managing _voiceGateOpen. */
+    private sileroVadActive = false;
     private speakerPollTimer: ReturnType<typeof setInterval> | null = null;
     private statsTimer: ReturnType<typeof setInterval> | null = null;
     // ─── Audio pipeline ──────────────────────────────────────
@@ -1232,6 +1239,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Mic monitor: parallel output to local speakers
         this.compressorNode.connect(this.monitorGainNode);
         this.monitorGainNode.connect(this.audioContext.destination);
+
+        // Start Silero VAD (fire-and-forget — falls back to RMS VAD if unavailable)
+        this.startSileroVAD().catch(() => {});
+
         return dest.stream.getAudioTracks()[0];
     }
 
@@ -1615,6 +1626,86 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
     // ─── Private: Voice gate / input level ───────────────────
 
+    /**
+     * Start Silero VAD using the existing mic track (shared with the audio pipeline).
+     * Falls back to RMS-threshold VAD if AudioWorklet or ONNX runtime is unavailable.
+     */
+    private async startSileroVAD(): Promise<void> {
+        const track = this.localAudioTrack?.mediaStreamTrack;
+        if (!track) return;
+        try {
+            this.sileroVad = await MicVAD.new({
+                model: "v5",
+                // Point to locally-served assets (copied by CopyWebpackPlugin)
+                baseAssetPath: "vad/",
+                onnxWASMBasePath: "vad/",
+                // Reuse the existing mic track — do not call getUserMedia or stop tracks
+                getStream: async () => new MediaStream([track]),
+                pauseStream: async () => {},
+                resumeStream: async (stream) => stream,
+                startOnLoad: false,
+                onSpeechStart: () => {
+                    if (this._isMicMuted) return;
+                    this._voiceGateOpen = true;
+                    this.voiceGateAttackCount = 0;
+                    if (this.voiceGateReleaseTimeout) {
+                        clearTimeout(this.voiceGateReleaseTimeout);
+                        this.voiceGateReleaseTimeout = null;
+                    }
+                    this.openInputGate();
+                    this.broadcastSpeakingState(true);
+                },
+                onSpeechEnd: () => {
+                    if (this.voiceGateReleaseTimeout) clearTimeout(this.voiceGateReleaseTimeout);
+                    this.voiceGateReleaseTimeout = setTimeout(() => {
+                        this._voiceGateOpen = false;
+                        this.closeInputGate();
+                        this.broadcastSpeakingState(false);
+                        this.voiceGateReleaseTimeout = null;
+                    }, NexusVoiceConnection.VOICE_GATE_RELEASE_MS);
+                },
+                onVADMisfire: () => {},
+            });
+            await this.sileroVad.start();
+            this.sileroVadActive = true;
+            logger.info("Silero VAD started (v5 model)");
+        } catch (e) {
+            logger.warn("Silero VAD failed to start, falling back to RMS VAD:", e);
+            this.sileroVad = null;
+            this.sileroVadActive = false;
+        }
+    }
+
+    private stopSileroVAD(): void {
+        if (this.sileroVad) {
+            this.sileroVad.destroy().catch(() => {});
+            this.sileroVad = null;
+        }
+        this.sileroVadActive = false;
+    }
+
+    /** Open voice gate (inputGainNode) when gate setting is enabled. */
+    private openInputGate(): void {
+        const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
+        if (gateEnabled && this.inputGainNode && this.audioContext) {
+            const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+            this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+            this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
+        }
+    }
+
+    /** Close voice gate (inputGainNode) with a short ramp when gate setting is enabled. */
+    private closeInputGate(): void {
+        const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
+        if (gateEnabled && this.inputGainNode && this.audioContext && !this._isMicMuted) {
+            this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+            this.inputGainNode.gain.linearRampToValueAtTime(
+                0,
+                this.audioContext.currentTime + NexusVoiceConnection.VOICE_GATE_RAMP_SEC,
+            );
+        }
+    }
+
     private startVoiceGatePolling(): void {
         this.voiceGateTimer = setInterval(() => this.pollInputLevel(), 50);
     }
@@ -1778,13 +1869,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         // ── Voice gate / VAD ─────────────────────────────────────────────────
-        // VAD（_voiceGateOpen の更新）は常に実行し、インジケーターの真実として使う。
-        // inputGainNode のオーディオゲーティングはゲート設定が有効な時のみ行う。
-        // これにより「入力感度OFF = 音は素通り、でもVADは動いてインジケーターは正確」となる。
-        const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
-
+        // Mute handling is common to both Silero and RMS paths.
         if (this._isMicMuted) {
-            // ミュート時: VAD をリセット（インジケーターも暗くなる）
             if (this.voiceGateReleaseTimeout) {
                 clearTimeout(this.voiceGateReleaseTimeout);
                 this.voiceGateReleaseTimeout = null;
@@ -1794,64 +1880,75 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             return;
         }
 
-        // ── Time-domain dBFS for VAD decision ────────────────────────────────
-        const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
-
-        // ── Threshold (slider 0-100 → -60 to 0 dBFS) + Hysteresis ───────────
-        const sliderVal = SettingsStore.getValue("nexus_voice_gate_threshold") ?? 40;
-        const openThresholdDb = (sliderVal / 100) * 60 - 60;   // e.g. 40 → -36 dBFS
-        const closeThresholdDb = openThresholdDb - NexusVoiceConnection.VOICE_GATE_HYSTERESIS_DB;
-
-        if (voiceDb >= openThresholdDb) {
-            // ── Above open threshold: count toward attack ──────────────────
-            this.voiceGateAttackCount++;
-            if (this.voiceGateReleaseTimeout) {
-                clearTimeout(this.voiceGateReleaseTimeout);
-                this.voiceGateReleaseTimeout = null;
-            }
-            if (!this._voiceGateOpen && this.voiceGateAttackCount >= NexusVoiceConnection.VOICE_GATE_ATTACK_POLLS) {
-                this._voiceGateOpen = true;
-                // Audio gating: only when gate setting is enabled
-                if (gateEnabled && this.inputGainNode && this.audioContext) {
+        if (this.sileroVadActive) {
+            // ── Silero ML VAD path ────────────────────────────────────────────
+            // _voiceGateOpen and inputGainNode are managed by startSileroVAD() callbacks.
+            // Here we only handle the !gateEnabled case (keep gate open) and fall through to AGC.
+            const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
+            if (!gateEnabled) {
+                if (this.inputGainNode && this.audioContext) {
                     const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
                     this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
                     this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
                 }
+                return;
             }
-        } else if (voiceDb < closeThresholdDb) {
-            // ── Below close threshold: start release timer ─────────────────
-            this.voiceGateAttackCount = 0;
-            if (this._voiceGateOpen && !this.voiceGateReleaseTimeout) {
-                this.voiceGateReleaseTimeout = setTimeout(() => {
-                    this._voiceGateOpen = false;
-                    // Audio gating: only when gate setting is enabled
-                    if (gateEnabled && this.inputGainNode && this.audioContext && !this._isMicMuted) {
-                        this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-                        this.inputGainNode.gain.linearRampToValueAtTime(
-                            0,
-                            this.audioContext.currentTime + NexusVoiceConnection.VOICE_GATE_RAMP_SEC,
-                        );
-                    }
-                    this.voiceGateReleaseTimeout = null;
-                }, NexusVoiceConnection.VOICE_GATE_RELEASE_MS);
-            }
+            // gateEnabled=true: Silero callbacks control everything — fall through to AGC
         } else {
-            // ── Hysteresis zone: maintain current state ────────────────────
-            this.voiceGateAttackCount = 0;
-            if (this._voiceGateOpen && this.voiceGateReleaseTimeout) {
-                clearTimeout(this.voiceGateReleaseTimeout);
-                this.voiceGateReleaseTimeout = null;
-            }
-        }
+            // ── RMS-based VAD (fallback when Silero is unavailable) ───────────
+            const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
+            const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
+            const sliderVal = SettingsStore.getValue("nexus_voice_gate_threshold") ?? 40;
+            const openThresholdDb = (sliderVal / 100) * 60 - 60;
+            const closeThresholdDb = openThresholdDb - NexusVoiceConnection.VOICE_GATE_HYSTERESIS_DB;
 
-        if (!gateEnabled) {
-            // ゲート設定OFF: VADは動かしたがinputGainNodeは常に全開を維持
-            if (this.inputGainNode && this.audioContext) {
-                const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
-                this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-                this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
+            if (voiceDb >= openThresholdDb) {
+                this.voiceGateAttackCount++;
+                if (this.voiceGateReleaseTimeout) {
+                    clearTimeout(this.voiceGateReleaseTimeout);
+                    this.voiceGateReleaseTimeout = null;
+                }
+                if (!this._voiceGateOpen && this.voiceGateAttackCount >= NexusVoiceConnection.VOICE_GATE_ATTACK_POLLS) {
+                    this._voiceGateOpen = true;
+                    this.broadcastSpeakingState(true);
+                    if (gateEnabled && this.inputGainNode && this.audioContext) {
+                        const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+                        this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                        this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
+                    }
+                }
+            } else if (voiceDb < closeThresholdDb) {
+                this.voiceGateAttackCount = 0;
+                if (this._voiceGateOpen && !this.voiceGateReleaseTimeout) {
+                    this.voiceGateReleaseTimeout = setTimeout(() => {
+                        this._voiceGateOpen = false;
+                        this.broadcastSpeakingState(false);
+                        if (gateEnabled && this.inputGainNode && this.audioContext && !this._isMicMuted) {
+                            this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                            this.inputGainNode.gain.linearRampToValueAtTime(
+                                0,
+                                this.audioContext.currentTime + NexusVoiceConnection.VOICE_GATE_RAMP_SEC,
+                            );
+                        }
+                        this.voiceGateReleaseTimeout = null;
+                    }, NexusVoiceConnection.VOICE_GATE_RELEASE_MS);
+                }
+            } else {
+                this.voiceGateAttackCount = 0;
+                if (this._voiceGateOpen && this.voiceGateReleaseTimeout) {
+                    clearTimeout(this.voiceGateReleaseTimeout);
+                    this.voiceGateReleaseTimeout = null;
+                }
             }
-            return;
+
+            if (!gateEnabled) {
+                if (this.inputGainNode && this.audioContext) {
+                    const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+                    this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                    this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
+                }
+                return;
+            }
         }
 
         // ── VAD-gated AGC ──
@@ -1985,6 +2082,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.stopStatsPolling();
         this.stopSpeakerPolling();
         this.stopVoiceGatePolling();
+        this.stopSileroVAD();
+        this.remoteSpeakingStates.clear();
         if (this.participantRetryTimer) {
             clearInterval(this.participantRetryTimer);
             this.participantRetryTimer = null;
@@ -2466,11 +2565,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
             const analyser = this.outputParticipantAnalysers.get(participant.identity);
             let isSpeaking: boolean;
-            if (analyser) {
+            const dataSpeak = this.remoteSpeakingStates.get(participant.identity);
+            if (dataSpeak !== undefined) {
+                // Prefer data-message speaking state (ML VAD result from sender)
+                isSpeaking = dataSpeak;
+            } else if (analyser) {
+                // Fallback: RMS threshold for participants without data-message support
                 analyser.getByteTimeDomainData(this.outputAnalyserBuffer);
-                // Use RMS threshold (~-43dBFS) to match the local speaking threshold.
-                // `some(v !== 128)` is too sensitive — quantization noise and NC residuals
-                // keep it true even when the sender is near-silent.
                 let outSum = 0;
                 for (const v of this.outputAnalyserBuffer) {
                     const s = (v - 128) / 128;
@@ -2552,6 +2653,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private onParticipantDisconnected = (participant: Participant): void => {
         const prevCount = this._participants.size;
         this.remoteMuteStates.delete(participant.identity);
+        this.remoteSpeakingStates.delete(participant.identity);
         this.updateParticipants();
         const newCount = this._participants.size;
 
@@ -2578,6 +2680,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Private: Data-channel mute signaling ─────────────────
 
     private static readonly MUTE_TOPIC = "nexus-mute";
+    private static readonly SPEAKING_TOPIC = "nexus-speaking";
 
     private broadcastMuteState(muted: boolean): void {
         if (!this.livekitRoom?.localParticipant) return;
@@ -2587,17 +2690,31 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             .catch((e) => logger.warn("Failed to broadcast mute state", e));
     }
 
+    private broadcastSpeakingState(speaking: boolean): void {
+        if (!this.livekitRoom?.localParticipant) return;
+        const payload = new TextEncoder().encode(JSON.stringify({ s: speaking }));
+        this.livekitRoom.localParticipant
+            .publishData(payload, { reliable: true, topic: NexusVoiceConnection.SPEAKING_TOPIC })
+            .catch((e) => logger.warn("Failed to broadcast speaking state", e));
+    }
+
     private onDataReceived = (
         payload: Uint8Array,
         participant?: Participant,
         _kind?: unknown,
         topic?: string,
     ): void => {
-        if (topic !== NexusVoiceConnection.MUTE_TOPIC || !participant) return;
+        if (!participant) return;
         try {
             const data = JSON.parse(new TextDecoder().decode(payload));
-            if (typeof data.m === "boolean") {
-                this.remoteMuteStates.set(participant.identity, data.m);
+            if (topic === NexusVoiceConnection.SPEAKING_TOPIC) {
+                if (typeof data.s === "boolean") {
+                    this.remoteSpeakingStates.set(participant.identity, data.s);
+                }
+            } else if (topic === NexusVoiceConnection.MUTE_TOPIC) {
+                if (typeof data.m === "boolean") {
+                    this.remoteMuteStates.set(participant.identity, data.m);
+                }
             }
         } catch {
             // ignore malformed data

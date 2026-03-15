@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-16 (v0.2.22)
+> 最終更新: 2026-03-16 (v0.2.23)
 
 ## リポジトリ情報
 
@@ -367,6 +367,24 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - `TrayIconBuilder` でトレイアイコン作成
   - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
   - トレイアイコンクリック → 表示/非表示トグル
+
+#### 2026-03-16 (v0.2.23: Silero VAD による発話インジケーター精度向上)
+
+- **Silero ML VAD 統合 (`@ricky0123/vad-web`)**:
+  - RMS閾値ベースのVADをDiscord同等の ML VAD（Silero v5モデル）に置き換え
+  - AudioWorklet + ONNX Runtime で 32ms 遅延 / 512samples@16kHz のリアルタイム判定
+  - Win10/WebView2: AudioWorklet または ONNX 初期化失敗時に既存 RMS VAD に自動フォールバック
+  - VAD アセット（worklet・モデル・WASM）はローカルサーブ（`/vad/`、webpack CopyPlugin）
+  - 既存マイクストリームを共有（getUserMedia の二重呼び出しなし）
+- **発話状態を LiveKit data message でブロードキャスト**:
+  - Silero `onSpeechStart/End` コールバックで `nexus-speaking` トピックを配信
+  - 受信側インジケーター: data message を優先し、未対応クライアントは RMS フォールバック
+  - VC 離脱時に自動クリーンアップ（`remoteSpeakingStates` マップ）
+  - RMS フォールバック時も `broadcastSpeakingState()` で配信（相手のインジケーターも改善）
+- **インジケーターの動作改善**:
+  - NC ON 時の誤点灯を根本解消（ML が声か環境音かを判別）
+  - タイピング・環境音では点灯しなくなる（RMS 閾値では区別できなかった問題を解決）
+  - 自分で見る自分のインジケーターと受信側が見るインジケーターが一致
 
 #### 2026-03-16 (v0.2.22: 発話インジケーター改善・音声設定UI修正)
 
