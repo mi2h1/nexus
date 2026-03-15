@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-16 (v0.2.23-hotfix)
+> 最終更新: 2026-03-16 (v0.2.24)
 
 ## リポジトリ情報
 
@@ -368,7 +368,7 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
   - トレイアイコンクリック → 表示/非表示トグル
 
-#### 2026-03-16 (v0.2.23: Silero VAD・音声設定UI・マイクテスト改善)
+#### 2026-03-16 (v0.2.24: 音声設定UI・マイクテスト改善)
 
 - **音声設定UI修正**:
   - スライダーのサムずれ修正: `height: 20px` + `margin-top: -6px` で正確センタリング
@@ -385,7 +385,7 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - Nexus 独自の AGC パイプラインと競合するため常時無効化
   - `Settings.tsx` デフォルト値変更 + ログイン後に `MediaDeviceHandler.setAudioAutoGainControl(false)` で保存済み設定を上書き
 
-#### 2026-03-16 (v0.2.23-base: Silero VAD による発話インジケーター精度向上)
+#### 2026-03-16 (v0.2.23: Silero VAD による発話インジケーター精度向上)
 
 - **Silero ML VAD 統合 (`@ricky0123/vad-web`)**:
   - RMS閾値ベースのVADをDiscord同等の ML VAD（Silero v5モデル）に置き換え
