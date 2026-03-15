@@ -1033,7 +1033,7 @@ export const SETTINGS: Settings = {
     "webrtc_audio_autoGainControl": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         displayName: _td("settings|voip|auto_gain_control"),
-        default: true,
+        default: false, // Nexus: always off — AGC is handled by NexusVoiceConnection's own AGC pipeline
     },
     "webrtc_audio_echoCancellation": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,

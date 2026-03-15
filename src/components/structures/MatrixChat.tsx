@@ -103,6 +103,7 @@ import { PosthogAnalytics } from "../../PosthogAnalytics";
 import { initSentry } from "../../sentry";
 import LegacyCallHandler from "../../LegacyCallHandler";
 import { showSpaceInvite } from "../../utils/space";
+import MediaDeviceHandler from "../../MediaDeviceHandler";
 
 import { type ActionPayload } from "../../dispatcher/payloads";
 import { type SummarizedNotificationState } from "../../stores/notifications/SummarizedNotificationState";
@@ -1853,6 +1854,10 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
         // Nexus: prefetch VC resources (RNNoise WASM + OpenID token)
         // so the first voice channel join doesn't pay the cold-start cost.
         NexusVoiceConnection.prefetch(cli);
+
+        // Nexus: force browser AGC off — Nexus manages its own AGC pipeline.
+        // Override any stored value (default was true in upstream Element).
+        MediaDeviceHandler.setAudioAutoGainControl(false).catch(() => {});
 
         // Nexus: fetch user display name colors from lk-jwt-service.
         NexusUserColorStore.instance.start(cli);
