@@ -1941,14 +1941,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
 
         // Check remote participants
-        // Use audioLevel directly with a low threshold (0.05) instead of
-        // participant.isSpeaking whose fixed threshold (0.3) is too high
-        // after our audio processing lowers the perceived volume.
+        // Light up whenever audio data is flowing (any non-zero level).
+        // DTX is disabled so muted participants = 0, any speech (even quiet) = > 0.
         for (const participant of this.livekitRoom.remoteParticipants.values()) {
             const userId = this.resolveIdentityToUserId(participant.identity);
             if (!userId) continue;
 
-            if (participant.audioLevel > 0.05) {
+            if (participant.audioLevel > 0) {
                 speakingUserIds.add(userId);
             }
 
