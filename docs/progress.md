@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-11
+> 最終更新: 2026-03-15 (v0.2.16)
 
 ## リポジトリ情報
 
@@ -368,6 +368,52 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
   - トレイアイコンクリック → 表示/非表示トグル
 
+#### 2026-03-15 (v0.2.16: タスクバー収納改善)
+
+- **Xボタンの挙動を設定可能に**:
+  - `nexus_close_to_tray` 設定を追加（デフォルト: 終了）
+  - 環境設定に「閉じるボタンでタスクバーに収納する」トグル追加（Tauri のみ表示）
+  - `CloseRequested` → `nexus-close-requested` イベントを JS に送信、設定値に応じて hide or quit
+  - `quit_app` Tauri コマンド追加、`core:window:allow-hide` 権限追加
+- **トレイアイコン右クリックメニュー追加**: 「終了」項目を追加
+- **トレイアイコンクリックのチラつき修正**: `MouseButtonState::Up` かつ `MouseButton::Left` のみ反応
+- **左クリックでコンテキストメニューが出る問題修正**: `menu_on_left_click(false)` を追加
+
+#### 2026-03-11 (v0.2.14: プレゼンス機能・UI改善・音量上限拡張)
+
+- **カスタムプレゼンス機能** (matrix.org はサーバー側でプレゼンス無効のため自前実装):
+  - lk-jwt-service にプレゼンスエンドポイント追加: `GET /user-presences`, `PUT /user-presence`, `GET /user-presence-stream`, `POST /user-presence-heartbeat`, `POST /user-presence-offline`
+  - `lastSeen` インメモリ Map + 3分 TTL → `computeEffectivePresences()` でオンライン/オフラインを自動判定
+  - `watchHeartbeats()` ゴルーチンが30秒ポーリングで変化時 SSE ブロードキャスト
+  - `NexusUserPresenceStore` 新設 (TypedEventEmitter シングルトン):
+    - 起動時 `initPresence()`: 手動で非表示設定済みなら維持、それ以外はオンラインに自動設定
+    - 60秒ハートビート (`setInterval`) + ページ閉じ時 `sendBeacon` (text/plain Blob で CORS プリフライト不要)
+    - OpenID トークンをキャッシュ (`cachedOpenIdToken`) → sendBeacon の同期コールバックで使用
+    - `getPresence(userId)` のデフォルトを `"offline"` に変更（プレゼンス未設定ユーザーはオフライン扱い）
+  - `NexusUserPanel` にプレゼンスドット表示 + コンテキストメニュー (オンライン/退席中/非表示)
+  - `MatrixChat.tsx` で `NexusUserPresenceStore.instance.start(cli)` を呼び出し
+- **メンバーリスト オンライン/オフライン分割**:
+  - `MemberListViewModel` にオンラインセクション (`online`/`unavailable`) とオフラインセクションの分割ロジック追加
+  - `NexusUserPresenceStoreEvent.PresencesChanged` をリッスンして `loadMembers()` 再実行
+  - `MemberListView` で `NexusSectionHeader` をレンダリング（「オンライン — N」「オフライン — N」）
+- **プレゼンスドット VirtualizedList リサイクル問題修正**:
+  - `useEventEmitterState` のコールバックでは VirtualizedList がコンポーネントを別メンバーに再利用する際に stale 値を保持する
+  - 修正: no-op の `useEventEmitterState` で再レンダリングをトリガーし、`getPresence(member.userId)` を同期的に読み取り
+- **手動「非表示」設定の永続化**: 再起動後も維持 (`initPresence()` でサーバー値確認)
+- **メンバーリストUI整理**:
+  - 招待ボタン・「○ Members」表示を削除
+  - ヘッダータイトルを「連絡先」→「メンバー」に変更
+- **設定画面整理**:
+  - Mjolnir タブを削除
+  - 音声設定の「詳細」セクション削除（機能しない雑音処理・エコーキャンセル・P2P・フォールバックICE）
+  - タブ並び順変更: アカウント → 音声とビデオ → 外観 → 通知 → セキュリティ → 暗号化 → 環境設定 → キーボード → サイドバー → セッション → ラボ → ヘルプ
+- **Black テーマのカラーセレクター修正**: スウォッチが白になっていた問題を修正
+  - `ThemeChoicePanel` の `isDark` 判定に `|| theme.id === "black"` を追加 (`cpd-theme-dark` 適用)
+  - `classNames` に `"cpd-theme-black": _theme.id === "black"` を追加 → `_black.pcss` のセレクタが正しく適用される
+- **個別音量上限を 200% → 400% に拡張**:
+  - ユーザー個別音量: `NexusParticipantContextMenu` スライダー `max="4"` + `setParticipantVolume` クランプ値変更
+  - 画面共有個別音量: `NexusVCRoomView` スライダー `max="4"` + `setScreenShareVolume` クランプ値変更
+
 #### 最優先: VC 接続高速化
 
 | 施策 | 難易度 | 効果 | 状態 | 詳細 |
@@ -404,19 +450,17 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
 | noiseSuppression OFF | 低 | Win11 二重処理防止 | ✅ 完了 | — |
 | 音声処理設定 UI | 低 | NC/EQ/AGC 個別 ON/OFF | ✅ 完了 | Discord は Krisp ON/OFF のみ |
 | スピーカーミュート（デフ） | 低 | 出力を一括ミュート | ✅ 完了 | コントロールバーにヘッドフォンアイコンボタン追加。`outputMasterGain.gain.value = 0` (Tauri) / `videoEl.volume = 0` (ブラウザ) |
-| プライオリティスピーカー | 中 | 発言者優先・他音量ダック | 未着手 | Discord の Speaking flag bit2（値=4）相当。per-participant GainNode で実装可能 |
 | 適応型画面共有品質 | 中 | 視聴者回線に自動適応 | 未着手 | LiveKit の `adaptiveStream` + `setQuality()` で実装可能。現状は固定4段階プリセットのみ |
 | AV1 コーデック対応 | 中 | 高品質画面共有（RTX 40+ 向け） | 将来 | Discord は NVIDIA RTX 40 シリーズで AV1 対応。LiveKit もサポート済み |
 | Opus ビットレート引き上げ | 低 | 128kbps 固定 | ✅ 完了 | Discord は動的(32〜128kbps) |
 | 次世代 NC (dtln-rs/DeepFilterNet) | 高 | RNNoise より高品質な NC | 将来 | dtln-rs 48kHz対応 or DeepFilterNet WASM 安定化待ち |
-| エコーキャンセレーション強化 | 高 | スピーカー利用時のエコー除去 | 未着手 | |
 
 #### 低優先: UI/UX 改善
 
 | 施策 | 難易度 | 効果 | Discord 比較 |
 |------|--------|------|-------------|
 | VC 品質インジケーター | 低 | ping, ビットレート, コーデック表示 | ✅ ping 完了 | Discord: 接続情報パネル |
-| ユーザーステータス | 中 | オンライン/退席中/取り込み中/オフライン | Discord 標準搭載。Matrix `m.presence` イベントでネイティブサポートあり |
+| ユーザーステータス | 中 | オンライン/退席中/取り込み中/オフライン | ✅ 完了 | lk-jwt-service ベースの自前プレゼンス（SSE + ハートビート + sendBeacon） |
 | キーバインド設定 | 中 | ミュートキー等のカスタマイズ | Discord 標準搭載 |
 
 #### 将来: 基盤
