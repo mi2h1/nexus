@@ -190,9 +190,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private eqPresence: BiquadFilterNode | null = null;
     // ─── Compressor (limiter) ─────────────────────────────────
     private compressorNode: DynamicsCompressorNode | null = null;
-    /** AnalyserNode tapped after compressor — measures what actually goes to LiveKit. Used for speaking indicator. */
-    private outputSelfAnalyserNode: AnalyserNode | null = null;
-    private readonly outputSelfAnalyserBuffer = new Uint8Array(256);
     // ─── Post-NC gate (residual noise suppression) ────────────
     /** GainNode placed after delay, before voiceGate — cuts residual noise that RNNoise reduces but doesn't eliminate. */
     private postNcGainNode: GainNode | null = null;
@@ -1084,11 +1081,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         return this._voiceGateOpen;
     }
 
-    /** Returns true if audio is currently passing through the voice gate (or gate is disabled). */
-    private get localVoiceGateOpen(): boolean {
-        return !SettingsStore.getValue("nexus_voice_gate_enabled") || this._voiceGateOpen;
-    }
-
     /** Update mic monitor gain in real time (called from settings UI). */
     public setMicMonitor(enabled: boolean, volume: number): void {
         if (this.monitorGainNode && this.audioContext) {
@@ -1237,11 +1229,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Create processed stream destination (for LiveKit)
         const dest = this.audioContext.createMediaStreamDestination();
         this.compressorNode.connect(dest);
-        // Side-tap after compressor — measures the actual signal sent to LiveKit (all gates/NC applied).
-        // Used for speaking indicator so no gate state tracking is needed.
-        this.outputSelfAnalyserNode = this.audioContext.createAnalyser();
-        this.outputSelfAnalyserNode.fftSize = 256;
-        this.compressorNode.connect(this.outputSelfAnalyserNode);
         // Mic monitor: parallel output to local speakers
         this.compressorNode.connect(this.monitorGainNode);
         this.monitorGainNode.connect(this.audioContext.destination);
@@ -1707,21 +1694,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const rms = Math.sqrt(sum / data.length);
         this._inputLevel = Math.min(100, Math.round(rms * 300));
 
-        // ── Speaking indicator level (output tap — what actually goes to LiveKit) ─
-        // Separate from _inputLevel so AGC keeps its stable pre-gate reference.
-        // All gates (voice gate, postNcGate) are applied before this tap,
-        // so no gate-state tracking is needed for the speaking indicator.
-        let outputLevel = 0;
-        if (this.outputSelfAnalyserNode) {
-            this.outputSelfAnalyserNode.getByteTimeDomainData(this.outputSelfAnalyserBuffer);
-            let outSum = 0;
-            for (const v of this.outputSelfAnalyserBuffer) {
-                const s = (v - 128) / 128;
-                outSum += s * s;
-            }
-            outputLevel = Math.min(100, Math.round(Math.sqrt(outSum / this.outputSelfAnalyserBuffer.length) * 300));
-        }
-
         // ── Voice EQ (dynamic) ───────────────────────────────────────────────
         // EQ nodes are always in the chain; toggling is done by zeroing their gain.
         if (this.eqLowCut && this.eqPresence) {
@@ -1791,10 +1763,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // speaking 状態変化を 50ms 間隔（pollInputLevel の周期）で即座に emit する。
         const myUserId = this.client.getUserId();
         if (myUserId) {
-            // outputLevel はコンプレッサー後の出力タップ値。
-            // 全ゲート（voiceGate / postNcGate）が閉じていれば出力は 0 になるため、
-            // ゲート状態を別途追跡する必要がない。
-            const localSpeaking = !this._isMicMuted && outputLevel > 1;
+            // _voiceGateOpen はゲート設定に関係なく常にVAD結果を反映する。
+            const localSpeaking = !this._isMicMuted && this._voiceGateOpen;
             const wasSpeaking = this._activeSpeakers.has(myUserId);
             if (localSpeaking !== wasSpeaking) {
                 const updated = new Set(this._activeSpeakers);
@@ -1805,33 +1775,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             }
         }
 
-        // Voice gate check
+        // ── Voice gate / VAD ─────────────────────────────────────────────────
+        // VAD（_voiceGateOpen の更新）は常に実行し、インジケーターの真実として使う。
+        // inputGainNode のオーディオゲーティングはゲート設定が有効な時のみ行う。
+        // これにより「入力感度OFF = 音は素通り、でもVADは動いてインジケーターは正確」となる。
         const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
-        if (!gateEnabled || this._isMicMuted) {
-            // Cancel any pending release before resetting state
+
+        if (this._isMicMuted) {
+            // ミュート時: VAD をリセット（インジケーターも暗くなる）
             if (this.voiceGateReleaseTimeout) {
                 clearTimeout(this.voiceGateReleaseTimeout);
                 this.voiceGateReleaseTimeout = null;
             }
-            this._voiceGateOpen = true;
+            this._voiceGateOpen = false;
             this.voiceGateAttackCount = 0;
-            // Physically restore the gain — the flag alone does not reopen the gate.
-            // If the gate had closed (gain=0) before being disabled, audio stays silent
-            // until this is explicitly corrected.
-            if (this.inputGainNode && this.audioContext && !this._isMicMuted) {
-                const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
-                this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-                this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
-            }
             return;
         }
 
-        // ── Time-domain dBFS for gate decision ────────────────────────────────
-        // Use the already-computed time-domain RMS (analyserNode, post-HPF/RNNoise).
-        // FFT frequency averaging was discarded — averaging sparse spectral peaks across
-        // 63 bins gives ~-72dBFS even for loud speech, making the gate impossible to open.
-        // Time-domain RMS reflects actual signal energy reliably.
-        // Low-frequency rumble is already attenuated by the 80Hz high-pass filter.
+        // ── Time-domain dBFS for VAD decision ────────────────────────────────
         const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
 
         // ── Threshold (slider 0-100 → -60 to 0 dBFS) + Hysteresis ───────────
@@ -1842,15 +1803,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (voiceDb >= openThresholdDb) {
             // ── Above open threshold: count toward attack ──────────────────
             this.voiceGateAttackCount++;
-            // Cancel any pending release (level is back above open threshold)
             if (this.voiceGateReleaseTimeout) {
                 clearTimeout(this.voiceGateReleaseTimeout);
                 this.voiceGateReleaseTimeout = null;
             }
-            // Open gate after attack period (prevents brief transients from triggering)
             if (!this._voiceGateOpen && this.voiceGateAttackCount >= NexusVoiceConnection.VOICE_GATE_ATTACK_POLLS) {
                 this._voiceGateOpen = true;
-                if (this.inputGainNode && this.audioContext) {
+                // Audio gating: only when gate setting is enabled
+                if (gateEnabled && this.inputGainNode && this.audioContext) {
                     const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
                     this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
                     this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
@@ -1862,7 +1822,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             if (this._voiceGateOpen && !this.voiceGateReleaseTimeout) {
                 this.voiceGateReleaseTimeout = setTimeout(() => {
                     this._voiceGateOpen = false;
-                    if (this.inputGainNode && this.audioContext && !this._isMicMuted) {
+                    // Audio gating: only when gate setting is enabled
+                    if (gateEnabled && this.inputGainNode && this.audioContext && !this._isMicMuted) {
                         this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
                         this.inputGainNode.gain.linearRampToValueAtTime(
                             0,
@@ -1875,11 +1836,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         } else {
             // ── Hysteresis zone: maintain current state ────────────────────
             this.voiceGateAttackCount = 0;
-            // Gate is open and we're in the hysteresis zone → cancel pending close
             if (this._voiceGateOpen && this.voiceGateReleaseTimeout) {
                 clearTimeout(this.voiceGateReleaseTimeout);
                 this.voiceGateReleaseTimeout = null;
             }
+        }
+
+        if (!gateEnabled) {
+            // ゲート設定OFF: VADは動かしたがinputGainNodeは常に全開を維持
+            if (this.inputGainNode && this.audioContext) {
+                const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+                this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
+            }
+            return;
         }
 
         // ── VAD-gated AGC ──
@@ -2048,8 +2018,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.rawLevelAnalyser = null;
         this.rawLevelBuffer = null;
         this.analyserBuffer = null;
-        this.outputSelfAnalyserNode?.disconnect();
-        this.outputSelfAnalyserNode = null;
         this.postNcGainNode?.disconnect();
         this.postNcGainNode = null;
         this.monitorGainNode?.disconnect();
@@ -2475,19 +2443,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Check local participant — use own input level because we publish a
         // processed MediaStreamTrack via Web Audio API, so LiveKit's
         // localParticipant.isSpeaking may not fire correctly.
-        // outputSelfAnalyserNode はコンプレッサー後のタップ。全ゲート適用済みなので
-        // ゲート状態の追跡不要。pollInputLevel() の outputLevel と同じ計算。
-        let localOutputLevel = 0;
-        if (this.outputSelfAnalyserNode) {
-            this.outputSelfAnalyserNode.getByteTimeDomainData(this.outputSelfAnalyserBuffer);
-            let outSum = 0;
-            for (const v of this.outputSelfAnalyserBuffer) {
-                const s = (v - 128) / 128;
-                outSum += s * s;
-            }
-            localOutputLevel = Math.min(100, Math.round(Math.sqrt(outSum / this.outputSelfAnalyserBuffer.length) * 300));
-        }
-        const localSpeaking = !this._isMicMuted && localOutputLevel > 1;
+        // _voiceGateOpen はゲート設定に関係なく常にVAD結果を反映する。
+        const localSpeaking = !this._isMicMuted && this._voiceGateOpen;
         if (localSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
         }
