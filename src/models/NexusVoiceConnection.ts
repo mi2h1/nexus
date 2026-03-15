@@ -1398,8 +1398,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      */
     public static async createStandaloneMonitor(volume: number): Promise<StandaloneMonitorHandle | null> {
         try {
-            // echoCancellation MUST be off: with monitoring active the browser's AEC treats
-            // speaker output as "echo" and cancels it, causing severe muffling/artifacts.
+            // echoCancellation MUST be off: AEC would treat speaker output as "echo" and
+            // cancel it, causing severe muffling. NS/AGC also off — handled in pipeline.
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: false,
@@ -1410,24 +1410,178 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 },
             });
 
+            // ── Worklet availability probe ────────────────────────────────────────
+            if (!NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
+                NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
+                if (!NexusVoiceConnection.rnnoiseWasmBinary) {
+                    try {
+                        NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
+                            url: "noise-suppressor/rnnoise.wasm",
+                            simdUrl: "noise-suppressor/rnnoise_simd.wasm",
+                        });
+                    } catch {
+                        // WASM unavailable — continue without RNNoise
+                    }
+                }
+                if (NexusVoiceConnection.rnnoiseWasmBinary) {
+                    const probeCtx = new AudioContext();
+                    try {
+                        await NexusVoiceConnection.addRnnoiseWorkletModule(probeCtx);
+                        NexusVoiceConnection.rnnoiseWorkletRegistered = true;
+                    } catch {
+                        logger.warn("Standalone: RNNoise AudioWorklet unavailable, continuing without NC");
+                    }
+                    probeCtx.close().catch(() => {});
+                }
+            }
+
+            // ── Full VC-equivalent processing pipeline ────────────────────────────
+            // Mirrors the main input pipeline so the user hears exactly what remote
+            // participants hear. Settings are re-read each poll cycle.
             const ctx = new AudioContext();
             await ctx.resume();
 
-            // Minimal pipeline: raw mic → volume control → output.
-            // No EQ, AGC, compressor, or NC — these all degrade self-monitoring quality.
             const source = ctx.createMediaStreamSource(stream);
+
+            // HPF (80 Hz highpass — removes low rumble)
+            const hpf = ctx.createBiquadFilter();
+            hpf.type = "highpass";
+            hpf.frequency.value = 80;
+            hpf.Q.value = 0.7;
+            source.connect(hpf);
+
+            // RNNoise (optional)
+            let rnnoiseNode: RnnoiseWorkletNode | null = null;
+            if (NexusVoiceConnection.rnnoiseWorkletRegistered && NexusVoiceConnection.rnnoiseWasmBinary) {
+                try {
+                    await NexusVoiceConnection.addRnnoiseWorkletModule(ctx);
+                    rnnoiseNode = new RnnoiseWorkletNode(ctx, {
+                        maxChannels: 1,
+                        wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
+                    });
+                    rnnoiseNode.channelCount = 1;
+                    rnnoiseNode.channelCountMode = "explicit";
+                    hpf.connect(rnnoiseNode);
+                } catch {
+                    rnnoiseNode = null;
+                }
+            }
+            const postHpf: AudioNode = rnnoiseNode ?? hpf;
+
+            // Analyser side-tap (for postNcGate + AGC polling)
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 1024;
+            analyser.minDecibels = -90;
+            analyser.maxDecibels = 0;
+            postHpf.connect(analyser);
+
+            // PostNcGate
+            const postNcGain = ctx.createGain();
+            postNcGain.gain.value = 1;
+
+            // EQ
+            const eqLowCut = ctx.createBiquadFilter();
+            eqLowCut.type = "peaking";
+            eqLowCut.frequency.value = 350;
+            eqLowCut.Q.value = 1.0;
+            eqLowCut.gain.value = -3;
+
+            const eqPresence = ctx.createBiquadFilter();
+            eqPresence.type = "peaking";
+            eqPresence.frequency.value = 3000;
+            eqPresence.Q.value = 0.8;
+            eqPresence.gain.value = 2.5;
+
+            // AGC
+            const agcGainNode = ctx.createGain();
+            agcGainNode.gain.value = 1.0;
+            let agcCurrentGain = 1.0;
+            const AGC_MIN = 0.5;
+            const AGC_MAX = 3.0;
+            const AGC_TARGET_DB = -18;
+            const SILENCE_DB = -55;
+
+            // Compressor
+            const compressor = ctx.createDynamicsCompressor();
+            compressor.threshold.value = -18;
+            compressor.knee.value = 12;
+            compressor.ratio.value = 4;
+            compressor.attack.value = 0.003;
+            compressor.release.value = 0.15;
+
+            // Output gain (volume control)
             const outputGain = ctx.createGain();
             outputGain.gain.value = Math.max(0, volume) / 100;
-            source.connect(outputGain);
+
+            // Chain: postHpf → analyser(tap) → postNcGain → EQ → AGC → compressor → outputGain → dest
+            postHpf.connect(postNcGain);
+            postNcGain.connect(eqLowCut);
+            eqLowCut.connect(eqPresence);
+            eqPresence.connect(agcGainNode);
+            agcGainNode.connect(compressor);
+            compressor.connect(outputGain);
             outputGain.connect(ctx.destination);
+
+            // Polling — mirrors main pipeline poll logic
+            const timeBuffer = new Uint8Array(analyser.fftSize);
+            const pollTimer = setInterval(() => {
+                const currentNcEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+                const currentNcStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
+                const currentEqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
+                const currentAgcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
+
+                eqLowCut.gain.value = currentEqEnabled ? -3 : 0;
+                eqPresence.gain.value = currentEqEnabled ? 2.5 : 0;
+
+                analyser.getByteTimeDomainData(timeBuffer);
+                let sumSq = 0;
+                for (let i = 0; i < timeBuffer.length; i++) {
+                    const s = (timeBuffer[i] - 128) / 128;
+                    sumSq += s * s;
+                }
+                const rms = Math.sqrt(sumSq / timeBuffer.length);
+                const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
+                const now = ctx.currentTime;
+
+                // PostNcGate
+                if (currentNcEnabled && currentNcStrength > 0 && rnnoiseNode !== null) {
+                    const thresholdDb = -70 + (currentNcStrength / 100) * 50;
+                    if (voiceDb >= thresholdDb) {
+                        postNcGain.gain.cancelScheduledValues(now);
+                        postNcGain.gain.setValueAtTime(1.0, now);
+                    } else {
+                        postNcGain.gain.linearRampToValueAtTime(0.0, now + 0.05);
+                    }
+                } else {
+                    postNcGain.gain.setValueAtTime(1.0, now);
+                }
+
+                // AGC
+                if (currentAgcEnabled && voiceDb > SILENCE_DB) {
+                    const diff = AGC_TARGET_DB - voiceDb;
+                    const adjustment = Math.pow(10, diff / 20);
+                    const newGain = Math.max(AGC_MIN, Math.min(AGC_MAX, agcCurrentGain * Math.pow(adjustment, 0.1)));
+                    if (Math.abs(newGain - agcCurrentGain) > 0.01) {
+                        agcCurrentGain = newGain;
+                        agcGainNode.gain.exponentialRampToValueAtTime(agcCurrentGain, now + 0.1);
+                    }
+                } else if (!currentAgcEnabled) {
+                    if (agcCurrentGain !== 1.0) {
+                        agcCurrentGain = 1.0;
+                        agcGainNode.gain.setValueAtTime(1.0, now);
+                    }
+                }
+            }, 50);
 
             return {
                 setVolume: (v: number) => {
                     outputGain.gain.setValueAtTime(Math.max(0, v) / 100, ctx.currentTime);
                 },
                 stop: () => {
+                    clearInterval(pollTimer);
                     outputGain.gain.value = 0;
                     stream.getTracks().forEach((t) => t.stop());
+                    rnnoiseNode?.destroy();
                     ctx.close().catch(() => {});
                 },
             };
