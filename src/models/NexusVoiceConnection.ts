@@ -325,6 +325,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // the Web Audio graph (same approach as livekit-client webAudioMix).
             if (isTauri()) {
                 this.outputAudioContext = new AudioContext();
+                // Resume immediately — on first app launch WebView2 may start AudioContext in
+                // "suspended" state even within a user gesture, causing the first track's
+                // MediaStreamAudioSourceNode to be created while the context is not running,
+                // which can result in mono (left-only) output until the context resumes.
+                this.outputAudioContext.resume().catch(() => {});
+                // Force stereo on the destination — on first launch before audio device
+                // initialization, maxChannelCount may report 1 (mono). Explicitly set to 2
+                // so the hardware is asked to output stereo once the device is ready.
+                if (this.outputAudioContext.destination.maxChannelCount >= 2) {
+                    this.outputAudioContext.destination.channelCount = 2;
+                }
                 this.outputMasterGain = this.outputAudioContext.createGain();
                 this.outputMasterGain.gain.value = 0; // starts muted
                 // Force stereo output — without explicit channelCount the node defaults to
@@ -1909,6 +1920,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // reliably redirect audio in WebView2, causing audio to bypass
             // the GainNode chain entirely.
             if (this.outputAudioContext && this.outputMasterGain) {
+                // Ensure the output AudioContext is running — on first app launch it may
+                // still be suspended when the first track arrives.
+                if (this.outputAudioContext.state === "suspended") {
+                    this.outputAudioContext.resume().catch(() => {});
+                }
                 // Evict stale nodes for this participant (e.g. after LiveKit reconnect
                 // where onTrackUnsubscribed may not have fired). Without this cleanup,
                 // old nodes stay connected to outputMasterGain, causing double audio,
