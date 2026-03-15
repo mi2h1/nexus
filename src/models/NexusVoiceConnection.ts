@@ -1766,7 +1766,17 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // speaking 状態変化を 50ms 間隔（pollInputLevel の周期）で即座に emit する。
         const myUserId = this.client.getUserId();
         if (myUserId) {
-            const localSpeaking = !this._isMicMuted && this._inputLevel > 1 && this.localVoiceGateOpen;
+            // NC有効時: _postNcGateOpen（NC強度ゲート）が開いている時のみ点灯。
+            // NC無効時: _inputLevel > 1 だけで判定し、環境音・タイプ音も拾う。
+            const ncPostGateActive =
+                (SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true) &&
+                (SettingsStore.getValue("nexus_nc_strength") ?? 50) > 0 &&
+                this.rnnoiseNode !== null;
+            const localSpeaking =
+                !this._isMicMuted &&
+                this._inputLevel > 1 &&
+                this.localVoiceGateOpen &&
+                (!ncPostGateActive || this._postNcGateOpen);
             const wasSpeaking = this._activeSpeakers.has(myUserId);
             if (localSpeaking !== wasSpeaking) {
                 const updated = new Set(this._activeSpeakers);
@@ -2445,7 +2455,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Check local participant — use own input level because we publish a
         // processed MediaStreamTrack via Web Audio API, so LiveKit's
         // localParticipant.isSpeaking may not fire correctly.
-        const localSpeaking = !this._isMicMuted && this._inputLevel > 1 && this.localVoiceGateOpen;
+        const ncPostGateActive =
+            (SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true) &&
+            (SettingsStore.getValue("nexus_nc_strength") ?? 50) > 0 &&
+            this.rnnoiseNode !== null;
+        const localSpeaking =
+            !this._isMicMuted &&
+            this._inputLevel > 1 &&
+            this.localVoiceGateOpen &&
+            (!ncPostGateActive || this._postNcGateOpen);
         if (localSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
         }
