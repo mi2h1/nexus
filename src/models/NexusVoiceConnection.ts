@@ -1697,6 +1697,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const rms = Math.sqrt(sum / data.length);
         this._inputLevel = Math.min(100, Math.round(rms * 300));
 
+        // ── Voice EQ (dynamic) ───────────────────────────────────────────────
+        // EQ nodes are always in the chain; toggling is done by zeroing their gain.
+        if (this.eqLowCut && this.eqPresence) {
+            const eqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
+            this.eqLowCut.gain.value = eqEnabled ? -3 : 0;
+            this.eqPresence.gain.value = eqEnabled ? 2.5 : 0;
+        }
+
         // ── RNNoise silence detection ─────────────────────────────────────────
         // If the user is clearly speaking but post-RNNoise output is near-silent,
         // the WASM processor is not functioning (e.g. worklet WASM init failed silently).

@@ -422,7 +422,7 @@ function NexusAudioProcessingSettings(): JSX.Element {
             <SettingsToggleInput
                 name="nx-noise-cancellation"
                 label="AI ノイズキャンセリング"
-                helpMessage="RNNoise を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。音質に問題がある場合は OFF にしてください。"
+                helpMessage="RNNoise を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。音質に問題がある場合は OFF にしてください。※ VC 接続中に変更した場合は再入室が必要です。"
                 checked={ncEnabled}
                 onChange={onNcChange}
             />
