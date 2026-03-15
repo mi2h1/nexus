@@ -112,6 +112,12 @@ interface LivekitTokenResponse {
  * Emits the same events as Call (ConnectionState, Participants, Destroy)
  * so existing hooks (useCall, useConnectionState, useParticipatingMembers) work.
  */
+/** Handle returned by NexusVoiceConnection.createStandaloneMonitor(). */
+export interface StandaloneMonitorHandle {
+    setVolume(volume: number): void;
+    stop(): void;
+}
+
 export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEventHandlerMap> {
     public readonly callType = CallType.Voice;
 
@@ -1344,6 +1350,175 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             .catch(() => {
                 // Permission denied or device unavailable — ignore silently
             });
+    }
+
+    /**
+     * Build a standalone audio monitoring pipeline for use in the settings UI
+     * (when not in a VC). Applies the same processing chain as the VC input
+     * pipeline: HPF → [RNNoise] → postNcGate → EQ → AGC → compressor → output.
+     * Returns a handle to control volume and stop monitoring, or null on failure.
+     */
+    public static async createStandaloneMonitor(volume: number): Promise<StandaloneMonitorHandle | null> {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: false,
+                    autoGainControl: false,
+                    sampleRate: 48000,
+                    channelCount: 1,
+                },
+            });
+
+            const ctx = new AudioContext();
+            await ctx.resume();
+
+            const source = ctx.createMediaStreamSource(stream);
+
+            // HPF (80Hz highpass)
+            const hpf = ctx.createBiquadFilter();
+            hpf.type = "highpass";
+            hpf.frequency.value = 80;
+            hpf.Q.value = 0.7;
+            source.connect(hpf);
+
+            // RNNoise — use shared static WASM/worklet cache
+            let rnnoiseNode: RnnoiseWorkletNode | null = null;
+            const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+            if (ncEnabled) {
+                try {
+                    if (!NexusVoiceConnection.rnnoiseWasmBinary) {
+                        NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
+                            url: "noise-suppressor/rnnoise.wasm",
+                            simdUrl: "noise-suppressor/rnnoise_simd.wasm",
+                        });
+                    }
+                    if (!NexusVoiceConnection.rnnoiseWorkletRegistered && !NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
+                        NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
+                        await ctx.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
+                        NexusVoiceConnection.rnnoiseWorkletRegistered = true;
+                    }
+                    if (NexusVoiceConnection.rnnoiseWorkletRegistered && NexusVoiceConnection.rnnoiseWasmBinary) {
+                        rnnoiseNode = new RnnoiseWorkletNode(ctx, {
+                            maxChannels: 1,
+                            wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
+                        });
+                        hpf.connect(rnnoiseNode);
+                    }
+                } catch {
+                    rnnoiseNode = null;
+                }
+            }
+            const postHpf: AudioNode = rnnoiseNode ?? hpf;
+
+            // Analyser — used for AGC + postNcGate polling
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 1024;
+            analyser.minDecibels = -90;
+            analyser.maxDecibels = 0;
+            postHpf.connect(analyser);
+
+            // PostNcGate — mirrors pollInputLevel() logic
+            const postNcGain = ctx.createGain();
+            postNcGain.gain.value = 1;
+            const ncStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
+
+            // EQ
+            const eqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
+            const eqLowCut = ctx.createBiquadFilter();
+            eqLowCut.type = "peaking";
+            eqLowCut.frequency.value = 350;
+            eqLowCut.Q.value = 1.0;
+            eqLowCut.gain.value = eqEnabled ? -3 : 0;
+
+            const eqPresence = ctx.createBiquadFilter();
+            eqPresence.type = "peaking";
+            eqPresence.frequency.value = 3000;
+            eqPresence.Q.value = 0.8;
+            eqPresence.gain.value = eqEnabled ? 2.5 : 0;
+
+            // AGC (simplified — no VAD gate; skip adjustment during silence)
+            const agcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
+            const agcGainNode = ctx.createGain();
+            agcGainNode.gain.value = 1.0;
+            let agcCurrentGain = 1.0;
+            const AGC_MIN = 0.5;
+            const AGC_MAX = 2.0;
+            const AGC_TARGET_DB = -18;
+            const SILENCE_DB = -55;
+
+            // Compressor
+            const compressor = ctx.createDynamicsCompressor();
+            compressor.threshold.value = -12;
+            compressor.knee.value = 15;
+            compressor.ratio.value = 3;
+            compressor.attack.value = 0.015;
+            compressor.release.value = 0.25;
+
+            // Output gain (volume control)
+            const outputGain = ctx.createGain();
+            outputGain.gain.value = Math.max(0, volume) / 100;
+
+            // Connect chain: postHpf → analyser(tap) → postNcGain → EQ → AGC → compressor → outputGain → dest
+            postHpf.connect(postNcGain);
+            postNcGain.connect(eqLowCut);
+            eqLowCut.connect(eqPresence);
+            eqPresence.connect(agcGainNode);
+            agcGainNode.connect(compressor);
+            compressor.connect(outputGain);
+            outputGain.connect(ctx.destination);
+
+            // Polling — drives postNcGate and AGC (50ms interval, same as pollInputLevel)
+            const timeBuffer = new Uint8Array(analyser.fftSize);
+            const pollTimer = setInterval(() => {
+                analyser.getByteTimeDomainData(timeBuffer);
+                let sumSq = 0;
+                for (let i = 0; i < timeBuffer.length; i++) {
+                    const s = (timeBuffer[i] - 128) / 128;
+                    sumSq += s * s;
+                }
+                const rms = Math.sqrt(sumSq / timeBuffer.length);
+                const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
+                const now = ctx.currentTime;
+
+                // PostNcGate
+                if (ncEnabled && ncStrength > 0 && rnnoiseNode !== null) {
+                    const thresholdDb = -70 + (ncStrength / 100) * 50;
+                    if (voiceDb >= thresholdDb) {
+                        postNcGain.gain.cancelScheduledValues(now);
+                        postNcGain.gain.setValueAtTime(1.0, now);
+                    } else {
+                        postNcGain.gain.linearRampToValueAtTime(0.0, now + 0.05);
+                    }
+                }
+
+                // AGC — only adjust when signal is above silence threshold
+                if (agcEnabled && voiceDb > SILENCE_DB) {
+                    const diff = AGC_TARGET_DB - voiceDb;
+                    const adjustment = Math.pow(10, diff / 20);
+                    const newGain = Math.max(AGC_MIN, Math.min(AGC_MAX, agcCurrentGain * Math.pow(adjustment, 0.1)));
+                    if (Math.abs(newGain - agcCurrentGain) > 0.01) {
+                        agcCurrentGain = newGain;
+                        agcGainNode.gain.exponentialRampToValueAtTime(agcCurrentGain, now + 0.1);
+                    }
+                }
+            }, 50);
+
+            return {
+                setVolume: (v: number) => {
+                    outputGain.gain.setValueAtTime(Math.max(0, v) / 100, ctx.currentTime);
+                },
+                stop: () => {
+                    clearInterval(pollTimer);
+                    outputGain.gain.value = 0;
+                    stream.getTracks().forEach((t) => t.stop());
+                    rnnoiseNode?.destroy();
+                    ctx.close().catch(() => {});
+                },
+            };
+        } catch {
+            return null;
+        }
     }
 
     /**

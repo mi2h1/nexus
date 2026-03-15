@@ -25,7 +25,7 @@ import { SettingsSubsection } from "../../shared/SettingsSubsection";
 import MatrixClientContext from "../../../../../contexts/MatrixClientContext";
 import SettingsStore from "../../../../../settings/SettingsStore";
 import { useNexusVoice } from "../../../../../hooks/useNexusVoice";
-import type { NexusVoiceConnection } from "../../../../../models/NexusVoiceConnection";
+import { NexusVoiceConnection, type StandaloneMonitorHandle } from "../../../../../models/NexusVoiceConnection";
 import { CallEvent } from "../../../../../models/Call";
 
 interface IState {
@@ -291,13 +291,6 @@ function NexusVoiceGateSettings(): JSX.Element {
     );
 }
 
-/** Standalone mic monitor resources when not in VC. */
-interface StandaloneMonitor {
-    ctx: AudioContext;
-    stream: MediaStream;
-    gainNode: GainNode;
-}
-
 /** Mic monitor — routes processed audio to local speakers for self-monitoring. */
 function NexusMicMonitorSettings(): JSX.Element {
     const { connection } = useNexusVoice();
@@ -306,39 +299,17 @@ function NexusMicMonitorSettings(): JSX.Element {
         () => SettingsStore.getValue("nexus_mic_monitor_volume") ?? 30,
     );
 
-    // Standalone AudioContext routing used when not in VC
-    const standaloneRef = useRef<StandaloneMonitor | null>(null);
+    // Standalone pipeline handle (used when not in VC)
+    const standaloneRef = useRef<StandaloneMonitorHandle | null>(null);
 
     const stopStandalone = useCallback((): void => {
-        if (standaloneRef.current) {
-            standaloneRef.current.gainNode.gain.value = 0;
-            standaloneRef.current.stream.getTracks().forEach((t) => t.stop());
-            standaloneRef.current.ctx.close().catch(() => {});
-            standaloneRef.current = null;
-        }
+        standaloneRef.current?.stop();
+        standaloneRef.current = null;
     }, []);
 
     const startStandalone = useCallback(async (volume: number): Promise<void> => {
         stopStandalone();
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,  // ハウリング防止のため ON（ヘッドフォン推奨だが保険）
-                    noiseSuppression: false, // ブラウザ NS は音をこもらせるため OFF
-                    autoGainControl: false,  // AGC による音変質を防ぐため OFF
-                    sampleRate: 48000,
-                },
-            });
-            const ctx = new AudioContext();
-            const source = ctx.createMediaStreamSource(stream);
-            const gainNode = ctx.createGain();
-            gainNode.gain.value = volume / 100;
-            source.connect(gainNode);
-            gainNode.connect(ctx.destination);
-            standaloneRef.current = { ctx, stream, gainNode };
-        } catch {
-            // getUserMedia denied or unavailable
-        }
+        standaloneRef.current = await NexusVoiceConnection.createStandaloneMonitor(volume);
     }, [stopStandalone]);
 
     // Forced off when component unmounts (settings tab closes)
@@ -373,8 +344,8 @@ function NexusMicMonitorSettings(): JSX.Element {
             SettingsStore.setValue("nexus_mic_monitor_volume", null, SettingLevel.DEVICE, vol);
             if (connection) {
                 if (monitorEnabled) connection.setMicMonitor(true, vol);
-            } else if (standaloneRef.current) {
-                standaloneRef.current.gainNode.gain.value = vol / 100;
+            } else {
+                standaloneRef.current?.setVolume(vol);
             }
         },
         [connection, monitorEnabled],
@@ -385,7 +356,7 @@ function NexusMicMonitorSettings(): JSX.Element {
             <SettingsToggleInput
                 name="nx-mic-monitor"
                 label="自分の声を聞く"
-                helpMessage="音声をスピーカーに出力します。VC接続中はノイキャン・EQ・AGC の処理後の音声が聞けます。設定画面を閉じると自動的にOFFになります。ヘッドフォン推奨（スピーカー使用時はハウリングに注意）。"
+                helpMessage="設定中の音声処理（ノイキャン・EQ・AGC）を施した音声をスピーカーに出力します。設定画面を閉じると自動的にOFFになります。ヘッドフォン推奨（スピーカー使用時はハウリングに注意）。"
                 checked={monitorEnabled}
                 onChange={onMonitorChange}
             />
