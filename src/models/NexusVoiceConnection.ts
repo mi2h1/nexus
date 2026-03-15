@@ -1697,20 +1697,25 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._inputLevel = Math.min(100, Math.round(rms * 300));
 
         // ── RNNoise silence detection ─────────────────────────────────────────
-        // If raw mic has audio but post-RNNoise is silent, the WASM processor
+        // If raw mic has audio but post-RNNoise output is near-silent, the WASM processor
         // is not functioning (common when worklet WASM init fails silently).
-        // After 1 second of this discrepancy, bypass RNNoise and reconnect HPF
-        // directly so audio can flow through the rest of the pipeline.
+        // We compare post-RNNoise rms against the same threshold as rawActive:
+        // if the mic is clearly picking up speech but RNNoise is suppressing almost
+        // everything (rms < 0.005, ~-46dBFS), something is wrong.
+        // After 1 second of this discrepancy, bypass RNNoise and reconnect HPF directly.
         if (this.rnnoiseNode) {
             const rawActive = rawRms > 0.003; // ~-50dBFS: mic is clearly picking up sound
-            if (rawActive && rms === 0) {
-                this.rnnoiseFailedPollCount++;
-                if (this.rnnoiseFailedPollCount > 20) { // 20 × 50ms = 1 second
-                    logger.warn("RNNoise is outputting silence despite active mic input — disabling and bypassing");
-                    this.bypassRnnoise();
-                }
-            } else {
-                this.rnnoiseFailedPollCount = 0;
+            const rnnoiseNearlySilent = rms < 0.005; // ~-46dBFS: suspiciously suppressed
+            // Periodic diagnostics (every 10 polls = 500ms) to help debug
+            this.rnnoiseFailedPollCount = rawActive && rnnoiseNearlySilent
+                ? this.rnnoiseFailedPollCount + 1
+                : 0;
+            if (this.rnnoiseFailedPollCount % 10 === 1 && rawActive) {
+                logger.debug(`RNNoise check: rawRms=${rawRms.toFixed(4)} postRms=${rms.toFixed(4)} failCount=${this.rnnoiseFailedPollCount}`);
+            }
+            if (this.rnnoiseFailedPollCount > 20) { // 20 × 50ms = 1 second
+                logger.warn("RNNoise is suppressing all audio despite active mic input — disabling and bypassing");
+                this.bypassRnnoise();
             }
         }
 
