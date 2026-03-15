@@ -190,7 +190,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private agcGainNode: GainNode | null = null;
     private agcCurrentGain = 1.0;
     private voiceGateTimer: ReturnType<typeof setInterval> | null = null;
-    private _inputLevel = 0; // 0-100 real-time input level
+    private _inputLevel = 0; // 0-100 internal linear level (AGC/threshold only)
+    private _meterLevel = 0; // 0-100 dBFS log-scaled level emitted for display
+    /** AnalyserNode tapped before RNNoise — reads true mic signal for the display meter. */
+    private rawLevelAnalyser: AnalyserNode | null = null;
+    private rawLevelBuffer: Uint8Array | null = null;
     /** Reusable buffer for analyser data — avoids allocation in hot polling loop. */
     private analyserBuffer: Uint8Array<ArrayBuffer> | null = null;
     private freqBuffer: Uint8Array | null = null;
@@ -1045,7 +1049,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Public: Audio pipeline accessors ──────────────────────
 
     public get inputLevel(): number {
-        return this._inputLevel;
+        return this._meterLevel;
     }
 
     public get voiceGateOpen(): boolean {
@@ -1125,7 +1129,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             await this.setupRnnoiseNode();
         }
 
-        // AnalyserNode — monitors input level (pre-delay for instant detection)
+        // RawLevelAnalyser — tapped BEFORE RNNoise so the display meter shows the
+        // true microphone signal (including background noise, not just post-NC speech).
+        this.rawLevelAnalyser = this.audioContext.createAnalyser();
+        this.rawLevelAnalyser.fftSize = 1024;
+
+        // AnalyserNode — monitors input level (post-RNNoise, pre-delay for instant detection)
+        // Used for voice gate frequency analysis (cleaned signal, no background noise).
         this.analyserNode = this.audioContext.createAnalyser();
         this.analyserNode.fftSize = 1024;       // 512 bins @ 48kHz → ~46.9 Hz/bin
         this.analyserNode.minDecibels = -90;    // maps byte 0 → -90 dBFS
@@ -1190,13 +1200,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         this.sourceNode.connect(this.highPassFilter);
 
-        // RNNoise sits between HPF and analyser (if available)
+        // Raw meter tap — BEFORE RNNoise so the display shows actual mic input
+        if (this.rawLevelAnalyser) {
+            this.highPassFilter.connect(this.rawLevelAnalyser);
+        }
+
+        // RNNoise sits between HPF and gate analyser (if available)
         const postHpf: AudioNode = this.rnnoiseNode ?? this.highPassFilter;
         if (this.rnnoiseNode) {
             this.highPassFilter.connect(this.rnnoiseNode);
         }
 
-        // Analyser taps the signal before the delay so level detection is immediate
+        // Gate analyser taps post-RNNoise signal (cleaned) before the delay
         postHpf.connect(this.analyserNode);
         // DelayNode lookahead: speech is detected 50ms before it reaches the gate
         this.delayNode = this.audioContext.createDelay(0.1);
@@ -1335,13 +1350,34 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private pollInputLevel(): void {
         if (!this.analyserNode) return;
 
+        // ── Display meter (pre-RNNoise raw signal, dBFS log scale) ──────────────
+        // Uses rawLevelAnalyser tapped before noise cancellation so the meter
+        // accurately reflects what the microphone is actually picking up.
+        if (this.rawLevelAnalyser) {
+            const bufLen = this.rawLevelAnalyser.fftSize;
+            if (!this.rawLevelBuffer || this.rawLevelBuffer.length !== bufLen) {
+                this.rawLevelBuffer = new Uint8Array(bufLen);
+            }
+            this.rawLevelAnalyser.getByteTimeDomainData(this.rawLevelBuffer);
+            let rawSum = 0;
+            for (const s of this.rawLevelBuffer) {
+                const n = (s - 128) / 128;
+                rawSum += n * n;
+            }
+            const rawRms = Math.sqrt(rawSum / this.rawLevelBuffer.length);
+            // Convert RMS → dBFS, map -60dBFS…0dBFS → 0…100
+            const dBFS = rawRms > 0 ? 20 * Math.log10(rawRms) : -96;
+            this._meterLevel = Math.min(100, Math.max(0, Math.round((dBFS + 60) / 60 * 100)));
+        }
+        this.emit(CallEvent.InputLevel, this._meterLevel);
+
+        // ── Internal linear level (post-RNNoise, for AGC and speaking threshold) ─
         if (!this.analyserBuffer || this.analyserBuffer.length !== this.analyserNode.fftSize) {
             this.analyserBuffer = new Uint8Array(this.analyserNode.fftSize) as Uint8Array<ArrayBuffer>;
         }
         const data = this.analyserBuffer;
         this.analyserNode.getByteTimeDomainData(data);
 
-        // RMS calculation → scale to 0-100
         let sum = 0;
         for (const sample of data) {
             const normalized = (sample - 128) / 128;
@@ -1349,7 +1385,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         const rms = Math.sqrt(sum / data.length);
         this._inputLevel = Math.min(100, Math.round(rms * 300));
-        this.emit(CallEvent.InputLevel, this._inputLevel);
 
         // ── ローカル発話状態の即時更新（高速パス）──
         // pollActiveSpeakers() の 250ms ポーリングを待たずに、ローカルユーザーの
@@ -1603,6 +1638,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.agcGainNode = null;
         this.agcCurrentGain = 1.0;
         this._inputLevel = 0;
+        this._meterLevel = 0;
+        this.rawLevelAnalyser?.disconnect();
+        this.rawLevelAnalyser = null;
+        this.rawLevelBuffer = null;
         this._voiceGateOpen = true;
         this.voiceGateAttackCount = 0;
 
