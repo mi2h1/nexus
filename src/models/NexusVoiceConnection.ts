@@ -196,6 +196,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     // ─── Mic monitor (self-monitoring) ────────────────────────
     /** GainNode routing processed audio to local speakers for self-monitoring. */
     private monitorGainNode: GainNode | null = null;
+    // ─── Post-NC gate state (hysteresis) ─────────────────────
+    private _postNcGateOpen = false;
     // ─── VAD-gated AGC ────────────────────────────────────────
     private agcGainNode: GainNode | null = null;
     private agcCurrentGain = 1.0;
@@ -1222,6 +1224,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const monitorEnabled = SettingsStore.getValue("nexus_mic_monitor_enabled") ?? false;
         const monitorVol = (SettingsStore.getValue("nexus_mic_monitor_volume") ?? 30) / 100;
         this.monitorGainNode.gain.value = monitorEnabled ? monitorVol : 0;
+        // Force stereo upmix — mic source is 1ch (mono), without explicit settings
+        // it passes to AudioContext.destination as mono and appears left-only in WebView2.
+        this.monitorGainNode.channelCount = 2;
+        this.monitorGainNode.channelCountMode = "explicit";
+        this.monitorGainNode.channelInterpretation = "speakers";
 
         // Connect the pipeline chain
         this.connectInputPipeline();
@@ -1730,17 +1737,24 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             if (postNcActive) {
                 const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
                 // Map strength 0-100 → threshold -70 to -20 dBFS
-                const thresholdDb = -70 + (ncStrength / 100) * 50;
+                const openThresholdDb = -70 + (ncStrength / 100) * 50;
+                const closeThresholdDb = openThresholdDb - 5; // 5dB hysteresis prevents rapid toggling
                 const now = this.audioContext.currentTime;
-                if (voiceDb >= thresholdDb) {
+                if (!this._postNcGateOpen && voiceDb >= openThresholdDb) {
+                    // Gate opens: soft 20ms attack to avoid pop/click
+                    this._postNcGateOpen = true;
                     this.postNcGainNode.gain.cancelScheduledValues(now);
-                    this.postNcGainNode.gain.setValueAtTime(1.0, now);
-                } else {
+                    this.postNcGainNode.gain.linearRampToValueAtTime(1.0, now + 0.020);
+                } else if (this._postNcGateOpen && voiceDb < closeThresholdDb) {
+                    // Gate closes: 50ms release
+                    this._postNcGateOpen = false;
                     this.postNcGainNode.gain.cancelScheduledValues(now);
-                    this.postNcGainNode.gain.linearRampToValueAtTime(0.0, now + 0.05);
+                    this.postNcGainNode.gain.linearRampToValueAtTime(0.0, now + 0.050);
                 }
+                // else: no state change — do not reschedule (would interrupt ongoing ramp)
             } else {
                 // NC off or strength=0 — bypass (pass through)
+                this._postNcGateOpen = true;
                 this.postNcGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
                 this.postNcGainNode.gain.setValueAtTime(1.0, this.audioContext.currentTime);
             }
@@ -1751,7 +1765,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // speaking 状態変化を 50ms 間隔（pollInputLevel の周期）で即座に emit する。
         const myUserId = this.client.getUserId();
         if (myUserId) {
-            const localSpeaking = !this._isMicMuted && this._inputLevel > 5;
+            // _voiceGateOpen reflects whether the gate is actually passing audio.
+            // This prevents the indicator from lighting up on background noise when
+            // the gate is closed (especially after RNNoise bypass where _inputLevel
+            // reads raw mic signal including ambient noise).
+            const gateIsOpen = !SettingsStore.getValue("nexus_voice_gate_enabled") || this._voiceGateOpen;
+            const localSpeaking = !this._isMicMuted && this._inputLevel > 5 && gateIsOpen;
             const wasSpeaking = this._activeSpeakers.has(myUserId);
             if (localSpeaking !== wasSpeaking) {
                 const updated = new Set(this._activeSpeakers);
@@ -1993,6 +2012,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.rnnoiseNode = null;
         }
         this.rnnoiseFailedPollCount = 0;
+        this._postNcGateOpen = false;
         this.eqLowCut = null;
         this.eqPresence = null;
         this.compressorNode = null;
@@ -2429,7 +2449,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Check local participant — use own input level because we publish a
         // processed MediaStreamTrack via Web Audio API, so LiveKit's
         // localParticipant.isSpeaking may not fire correctly.
-        const localSpeaking = !this._isMicMuted && this._inputLevel > 5;
+        const gateIsOpen = !SettingsStore.getValue("nexus_voice_gate_enabled") || this._voiceGateOpen;
+        const localSpeaking = !this._isMicMuted && this._inputLevel > 5 && gateIsOpen;
         if (localSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
         }
