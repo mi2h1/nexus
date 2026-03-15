@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-15 (v0.2.17)
+> 最終更新: 2026-03-15 (v0.2.18)
 
 ## リポジトリ情報
 
@@ -367,6 +367,31 @@ Discord の Docs で真似できる部分・超えられる部分は積極的に
   - `TrayIconBuilder` でトレイアイコン作成
   - 閉じるボタン → `api.prevent_close()` + `window.hide()` でバックグラウンド継続
   - トレイアイコンクリック → 表示/非表示トグル
+
+#### 2026-03-15 (v0.2.18: AIノイキャン強度スライダー + マイクモニター)
+
+- **NC 強度スライダー**: AIノイキャン ON 時のみ表示される 0-100% スライダーを追加
+  - RNNoise 後段に `postNcGainNode` を挿入（delay → postNcGain → voiceGate）
+  - `pollInputLevel` で時間領域 RMS dBFS を計測し、設定した閾値（-70〜-20 dBFS）と比較してゲート制御
+  - `nexus_nc_strength` 設定値（デフォルト 50%）で閾値を決定: `thresholdDb = -70 + (ncStrength/100)*50`
+  - RNNoise が実際に動作している場合のみ有効（`rnnoiseNode !== null`）
+- **マイクモニター（自分の声を聞く）**: 設定 > 音声 > マイクテストセクション追加
+  - ON/OFF トグル + モニター音量スライダー（0-100%）
+  - **VC 接続中**: `compressorNode → monitorGainNode → audioContext.destination` でパイプライン処理後の音声をスピーカーに出力
+  - **VC 未接続時**: `NexusVoiceConnection.createStandaloneMonitor()` でフルパイプライン（HPF → [RNNoise] → postNcGate → EQ → AGC → compressor）を独立して構築し同等の処理を適用
+    - RNNoise の WASM/worklet 登録は VC 接続時と static キャッシュを共有
+    - 50ms ポーリングで AGC・postNcGate をリアルタイム制御（無音時は AGC スキップでノイズ増幅なし）
+  - 設定画面を閉じると `useEffect` cleanup で強制 OFF
+  - `setMicMonitor(enabled, volume)` public メソッドで VC 接続中のゲイン調整
+
+- **初回 VC 入室時のモノラル（左のみ）問題への対処**:
+  - `outputAudioContext` 生成直後に `resume()` を呼び出し（WebView2 が初回起動時に suspended で開始する問題）
+  - `destination.channelCount = 2` を明示設定（初回のデバイス未初期化時に `maxChannelCount=1` になるケース対策）
+  - `onTrackSubscribed` でもトラック到着時に suspended なら `resume()` する保険を追加
+
+- **ゲート判定を FFT 平均 → 時間領域 RMS dBFS に変更**:
+  - `getByteFrequencyData` 平均は無声帯域が多く常時 -72dBFS 相当になり、大声でもゲートが開かなかった
+  - `getByteTimeDomainData` の RMS dBFS に変更し正確な音量検出を実現
 
 #### 2026-03-15 (v0.2.17: 音声品質・安定性改善)
 
