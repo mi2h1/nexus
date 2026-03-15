@@ -163,14 +163,18 @@ function useSettingsInputLevel(connection: NexusVoiceConnection | null): number 
                 analyser.fftSize = 256;
                 source.connect(analyser);
 
-                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                const dataArray = new Uint8Array(analyser.fftSize);
 
                 timer = setInterval(() => {
-                    analyser.getByteFrequencyData(dataArray);
+                    analyser.getByteTimeDomainData(dataArray);
                     let sum = 0;
-                    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-                    const avg = sum / dataArray.length;
-                    setLevel(Math.min(100, Math.round((avg / 128) * 100)));
+                    for (const s of dataArray) {
+                        const n = (s - 128) / 128;
+                        sum += n * n;
+                    }
+                    const rms = Math.sqrt(sum / dataArray.length);
+                    const dBFS = rms > 0 ? 20 * Math.log10(rms) : -96;
+                    setLevel(Math.min(100, Math.max(0, Math.round((dBFS + 60) / 60 * 100))));
                 }, 50);
             } catch {
                 // getUserMedia denied or unavailable — level stays at 0

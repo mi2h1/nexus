@@ -1655,9 +1655,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private pollInputLevel(): void {
         if (!this.analyserNode) return;
 
-        // ── Display meter (pre-RNNoise raw signal, dBFS log scale) ──────────────
-        // Uses rawLevelAnalyser tapped before noise cancellation so the meter
-        // accurately reflects what the microphone is actually picking up.
+        // ── Pre-RNNoise raw RMS (rawLevelAnalyser) — RNNoise bypass検出のみに使用 ──
         let rawRms = 0;
         if (this.rawLevelAnalyser) {
             const bufLen = this.rawLevelAnalyser.fftSize;
@@ -1671,15 +1669,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 rawSum += n * n;
             }
             rawRms = Math.sqrt(rawSum / this.rawLevelBuffer.length);
-            // Convert RMS → dBFS, map -60dBFS…0dBFS → 0…100
-            const dBFS = rawRms > 0 ? 20 * Math.log10(rawRms) : -96;
-            this._meterLevel = Math.min(100, Math.max(0, Math.round((dBFS + 60) / 60 * 100)));
         }
-        this.emit(CallEvent.InputLevel, this._meterLevel);
 
-        // ── Internal linear level (post-RNNoise, for AGC / gate decisions) ──────
+        // ── Post-RNNoise level (analyserNode) — AGC・ゲート判定・メーター表示に使用 ─
         // Must measure here (pre-gate, pre-AGC) so AGC has a stable reference signal.
         // Using the output (post-compressor) would create a feedback loop.
+        // メーターもこの値（post-NC）を使うことでゲートのしきい値と同じスケールになる。
         if (!this.analyserBuffer || this.analyserBuffer.length !== this.analyserNode.fftSize) {
             this.analyserBuffer = new Uint8Array(this.analyserNode.fftSize) as Uint8Array<ArrayBuffer>;
         }
@@ -1693,6 +1688,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         const rms = Math.sqrt(sum / data.length);
         this._inputLevel = Math.min(100, Math.round(rms * 300));
+
+        // ── Display meter (post-RNNoise dBFS, -60…0dBFS → 0…100) ──────────────
+        // ゲートのしきい値判定も同じ post-RNNoise 信号を使うため、
+        // メーター上のバーとしきい値ラインが実際の動作と一致する。
+        const meterDbFS = rms > 0 ? 20 * Math.log10(rms) : -96;
+        this._meterLevel = Math.min(100, Math.max(0, Math.round((meterDbFS + 60) / 60 * 100)));
+        this.emit(CallEvent.InputLevel, this._meterLevel);
 
         // ── Voice EQ (dynamic) ───────────────────────────────────────────────
         // EQ nodes are always in the chain; toggling is done by zeroing their gain.
