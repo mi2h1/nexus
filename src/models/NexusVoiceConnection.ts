@@ -214,7 +214,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     /** Target RMS level for AGC (0-100 scale). */
     private static readonly AGC_TARGET_RMS = 25;
     private static readonly AGC_MIN_GAIN = 0.5;
-    private static readonly AGC_MAX_GAIN = 3.0;
+    private static readonly AGC_MAX_GAIN = 2.0; // 3.0→2.0: over-boost→loud spike→compressor clamp を緩和
     /** How fast AGC adjusts gain per poll cycle (0-1, higher = faster). */
     private static readonly AGC_ADJUSTMENT_RATE = 0.03;
     private participantRetryTimer: ReturnType<typeof setInterval> | null = null;
@@ -1174,11 +1174,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Compressor/Limiter — prevents peaks, placed AFTER gate so
         // background noise is already gated and won't be amplified
         this.compressorNode = this.audioContext.createDynamicsCompressor();
-        this.compressorNode.threshold.value = -18;
-        this.compressorNode.knee.value = 12;
-        this.compressorNode.ratio.value = 4;
-        this.compressorNode.attack.value = 0.003;
-        this.compressorNode.release.value = 0.15;
+        this.compressorNode.threshold.value = -12; // -18→-12: more headroom before compression kicks in
+        this.compressorNode.knee.value = 15;       // softer onset
+        this.compressorNode.ratio.value = 3;       // 4:1→3:1: lighter compression
+        this.compressorNode.attack.value = 0.015;  // 3ms→15ms: preserve transients (sudden loud voice)
+        this.compressorNode.release.value = 0.25;  // 150ms→250ms: less pumping artifact
 
         // Connect the pipeline chain
         this.connectInputPipeline();
