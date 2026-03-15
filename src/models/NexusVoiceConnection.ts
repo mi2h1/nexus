@@ -213,8 +213,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private static readonly VOICE_GATE_RELEASE_MS = 300;
     /** Gain ramp duration for voice gate close (fade-out). */
     private static readonly VOICE_GATE_RAMP_SEC = 0.05;
-    /** DelayNode lookahead so analyser detects speech before audio reaches the gate. */
-    private static readonly VOICE_GATE_LOOKAHEAD_SEC = 0.05;
+    /** DelayNode lookahead so analyser detects speech before audio reaches the gate.
+     *  15ms: gate opens 15ms before speech arrives → max word-start clipping = ~35ms.
+     *  Lower value also reduces self-monitoring latency (was 50ms, which caused hollow sound). */
+    private static readonly VOICE_GATE_LOOKAHEAD_SEC = 0.015;
     /** Consecutive polls above open threshold required before opening gate (~50ms attack). */
     private static readonly VOICE_GATE_ATTACK_POLLS = 1;
     /** Hysteresis gap in dBFS between open and close threshold. */
@@ -1356,6 +1358,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * Build a standalone audio monitoring pipeline for use in the settings UI
      * (when not in a VC). Applies the same processing chain as the VC input
      * pipeline: HPF → [RNNoise] → postNcGate → EQ → AGC → compressor → output.
+     *
+     * Key design decisions:
+     * - WorkletRegistration uses a throwaway probe AudioContext so that a failed
+     *   addModule() call (e.g. Tauri/WebView2) never corrupts the main pipeline context.
+     * - All processing settings (EQ, AGC, NC strength) are re-read from SettingsStore
+     *   every polling cycle so that slider changes take effect immediately without
+     *   restarting the pipeline.
+     *
      * Returns a handle to control volume and stop monitoring, or null on failure.
      */
     public static async createStandaloneMonitor(volume: number): Promise<StandaloneMonitorHandle | null> {
@@ -1370,75 +1380,90 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 },
             });
 
+            // ── Worklet availability probe ────────────────────────────────────────
+            // Run on a throwaway AudioContext so that a failed addModule() on
+            // Tauri/WebView2 cannot leave the main processing context in a bad state.
+            if (!NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
+                NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
+                if (!NexusVoiceConnection.rnnoiseWasmBinary) {
+                    try {
+                        NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
+                            url: "noise-suppressor/rnnoise.wasm",
+                            simdUrl: "noise-suppressor/rnnoise_simd.wasm",
+                        });
+                    } catch {
+                        // WASM unavailable — continue without RNNoise
+                    }
+                }
+                if (NexusVoiceConnection.rnnoiseWasmBinary) {
+                    const probeCtx = new AudioContext();
+                    try {
+                        await probeCtx.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
+                        NexusVoiceConnection.rnnoiseWorkletRegistered = true;
+                        logger.info("Standalone: RNNoise AudioWorklet available");
+                    } catch {
+                        // AudioWorklet not supported (Tauri/WebView2) — continue without RNNoise
+                        logger.info("Standalone: RNNoise AudioWorklet unavailable, continuing without NC");
+                    }
+                    probeCtx.close().catch(() => {});
+                }
+            }
+
+            // ── Main audio pipeline context (always created fresh and clean) ──────
             const ctx = new AudioContext();
             await ctx.resume();
 
             const source = ctx.createMediaStreamSource(stream);
 
-            // HPF (80Hz highpass)
+            // HPF (80Hz highpass — removes low rumble)
             const hpf = ctx.createBiquadFilter();
             hpf.type = "highpass";
             hpf.frequency.value = 80;
             hpf.Q.value = 0.7;
             source.connect(hpf);
 
-            // RNNoise — use shared static WASM/worklet cache
+            // RNNoise — register module on main context if probe confirmed it works
             let rnnoiseNode: RnnoiseWorkletNode | null = null;
-            const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
-            if (ncEnabled) {
+            if (NexusVoiceConnection.rnnoiseWorkletRegistered && NexusVoiceConnection.rnnoiseWasmBinary) {
                 try {
-                    if (!NexusVoiceConnection.rnnoiseWasmBinary) {
-                        NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
-                            url: "noise-suppressor/rnnoise.wasm",
-                            simdUrl: "noise-suppressor/rnnoise_simd.wasm",
-                        });
-                    }
-                    if (!NexusVoiceConnection.rnnoiseWorkletRegistered && !NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
-                        NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
-                        await ctx.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
-                        NexusVoiceConnection.rnnoiseWorkletRegistered = true;
-                    }
-                    if (NexusVoiceConnection.rnnoiseWorkletRegistered && NexusVoiceConnection.rnnoiseWasmBinary) {
-                        rnnoiseNode = new RnnoiseWorkletNode(ctx, {
-                            maxChannels: 1,
-                            wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
-                        });
-                        hpf.connect(rnnoiseNode);
-                    }
+                    await ctx.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
+                    rnnoiseNode = new RnnoiseWorkletNode(ctx, {
+                        maxChannels: 1,
+                        wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
+                    });
+                    hpf.connect(rnnoiseNode);
+                    logger.info("Standalone: RNNoise active");
                 } catch {
                     rnnoiseNode = null;
                 }
             }
             const postHpf: AudioNode = rnnoiseNode ?? hpf;
 
-            // Analyser — used for AGC + postNcGate polling
+            // Analyser — side-tap for AGC + postNcGate polling (not in main chain)
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 1024;
             analyser.minDecibels = -90;
             analyser.maxDecibels = 0;
             postHpf.connect(analyser);
 
-            // PostNcGate — mirrors pollInputLevel() logic
+            // PostNcGate (residual noise suppression after RNNoise)
             const postNcGain = ctx.createGain();
             postNcGain.gain.value = 1;
-            const ncStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
 
-            // EQ
-            const eqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
+            // EQ — initial values set here; gain is updated dynamically in polling loop
             const eqLowCut = ctx.createBiquadFilter();
             eqLowCut.type = "peaking";
             eqLowCut.frequency.value = 350;
             eqLowCut.Q.value = 1.0;
-            eqLowCut.gain.value = eqEnabled ? -3 : 0;
+            eqLowCut.gain.value = -3;
 
             const eqPresence = ctx.createBiquadFilter();
             eqPresence.type = "peaking";
             eqPresence.frequency.value = 3000;
             eqPresence.Q.value = 0.8;
-            eqPresence.gain.value = eqEnabled ? 2.5 : 0;
+            eqPresence.gain.value = 2.5;
 
-            // AGC (simplified — no VAD gate; skip adjustment during silence)
-            const agcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
+            // AGC
             const agcGainNode = ctx.createGain();
             agcGainNode.gain.value = 1.0;
             let agcCurrentGain = 1.0;
@@ -1459,7 +1484,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const outputGain = ctx.createGain();
             outputGain.gain.value = Math.max(0, volume) / 100;
 
-            // Connect chain: postHpf → analyser(tap) → postNcGain → EQ → AGC → compressor → outputGain → dest
+            // Connect: postHpf → analyser(tap) → postNcGain → EQ → AGC → compressor → outputGain → dest
             postHpf.connect(postNcGain);
             postNcGain.connect(eqLowCut);
             eqLowCut.connect(eqPresence);
@@ -1468,9 +1493,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             compressor.connect(outputGain);
             outputGain.connect(ctx.destination);
 
-            // Polling — drives postNcGate and AGC (50ms interval, same as pollInputLevel)
+            // Polling — drives postNcGate and AGC.
+            // Settings are RE-READ every cycle so slider changes apply immediately.
             const timeBuffer = new Uint8Array(analyser.fftSize);
             const pollTimer = setInterval(() => {
+                // Re-read all processing settings dynamically
+                const currentNcEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+                const currentNcStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
+                const currentEqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
+                const currentAgcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
+
+                // Update EQ gains in real time
+                eqLowCut.gain.value = currentEqEnabled ? -3 : 0;
+                eqPresence.gain.value = currentEqEnabled ? 2.5 : 0;
+
                 analyser.getByteTimeDomainData(timeBuffer);
                 let sumSq = 0;
                 for (let i = 0; i < timeBuffer.length; i++) {
@@ -1481,25 +1517,34 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
                 const now = ctx.currentTime;
 
-                // PostNcGate
-                if (ncEnabled && ncStrength > 0 && rnnoiseNode !== null) {
-                    const thresholdDb = -70 + (ncStrength / 100) * 50;
+                // PostNcGate — only active when RNNoise is actually running
+                if (currentNcEnabled && currentNcStrength > 0 && rnnoiseNode !== null) {
+                    const thresholdDb = -70 + (currentNcStrength / 100) * 50;
                     if (voiceDb >= thresholdDb) {
                         postNcGain.gain.cancelScheduledValues(now);
                         postNcGain.gain.setValueAtTime(1.0, now);
                     } else {
                         postNcGain.gain.linearRampToValueAtTime(0.0, now + 0.05);
                     }
+                } else {
+                    // NC off / strength=0 / no RNNoise — gate fully open
+                    postNcGain.gain.setValueAtTime(1.0, now);
                 }
 
                 // AGC — only adjust when signal is above silence threshold
-                if (agcEnabled && voiceDb > SILENCE_DB) {
+                if (currentAgcEnabled && voiceDb > SILENCE_DB) {
                     const diff = AGC_TARGET_DB - voiceDb;
                     const adjustment = Math.pow(10, diff / 20);
                     const newGain = Math.max(AGC_MIN, Math.min(AGC_MAX, agcCurrentGain * Math.pow(adjustment, 0.1)));
                     if (Math.abs(newGain - agcCurrentGain) > 0.01) {
                         agcCurrentGain = newGain;
                         agcGainNode.gain.exponentialRampToValueAtTime(agcCurrentGain, now + 0.1);
+                    }
+                } else if (!currentAgcEnabled) {
+                    // AGC turned off — reset gain to unity
+                    if (agcCurrentGain !== 1.0) {
+                        agcCurrentGain = 1.0;
+                        agcGainNode.gain.setValueAtTime(1.0, now);
                     }
                 }
             }, 50);
@@ -1516,7 +1561,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     ctx.close().catch(() => {});
                 },
             };
-        } catch {
+        } catch (e) {
+            logger.warn("createStandaloneMonitor failed:", e);
             return null;
         }
     }
