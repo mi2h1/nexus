@@ -194,10 +194,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private _meterLevel = 0; // 0-100 dBFS log-scaled level emitted for display
     /** AnalyserNode tapped before RNNoise — reads true mic signal for the display meter. */
     private rawLevelAnalyser: AnalyserNode | null = null;
-    private rawLevelBuffer: Uint8Array | null = null;
+    private rawLevelBuffer: Uint8Array<ArrayBuffer> | null = null;
     /** Reusable buffer for analyser data — avoids allocation in hot polling loop. */
     private analyserBuffer: Uint8Array<ArrayBuffer> | null = null;
-    private freqBuffer: Uint8Array | null = null;
     private _voiceGateOpen = true;
     private voiceGateReleaseTimeout: ReturnType<typeof setTimeout> | null = null;
     private voiceGateAttackCount = 0;
@@ -1362,7 +1361,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (this.rawLevelAnalyser) {
             const bufLen = this.rawLevelAnalyser.fftSize;
             if (!this.rawLevelBuffer || this.rawLevelBuffer.length !== bufLen) {
-                this.rawLevelBuffer = new Uint8Array(bufLen);
+                this.rawLevelBuffer = new Uint8Array(bufLen) as Uint8Array<ArrayBuffer>;
             }
             this.rawLevelAnalyser.getByteTimeDomainData(this.rawLevelBuffer);
             let rawSum = 0;
@@ -1429,33 +1428,20 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             return;
         }
 
-        // ── Voice-band frequency energy (100 Hz – 3 kHz) ──────────────────────
-        // Reject low-frequency rumble and high-frequency noise before gate decision.
-        const freqBinCount = this.analyserNode.frequencyBinCount; // fftSize / 2
-        if (!this.freqBuffer || this.freqBuffer.length !== freqBinCount) {
-            this.freqBuffer = new Uint8Array(freqBinCount);
-        }
-        this.analyserNode.getByteFrequencyData(this.freqBuffer);
-
-        const sampleRate = this.audioContext?.sampleRate ?? 48000;
-        const hzPerBin = sampleRate / this.analyserNode.fftSize;
-        const lowBin = Math.max(1, Math.round(100 / hzPerBin));
-        const highBin = Math.min(freqBinCount - 1, Math.round(3000 / hzPerBin));
-        let freqSum = 0;
-        for (let i = lowBin; i <= highBin; i++) freqSum += this.freqBuffer[i];
-        const avgByte = freqSum / (highBin - lowBin + 1);
-
-        // Convert byte → dBFS (byte 0 = minDecibels, 255 = maxDecibels)
-        const minDb = this.analyserNode.minDecibels; // -90
-        const maxDb = this.analyserNode.maxDecibels; // 0
-        const voiceBandDb = minDb + (avgByte / 255) * (maxDb - minDb);
+        // ── Time-domain dBFS for gate decision ────────────────────────────────
+        // Use the already-computed time-domain RMS (analyserNode, post-HPF/RNNoise).
+        // FFT frequency averaging was discarded — averaging sparse spectral peaks across
+        // 63 bins gives ~-72dBFS even for loud speech, making the gate impossible to open.
+        // Time-domain RMS reflects actual signal energy reliably.
+        // Low-frequency rumble is already attenuated by the 80Hz high-pass filter.
+        const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
 
         // ── Threshold (slider 0-100 → -60 to 0 dBFS) + Hysteresis ───────────
         const sliderVal = SettingsStore.getValue("nexus_voice_gate_threshold") ?? 40;
         const openThresholdDb = (sliderVal / 100) * 60 - 60;   // e.g. 40 → -36 dBFS
         const closeThresholdDb = openThresholdDb - NexusVoiceConnection.VOICE_GATE_HYSTERESIS_DB;
 
-        if (voiceBandDb >= openThresholdDb) {
+        if (voiceDb >= openThresholdDb) {
             // ── Above open threshold: count toward attack ──────────────────
             this.voiceGateAttackCount++;
             // Cancel any pending release (level is back above open threshold)
@@ -1472,7 +1458,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
                 }
             }
-        } else if (voiceBandDb < closeThresholdDb) {
+        } else if (voiceDb < closeThresholdDb) {
             // ── Below close threshold: start release timer ─────────────────
             this.voiceGateAttackCount = 0;
             if (this._voiceGateOpen && !this.voiceGateReleaseTimeout) {
@@ -1888,6 +1874,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 analyser.fftSize = 256;
                 const gain = this.outputAudioContext.createGain();
                 gain.gain.value = initialVol;
+                // Force stereo — without explicit channelCount the gain node collapses to
+                // mono when the source track is mono (Opus 1ch), causing left-only output.
+                gain.channelCount = 2;
+                gain.channelCountMode = "explicit";
+                gain.channelInterpretation = "speakers";
                 source.connect(analyser).connect(gain).connect(this.outputMasterGain);
                 this.outputMediaSources.set(participant.identity, source);
                 this.outputParticipantAnalysers.set(participant.identity, analyser);
