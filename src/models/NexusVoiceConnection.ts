@@ -1405,8 +1405,21 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Voice gate check
         const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
         if (!gateEnabled || this._isMicMuted) {
+            // Cancel any pending release before resetting state
+            if (this.voiceGateReleaseTimeout) {
+                clearTimeout(this.voiceGateReleaseTimeout);
+                this.voiceGateReleaseTimeout = null;
+            }
             this._voiceGateOpen = true;
             this.voiceGateAttackCount = 0;
+            // Physically restore the gain — the flag alone does not reopen the gate.
+            // If the gate had closed (gain=0) before being disabled, audio stays silent
+            // until this is explicitly corrected.
+            if (this.inputGainNode && this.audioContext && !this._isMicMuted) {
+                const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
+                this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+                this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
+            }
             return;
         }
 
