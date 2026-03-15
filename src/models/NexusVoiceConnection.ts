@@ -1691,6 +1691,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.emit(CallEvent.InputLevel, this._meterLevel);
 
         // ── Internal linear level (post-RNNoise, for AGC / gate decisions) ──────
+        // Must measure here (pre-gate, pre-AGC) so AGC has a stable reference signal.
+        // Using the output (post-compressor) would create a feedback loop.
         if (!this.analyserBuffer || this.analyserBuffer.length !== this.analyserNode.fftSize) {
             this.analyserBuffer = new Uint8Array(this.analyserNode.fftSize) as Uint8Array<ArrayBuffer>;
         }
@@ -1703,10 +1705,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             sum += normalized * normalized;
         }
         const rms = Math.sqrt(sum / data.length);
+        this._inputLevel = Math.min(100, Math.round(rms * 300));
 
         // ── Speaking indicator level (output tap — what actually goes to LiveKit) ─
-        // Tapped after compressor so all gates (voice gate, postNcGate) are already applied.
-        // No gate-state tracking needed: if any gate is closed, this reads near-zero.
+        // Separate from _inputLevel so AGC keeps its stable pre-gate reference.
+        // All gates (voice gate, postNcGate) are applied before this tap,
+        // so no gate-state tracking is needed for the speaking indicator.
+        let outputLevel = 0;
         if (this.outputSelfAnalyserNode) {
             this.outputSelfAnalyserNode.getByteTimeDomainData(this.outputSelfAnalyserBuffer);
             let outSum = 0;
@@ -1714,8 +1719,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const s = (v - 128) / 128;
                 outSum += s * s;
             }
-            const outputRms = Math.sqrt(outSum / this.outputSelfAnalyserBuffer.length);
-            this._inputLevel = Math.min(100, Math.round(outputRms * 300));
+            outputLevel = Math.min(100, Math.round(Math.sqrt(outSum / this.outputSelfAnalyserBuffer.length) * 300));
         }
 
         // ── Voice EQ (dynamic) ───────────────────────────────────────────────
@@ -1787,10 +1791,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // speaking 状態変化を 50ms 間隔（pollInputLevel の周期）で即座に emit する。
         const myUserId = this.client.getUserId();
         if (myUserId) {
-            // _inputLevel はコンプレッサー後の出力タップ値。
+            // outputLevel はコンプレッサー後の出力タップ値。
             // 全ゲート（voiceGate / postNcGate）が閉じていれば出力は 0 になるため、
             // ゲート状態を別途追跡する必要がない。
-            const localSpeaking = !this._isMicMuted && this._inputLevel > 1 && this.localVoiceGateOpen;
+            const localSpeaking = !this._isMicMuted && outputLevel > 1;
             const wasSpeaking = this._activeSpeakers.has(myUserId);
             if (localSpeaking !== wasSpeaking) {
                 const updated = new Set(this._activeSpeakers);
@@ -2471,8 +2475,19 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // Check local participant — use own input level because we publish a
         // processed MediaStreamTrack via Web Audio API, so LiveKit's
         // localParticipant.isSpeaking may not fire correctly.
-        // _inputLevel はコンプレッサー後の出力タップ値なのでゲート状態の追跡不要。
-        const localSpeaking = !this._isMicMuted && this._inputLevel > 1 && this.localVoiceGateOpen;
+        // outputSelfAnalyserNode はコンプレッサー後のタップ。全ゲート適用済みなので
+        // ゲート状態の追跡不要。pollInputLevel() の outputLevel と同じ計算。
+        let localOutputLevel = 0;
+        if (this.outputSelfAnalyserNode) {
+            this.outputSelfAnalyserNode.getByteTimeDomainData(this.outputSelfAnalyserBuffer);
+            let outSum = 0;
+            for (const v of this.outputSelfAnalyserBuffer) {
+                const s = (v - 128) / 128;
+                outSum += s * s;
+            }
+            localOutputLevel = Math.min(100, Math.round(Math.sqrt(outSum / this.outputSelfAnalyserBuffer.length) * 300));
+        }
+        const localSpeaking = !this._isMicMuted && localOutputLevel > 1;
         if (localSpeaking && myUserId) {
             speakingUserIds.add(myUserId);
         }
