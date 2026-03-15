@@ -291,6 +291,13 @@ function NexusVoiceGateSettings(): JSX.Element {
     );
 }
 
+/** Standalone mic monitor resources when not in VC. */
+interface StandaloneMonitor {
+    ctx: AudioContext;
+    stream: MediaStream;
+    gainNode: GainNode;
+}
+
 /** Mic monitor — routes processed audio to local speakers for self-monitoring. */
 function NexusMicMonitorSettings(): JSX.Element {
     const { connection } = useNexusVoice();
@@ -299,23 +306,59 @@ function NexusMicMonitorSettings(): JSX.Element {
         () => SettingsStore.getValue("nexus_mic_monitor_volume") ?? 30,
     );
 
-    // Always off on mount; forced off when component unmounts (settings tab closes)
+    // Standalone AudioContext routing used when not in VC
+    const standaloneRef = useRef<StandaloneMonitor | null>(null);
+
+    const stopStandalone = useCallback((): void => {
+        if (standaloneRef.current) {
+            standaloneRef.current.gainNode.gain.value = 0;
+            standaloneRef.current.stream.getTracks().forEach((t) => t.stop());
+            standaloneRef.current.ctx.close().catch(() => {});
+            standaloneRef.current = null;
+        }
+    }, []);
+
+    const startStandalone = useCallback(async (volume: number): Promise<void> => {
+        stopStandalone();
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: true, noiseSuppression: true },
+            });
+            const ctx = new AudioContext();
+            const source = ctx.createMediaStreamSource(stream);
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = volume / 100;
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            standaloneRef.current = { ctx, stream, gainNode };
+        } catch {
+            // getUserMedia denied or unavailable
+        }
+    }, [stopStandalone]);
+
+    // Forced off when component unmounts (settings tab closes)
     useEffect(() => {
         return () => {
-            // Settings tab closed — force monitor off
             SettingsStore.setValue("nexus_mic_monitor_enabled", null, SettingLevel.DEVICE, false);
             connection?.setMicMonitor(false, 0);
+            stopStandalone();
         };
-    }, [connection]);
+    }, [connection, stopStandalone]);
 
     const onMonitorChange = useCallback(
-        (e: React.ChangeEvent<HTMLInputElement>) => {
+        async (e: React.ChangeEvent<HTMLInputElement>) => {
             const enabled = e.target.checked;
             setMonitorEnabled(enabled);
             SettingsStore.setValue("nexus_mic_monitor_enabled", null, SettingLevel.DEVICE, enabled);
-            connection?.setMicMonitor(enabled, monitorVolume);
+            if (connection) {
+                connection.setMicMonitor(enabled, monitorVolume);
+            } else if (enabled) {
+                await startStandalone(monitorVolume);
+            } else {
+                stopStandalone();
+            }
         },
-        [connection, monitorVolume],
+        [connection, monitorVolume, startStandalone, stopStandalone],
     );
 
     const onMonitorVolumeChange = useCallback(
@@ -323,7 +366,11 @@ function NexusMicMonitorSettings(): JSX.Element {
             const vol = Number(e.target.value);
             setMonitorVolume(vol);
             SettingsStore.setValue("nexus_mic_monitor_volume", null, SettingLevel.DEVICE, vol);
-            if (monitorEnabled) connection?.setMicMonitor(true, vol);
+            if (connection) {
+                if (monitorEnabled) connection.setMicMonitor(true, vol);
+            } else if (standaloneRef.current) {
+                standaloneRef.current.gainNode.gain.value = vol / 100;
+            }
         },
         [connection, monitorEnabled],
     );
@@ -333,7 +380,7 @@ function NexusMicMonitorSettings(): JSX.Element {
             <SettingsToggleInput
                 name="nx-mic-monitor"
                 label="自分の声を聞く"
-                helpMessage="処理後の音声をスピーカーに出力します。ノイキャン・EQ・AGC の効果を自分でリアルタイム確認できます。設定画面を閉じると自動的にOFFになります。ヘッドフォン推奨（スピーカー使用時はハウリングに注意）。"
+                helpMessage="音声をスピーカーに出力します。VC接続中はノイキャン・EQ・AGC の処理後の音声が聞けます。設定画面を閉じると自動的にOFFになります。ヘッドフォン推奨（スピーカー使用時はハウリングに注意）。"
                 checked={monitorEnabled}
                 onChange={onMonitorChange}
             />
