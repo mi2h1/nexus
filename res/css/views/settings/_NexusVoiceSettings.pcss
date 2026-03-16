@@ -225,7 +225,7 @@ Please see LICENSE files in the repository root for full details.
 /* Discord-style vertical bar level meter */
 .nx_VoiceSettings_barMeter {
     display: flex;
-    align-items: flex-end;
+    align-items: stretch;
     gap: 3px;
     height: 28px;
     flex: 1;
@@ -235,12 +235,7 @@ Please see LICENSE files in the repository root for full details.
     flex: 1;
     border-radius: 2px;
     background: var(--cpd-color-bg-subtle-secondary);
-    transition: height 60ms ease-out;
-    min-height: 8%;
-}
-
-.nx_VoiceSettings_barMeter_bar--active {
-    background: var(--cpd-color-icon-success-primary);
+    transition: background 80ms ease-out;
 }
 
 /* ── Voice EQ ────────────────────────────────────────────────────────────── */

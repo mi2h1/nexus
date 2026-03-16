@@ -297,8 +297,8 @@ function NexusVoiceGateSettings(): JSX.Element {
     );
 }
 
-// Bar max-heights (%) for the Discord-style level meter — dome shape
-const MONITOR_BAR_HEIGHTS = [28, 42, 58, 72, 84, 92, 98, 100, 100, 98, 92, 84, 72, 58, 42, 28, 20, 14] as const;
+// Number of bars in the VU meter
+const VU_BAR_COUNT = 20;
 
 /** Compute inline style for a range input: fills left of thumb with accent color. */
 function sliderFill(value: number, min: number, max: number): React.CSSProperties {
@@ -375,13 +375,18 @@ function NexusMicMonitorSettings(): JSX.Element {
                     {monitorEnabled ? "テストを停止" : "マイクテスト"}
                 </AccessibleButton>
                 <div className="nx_VoiceSettings_barMeter" aria-hidden="true">
-                    {MONITOR_BAR_HEIGHTS.map((maxH, i) => (
-                        <div
-                            key={i}
-                            className={`nx_VoiceSettings_barMeter_bar${monitorEnabled && inputLevel > 2 ? " nx_VoiceSettings_barMeter_bar--active" : ""}`}
-                            style={{ height: `${Math.max(8, (inputLevel / 100) * maxH)}%` }}
-                        />
-                    ))}
+                    {Array.from({ length: VU_BAR_COUNT }, (_, i) => {
+                        const litCount = Math.round((inputLevel / 100) * VU_BAR_COUNT);
+                        const isLit = i < litCount;
+                        const hue = Math.round(50 + (i / (VU_BAR_COUNT - 1)) * 85);
+                        return (
+                            <div
+                                key={i}
+                                className="nx_VoiceSettings_barMeter_bar"
+                                style={isLit ? { background: `hsl(${hue}, 80%, 42%)` } : undefined}
+                            />
+                        );
+                    })}
                 </div>
             </div>
             {monitorEnabled && (
