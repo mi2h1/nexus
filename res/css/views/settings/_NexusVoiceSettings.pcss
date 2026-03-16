@@ -242,3 +242,233 @@ Please see LICENSE files in the repository root for full details.
 .nx_VoiceSettings_barMeter_bar--active {
     background: var(--cpd-color-icon-success-primary);
 }
+
+/* ── Voice EQ ────────────────────────────────────────────────────────────── */
+
+/* EQ label row: label text left, "?" button right */
+.nx_VoiceSettings_eqLabel {
+    display: flex;
+    align-items: center;
+    width: 100%;
+
+    > span { flex: 1; }
+}
+
+/* "?" help button next to EQ label */
+.nx_VoiceSettings_eqHelpBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--cpd-color-border-interactive-secondary);
+    background: transparent;
+    color: var(--cpd-color-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 6px;
+
+    &:hover {
+        border-color: var(--cpd-color-border-interactive-primary);
+        color: var(--cpd-color-text-primary);
+    }
+}
+
+/* Mode selector (オート / シンプル / カスタム) */
+.nx_VoiceSettings_eqModeSelector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.nx_VoiceSettings_eqModeBtn {
+    flex: 1;
+    justify-content: center;
+    font-size: 13px;
+}
+
+/* Vertical EQ band sliders */
+.nx_VoiceSettings_eqBands {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 4px 0 8px;
+    overflow-x: auto;
+}
+
+.nx_VoiceSettings_eqBand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 28px;
+}
+
+.nx_VoiceSettings_eqBandGain {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-secondary);
+    font-size: 10px;
+    white-space: nowrap;
+    min-height: 14px;
+    text-align: center;
+}
+
+.nx_VoiceSettings_eqBandLabel {
+    font: var(--cpd-font-body-xs-regular);
+    color: var(--cpd-color-text-secondary);
+    font-size: 10px;
+    white-space: nowrap;
+    text-align: center;
+}
+
+/* Wrapper that establishes the visual height of the vertical slider */
+.nx_VoiceSettings_eqSliderWrap {
+    position: relative;
+    width: 20px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+
+    /* 0 dB center tick */
+    &::after {
+        content: '';
+        position: absolute;
+        left: -3px;
+        right: -3px;
+        top: 50%;
+        height: 1px;
+        background: var(--cpd-color-border-interactive-secondary);
+        pointer-events: none;
+        opacity: 0.6;
+    }
+}
+
+/* Vertical range input (rotated) */
+.nx_VoiceSettings_eqSlider {
+    position: absolute;
+    /* width = visual height of the slider */
+    width: 120px;
+    height: 20px;
+    transform: rotate(-90deg);
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    outline: none;
+
+    &::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--cpd-color-text-primary);
+        cursor: pointer;
+        margin-top: -5px;
+    }
+
+    &::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--cpd-color-text-primary);
+        cursor: pointer;
+        border: none;
+    }
+
+    &::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--cpd-color-border-interactive-secondary);
+    }
+
+    &::-moz-range-track {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--cpd-color-border-interactive-secondary);
+    }
+}
+
+/* ── EQ Help Modal ───────────────────────────────────────────────────────── */
+
+.nx_VoiceSettings_eqHelpOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nx_VoiceSettings_eqHelpModal {
+    background: var(--cpd-color-bg-canvas-default);
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: 12px;
+    width: min(480px, 90vw);
+    max-height: 75vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.nx_VoiceSettings_eqHelpHeader {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+    font: var(--cpd-font-body-md-semibold);
+    color: var(--cpd-color-text-primary);
+
+    > span { flex: 1; }
+}
+
+.nx_VoiceSettings_eqHelpClose {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--cpd-color-text-secondary);
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px;
+    border-radius: 4px;
+
+    &:hover { color: var(--cpd-color-text-primary); }
+}
+
+.nx_VoiceSettings_eqHelpBody {
+    overflow-y: auto;
+    padding: 16px 20px;
+}
+
+.nx_VoiceSettings_eqHelpContent {
+    h3 {
+        font: var(--cpd-font-body-md-semibold);
+        color: var(--cpd-color-text-primary);
+        margin: 12px 0 4px;
+
+        &:first-child { margin-top: 0; }
+    }
+
+    p, li {
+        font: var(--cpd-font-body-sm-regular);
+        color: var(--cpd-color-text-secondary);
+        margin: 0 0 4px;
+        line-height: 1.5;
+    }
+
+    ul {
+        padding-left: 18px;
+        margin: 4px 0 8px;
+    }
+
+    b { color: var(--cpd-color-text-primary); }
+}

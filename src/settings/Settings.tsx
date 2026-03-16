@@ -384,6 +384,9 @@ export interface Settings {
     "nexus_nc_strength": IBaseSetting<number>;
     "nexus_mic_monitor_enabled": IBaseSetting<boolean>;
     "nexus_mic_monitor_volume": IBaseSetting<number>;
+    "nexus_eq_mode": IBaseSetting<string>;
+    "nexus_eq_simple_gains": IBaseSetting<number[]>;
+    "nexus_eq_custom_gains": IBaseSetting<number[]>;
     "nexus_close_to_tray": IBaseSetting<boolean>;
 }
 
@@ -1550,6 +1553,18 @@ export const SETTINGS: Settings = {
     "nexus_mic_monitor_volume": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: 30, // 0-100
+    },
+    "nexus_eq_mode": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: "auto", // "auto" | "simple" | "custom"
+    },
+    "nexus_eq_simple_gains": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: [0, -3, 0, 2.5], // [250Hz, 500Hz, 2kHz, 5kHz]
+    },
+    "nexus_eq_custom_gains": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: [0, 0, 0, -3, 0, 0, 2.5, 0], // [63,125,250,500,1k,2k,4k,8k]Hz
     },
     "nexus_close_to_tray": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,

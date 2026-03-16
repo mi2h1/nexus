@@ -117,6 +117,67 @@ export interface StandaloneMonitorHandle {
     stop(): void;
 }
 
+// ── Voice EQ constants ────────────────────────────────────────────────────────
+const EQ_NUM_BANDS = 8;
+
+const EQ_AUTO_BANDS: ReadonlyArray<{ freq: number; gain: number; q: number }> = [
+    { freq: 350, gain: -3, q: 1.0 },
+    { freq: 3000, gain: 2.5, q: 0.8 },
+];
+
+/** Frequencies for シンプルモード (4 bands). */
+export const EQ_SIMPLE_FREQS = [250, 500, 2000, 5000] as const;
+const EQ_SIMPLE_Q = [1.0, 1.0, 1.0, 1.0] as const;
+
+/** Frequencies for カスタムモード (8 bands). */
+export const EQ_CUSTOM_FREQS = [63, 125, 250, 500, 1000, 2000, 4000, 8000] as const;
+const EQ_CUSTOM_Q = [0.7, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.7] as const;
+
+/**
+ * Apply EQ band parameters to an array of BiquadFilterNodes.
+ * All gain changes happen synchronously (no ramp) to match the polling cadence.
+ */
+function applyEqBands(
+    nodes: BiquadFilterNode[],
+    enabled: boolean,
+    mode: string,
+    simpleGains: number[],
+    customGains: number[],
+): void {
+    if (!enabled) {
+        for (const n of nodes) n.gain.value = 0;
+        return;
+    }
+    if (mode === "simple") {
+        nodes.forEach((n, i) => {
+            if (i < EQ_SIMPLE_FREQS.length) {
+                n.frequency.value = EQ_SIMPLE_FREQS[i];
+                n.Q.value = EQ_SIMPLE_Q[i];
+                n.gain.value = simpleGains[i] ?? 0;
+            } else {
+                n.gain.value = 0;
+            }
+        });
+    } else if (mode === "custom") {
+        nodes.forEach((n, i) => {
+            n.frequency.value = EQ_CUSTOM_FREQS[i];
+            n.Q.value = EQ_CUSTOM_Q[i];
+            n.gain.value = customGains[i] ?? 0;
+        });
+    } else {
+        // auto
+        nodes.forEach((n, i) => {
+            if (i < EQ_AUTO_BANDS.length) {
+                n.frequency.value = EQ_AUTO_BANDS[i].freq;
+                n.Q.value = EQ_AUTO_BANDS[i].q;
+                n.gain.value = EQ_AUTO_BANDS[i].gain;
+            } else {
+                n.gain.value = 0;
+            }
+        });
+    }
+}
+
 export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEventHandlerMap> {
     public readonly callType = CallType.Voice;
 
@@ -193,8 +254,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private static rnnoiseWorkletRegistered = false;
     private static rnnoiseWorkletRegistrationAttempted = false;
     // ─── Voice EQ ─────────────────────────────────────────────
-    private eqLowCut: BiquadFilterNode | null = null;
-    private eqPresence: BiquadFilterNode | null = null;
+    private eqNodes: BiquadFilterNode[] = [];
     // ─── Compressor (limiter) ─────────────────────────────────
     private compressorNode: DynamicsCompressorNode | null = null;
     // ─── Post-NC gate (residual noise suppression) ────────────
@@ -1187,20 +1247,22 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.inputGainNode = this.audioContext.createGain();
         this.inputGainNode.gain.value = 0;
 
-        // Voice EQ — de-mud: cut muddy low-mids for clarity
-        const eqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
-        this.eqLowCut = this.audioContext.createBiquadFilter();
-        this.eqLowCut.type = "peaking";
-        this.eqLowCut.frequency.value = 350;
-        this.eqLowCut.Q.value = 1.0;
-        this.eqLowCut.gain.value = eqEnabled ? -3 : 0;
-
-        // Voice EQ — presence: boost upper-mids for intelligibility
-        this.eqPresence = this.audioContext.createBiquadFilter();
-        this.eqPresence.type = "peaking";
-        this.eqPresence.frequency.value = 3000;
-        this.eqPresence.Q.value = 0.8;
-        this.eqPresence.gain.value = eqEnabled ? 2.5 : 0;
+        // Voice EQ — configurable multi-band equalizer (EQ_NUM_BANDS nodes always in chain)
+        this.eqNodes = Array.from({ length: EQ_NUM_BANDS }, () => {
+            const f = this.audioContext!.createBiquadFilter();
+            f.type = "peaking";
+            f.frequency.value = 1000;
+            f.Q.value = 1.0;
+            f.gain.value = 0;
+            return f;
+        });
+        {
+            const eqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
+            const eqMode = (SettingsStore.getValue("nexus_eq_mode") ?? "auto") as string;
+            const simpleGains = (SettingsStore.getValue("nexus_eq_simple_gains") ?? [0, -3, 0, 2.5]) as number[];
+            const customGains = (SettingsStore.getValue("nexus_eq_custom_gains") ?? [0, 0, 0, -3, 0, 0, 2.5, 0]) as number[];
+            applyEqBands(this.eqNodes, eqEnabled, eqMode, simpleGains, customGains);
+        }
 
         // VAD-gated AGC — gain adjusted only during voice activity
         this.agcGainNode = this.audioContext.createGain();
@@ -1260,7 +1322,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private connectInputPipeline(): void {
         if (!this.sourceNode || !this.highPassFilter
             || !this.analyserNode || !this.inputGainNode || !this.audioContext
-            || !this.eqLowCut || !this.eqPresence || !this.agcGainNode
+            || this.eqNodes.length === 0 || !this.agcGainNode
             || !this.compressorNode || !this.postNcGainNode) return;
 
         this.sourceNode.connect(this.highPassFilter);
@@ -1287,10 +1349,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // pollInputLevel() reads analyserNode (pre-delay tap) and controls postNcGainNode.
         this.delayNode.connect(this.postNcGainNode);
         this.postNcGainNode.connect(this.inputGainNode);
-        // Voice gate → EQ → AGC → Compressor
-        this.inputGainNode.connect(this.eqLowCut);
-        this.eqLowCut.connect(this.eqPresence);
-        this.eqPresence.connect(this.agcGainNode);
+        // Voice gate → EQ (8 nodes) → AGC → Compressor
+        this.inputGainNode.connect(this.eqNodes[0]);
+        for (let i = 0; i < this.eqNodes.length - 1; i++) {
+            this.eqNodes[i].connect(this.eqNodes[i + 1]);
+        }
+        this.eqNodes[this.eqNodes.length - 1].connect(this.agcGainNode);
         this.agcGainNode.connect(this.compressorNode);
     }
 
@@ -1479,18 +1543,15 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const postNcGain = ctx.createGain();
             postNcGain.gain.value = 1;
 
-            // EQ
-            const eqLowCut = ctx.createBiquadFilter();
-            eqLowCut.type = "peaking";
-            eqLowCut.frequency.value = 350;
-            eqLowCut.Q.value = 1.0;
-            eqLowCut.gain.value = -3;
-
-            const eqPresence = ctx.createBiquadFilter();
-            eqPresence.type = "peaking";
-            eqPresence.frequency.value = 3000;
-            eqPresence.Q.value = 0.8;
-            eqPresence.gain.value = 2.5;
+            // EQ — same multi-band structure as main pipeline
+            const eqNodesSM = Array.from({ length: EQ_NUM_BANDS }, () => {
+                const f = ctx.createBiquadFilter();
+                f.type = "peaking";
+                f.frequency.value = 1000;
+                f.Q.value = 1.0;
+                f.gain.value = 0;
+                return f;
+            });
 
             // AGC
             const agcGainNode = ctx.createGain();
@@ -1513,11 +1574,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const outputGain = ctx.createGain();
             outputGain.gain.value = Math.max(0, volume) / 100;
 
-            // Chain: postHpf → analyser(tap) → postNcGain → EQ → AGC → compressor → outputGain → dest
+            // Chain: postHpf → analyser(tap) → postNcGain → EQ (8 nodes) → AGC → compressor → outputGain → dest
             postHpf.connect(postNcGain);
-            postNcGain.connect(eqLowCut);
-            eqLowCut.connect(eqPresence);
-            eqPresence.connect(agcGainNode);
+            postNcGain.connect(eqNodesSM[0]);
+            for (let i = 0; i < eqNodesSM.length - 1; i++) {
+                eqNodesSM[i].connect(eqNodesSM[i + 1]);
+            }
+            eqNodesSM[eqNodesSM.length - 1].connect(agcGainNode);
             agcGainNode.connect(compressor);
             compressor.connect(outputGain);
             outputGain.connect(ctx.destination);
@@ -1530,8 +1593,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const currentEqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
                 const currentAgcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
 
-                eqLowCut.gain.value = currentEqEnabled ? -3 : 0;
-                eqPresence.gain.value = currentEqEnabled ? 2.5 : 0;
+                const eqMode = (SettingsStore.getValue("nexus_eq_mode") ?? "auto") as string;
+                const simpleGains = (SettingsStore.getValue("nexus_eq_simple_gains") ?? [0, -3, 0, 2.5]) as number[];
+                const customGains = (SettingsStore.getValue("nexus_eq_custom_gains") ?? [0, 0, 0, -3, 0, 0, 2.5, 0]) as number[];
+                applyEqBands(eqNodesSM, currentEqEnabled, eqMode, simpleGains, customGains);
 
                 analyser.getByteTimeDomainData(timeBuffer);
                 let sumSq = 0;
@@ -1785,11 +1850,13 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.emit(CallEvent.InputLevel, this._meterLevel);
 
         // ── Voice EQ (dynamic) ───────────────────────────────────────────────
-        // EQ nodes are always in the chain; toggling is done by zeroing their gain.
-        if (this.eqLowCut && this.eqPresence) {
+        // EQ nodes are always in the chain; toggling is done by zeroing all gains.
+        if (this.eqNodes.length > 0) {
             const eqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
-            this.eqLowCut.gain.value = eqEnabled ? -3 : 0;
-            this.eqPresence.gain.value = eqEnabled ? 2.5 : 0;
+            const eqMode = (SettingsStore.getValue("nexus_eq_mode") ?? "auto") as string;
+            const simpleGains = (SettingsStore.getValue("nexus_eq_simple_gains") ?? [0, -3, 0, 2.5]) as number[];
+            const customGains = (SettingsStore.getValue("nexus_eq_custom_gains") ?? [0, 0, 0, -3, 0, 0, 2.5, 0]) as number[];
+            applyEqBands(this.eqNodes, eqEnabled, eqMode, simpleGains, customGains);
         }
 
         // ── RNNoise silence detection ─────────────────────────────────────────
@@ -2105,8 +2172,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
         this.rnnoiseFailedPollCount = 0;
         this._postNcGateOpen = false;
-        this.eqLowCut = null;
-        this.eqPresence = null;
+        this.eqNodes = [];
         this.compressorNode = null;
         this.agcGainNode = null;
         this.agcCurrentGain = 1.0;

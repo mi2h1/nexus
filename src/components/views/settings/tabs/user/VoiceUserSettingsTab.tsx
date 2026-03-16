@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX, type ReactNode, useState, useCallback, useRef, useEffect, useId } from "react";
+import React, { type JSX, type ReactNode, useState, useCallback, useRef, useEffect, useId, Fragment } from "react";
 import { logger } from "matrix-js-sdk/src/logger";
 import { type EmptyObject } from "matrix-js-sdk/src/matrix";
 import { Form, SettingsToggleInput, ToggleInput, InlineField, HelpMessage, Label } from "@vector-im/compound-web";
@@ -23,7 +23,7 @@ import { SettingsSubsection } from "../../shared/SettingsSubsection";
 import MatrixClientContext from "../../../../../contexts/MatrixClientContext";
 import SettingsStore from "../../../../../settings/SettingsStore";
 import { useNexusVoice } from "../../../../../hooks/useNexusVoice";
-import { NexusVoiceConnection, type StandaloneMonitorHandle } from "../../../../../models/NexusVoiceConnection";
+import { NexusVoiceConnection, type StandaloneMonitorHandle, EQ_SIMPLE_FREQS, EQ_CUSTOM_FREQS } from "../../../../../models/NexusVoiceConnection";
 import { CallEvent } from "../../../../../models/Call";
 
 interface IState {
@@ -405,9 +405,47 @@ function NexusMicMonitorSettings(): JSX.Element {
     );
 }
 
+// EQ band frequency labels
+const EQ_SIMPLE_LABELS = EQ_SIMPLE_FREQS.map((f) => (f >= 1000 ? `${f / 1000}kHz` : `${f}Hz`));
+const EQ_CUSTOM_LABELS = EQ_CUSTOM_FREQS.map((f) => (f >= 1000 ? `${f / 1000}kHz` : `${f}Hz`));
+
+const EQ_HELP_CONTENT = (
+    <div className="nx_VoiceSettings_eqHelpContent">
+        <h3>ボイスEQとは</h3>
+        <p>
+            マイクから入力される声の周波数特性を調整する機能です。特定の帯域を上げ下げすることで、こもりを取り除いたり声の明瞭さを向上させることができます。調整は送信音声（相手に届く音）にのみ適用されます。
+        </p>
+        <h3>オート</h3>
+        <p>
+            Nexus が推奨する設定を自動で適用します。350Hz 付近を少し抑えてこもりを除去し、3kHz 付近を持ち上げて声の明瞭さを向上させます。ほとんどの場合これで十分です。
+        </p>
+        <h3>シンプル（4バンド）</h3>
+        <p>声に関係する4つの帯域のゲインを調整できます。</p>
+        <ul>
+            <li><b>250Hz（低域）</b> — 声の温かみ・ブーミーさ。下げると軽くスッキリし、上げると太みが出ます。</li>
+            <li><b>500Hz（中低域）</b> — こもり・箱鳴り感。こもって聞こえる場合は下げてみてください。</li>
+            <li><b>2kHz（中高域）</b> — 鼻声・ナサルな印象。鼻声が気になる場合は少し下げると改善することがあります。</li>
+            <li><b>5kHz（高域）</b> — 声の抜け・明瞭さ。上げると輪郭がはっきりしますが、上げすぎると耳に刺さります。</li>
+        </ul>
+        <h3>カスタム（8バンド）</h3>
+        <p>より細かく8つの帯域を調整できます。</p>
+        <ul>
+            <li><b>63Hz（超低域）</b> — 空調・環境ノイズが多い帯域。通常は下げておくと良いです。</li>
+            <li><b>125Hz（低域）</b> — 声の胴鳴り感。マイクによっては誇張される場合があります。</li>
+            <li><b>250Hz（低中域）</b> — 声の温かみ。</li>
+            <li><b>500Hz（中低域）</b> — こもりの原因になりやすい帯域。</li>
+            <li><b>1kHz（中域）</b> — 声の芯・存在感。</li>
+            <li><b>2kHz（上中域）</b> — 鼻声感・ナサルな印象。</li>
+            <li><b>4kHz（高中域）</b> — 声の前に出る感じ・明瞭さ。</li>
+            <li><b>8kHz（高域）</b> — 歯擦音（サ・タ行）・空気感。上げすぎるとシャリシャリします。</li>
+        </ul>
+    </div>
+);
+
 /** EQ / AGC / NC strength toggle settings. */
 function NexusAudioProcessingSettings(): JSX.Element {
     const ncToggleId = useId();
+    const eqToggleId = useId();
     const [ncEnabled, setNcEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true,
     );
@@ -417,9 +455,19 @@ function NexusAudioProcessingSettings(): JSX.Element {
     const [eqEnabled, setEqEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_voice_eq_enabled") ?? true,
     );
+    const [eqMode, setEqMode] = useState<"auto" | "simple" | "custom">(
+        () => (SettingsStore.getValue("nexus_eq_mode") ?? "auto") as "auto" | "simple" | "custom",
+    );
+    const [simpleGains, setSimpleGains] = useState<number[]>(
+        () => (SettingsStore.getValue("nexus_eq_simple_gains") ?? [0, -3, 0, 2.5]) as number[],
+    );
+    const [customGains, setCustomGains] = useState<number[]>(
+        () => (SettingsStore.getValue("nexus_eq_custom_gains") ?? [0, 0, 0, -3, 0, 0, 2.5, 0]) as number[],
+    );
     const [agcEnabled, setAgcEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_voice_agc_enabled") ?? true,
     );
+    const [showEqHelp, setShowEqHelp] = useState(false);
 
     const onNcChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const enabled = e.target.checked;
@@ -439,14 +487,42 @@ function NexusAudioProcessingSettings(): JSX.Element {
         SettingsStore.setValue("nexus_voice_eq_enabled", null, SettingLevel.DEVICE, enabled);
     }, []);
 
+    const onEqModeChange = useCallback((mode: "auto" | "simple" | "custom") => {
+        setEqMode(mode);
+        SettingsStore.setValue("nexus_eq_mode", null, SettingLevel.DEVICE, mode);
+    }, []);
+
+    const onSimpleGainChange = useCallback((index: number, val: number) => {
+        setSimpleGains((prev) => {
+            const next = [...prev];
+            next[index] = val;
+            SettingsStore.setValue("nexus_eq_simple_gains", null, SettingLevel.DEVICE, next);
+            return next;
+        });
+    }, []);
+
+    const onCustomGainChange = useCallback((index: number, val: number) => {
+        setCustomGains((prev) => {
+            const next = [...prev];
+            next[index] = val;
+            SettingsStore.setValue("nexus_eq_custom_gains", null, SettingLevel.DEVICE, next);
+            return next;
+        });
+    }, []);
+
     const onAgcChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const enabled = e.target.checked;
         setAgcEnabled(enabled);
         SettingsStore.setValue("nexus_voice_agc_enabled", null, SettingLevel.DEVICE, enabled);
     }, []);
 
+    const currentGains = eqMode === "custom" ? customGains : simpleGains;
+    const currentLabels = eqMode === "custom" ? EQ_CUSTOM_LABELS : EQ_SIMPLE_LABELS;
+    const onBandGainChange = eqMode === "custom" ? onCustomGainChange : onSimpleGainChange;
+
     return (
         <SettingsSubsection heading="音声処理" stretchContent>
+            {/* ── NC ── */}
             <InlineField
                 name="nx-noise-cancellation"
                 control={<ToggleInput id={ncToggleId} checked={ncEnabled} onChange={onNcChange} />}
@@ -477,13 +553,72 @@ function NexusAudioProcessingSettings(): JSX.Element {
                     </div>
                 </div>
             )}
-            <SettingsToggleInput
+
+            {/* ── Voice EQ ── */}
+            <InlineField
                 name="nx-voice-eq"
-                label="ボイス EQ"
-                helpMessage="低中域のこもりをカットし、中高域をブーストして声の通りを改善します。マイク音質がこもって聞こえる場合に有効です。"
-                checked={eqEnabled}
-                onChange={onEqChange}
-            />
+                control={<ToggleInput id={eqToggleId} checked={eqEnabled} onChange={onEqChange} />}
+            >
+                <Label htmlFor={eqToggleId} className="nx_VoiceSettings_eqLabel">
+                    <span>ボイス EQ</span>
+                    <button
+                        type="button"
+                        className="nx_VoiceSettings_eqHelpBtn"
+                        onClick={(e) => { e.preventDefault(); setShowEqHelp(true); }}
+                        title="ボイスEQについて"
+                        aria-label="ボイスEQについて"
+                    >?</button>
+                </Label>
+                <HelpMessage>声の周波数特性を調整してマイク音質を改善します。</HelpMessage>
+            </InlineField>
+
+            {eqEnabled && (
+                <Fragment>
+                    {/* Mode selector */}
+                    <div className="nx_VoiceSettings_eqModeSelector">
+                        {(["auto", "simple", "custom"] as const).map((m) => (
+                            <AccessibleButton
+                                key={m}
+                                kind={eqMode === m ? "primary" : "secondary"}
+                                className="nx_VoiceSettings_eqModeBtn"
+                                onClick={() => onEqModeChange(m)}
+                            >
+                                {m === "auto" ? "オート" : m === "simple" ? "シンプル" : "カスタム"}
+                            </AccessibleButton>
+                        ))}
+                    </div>
+
+                    {/* Vertical band sliders */}
+                    {(eqMode === "simple" || eqMode === "custom") && (
+                        <div className="nx_VoiceSettings_eqBands">
+                            {currentLabels.map((label, i) => {
+                                const gain = currentGains[i] ?? 0;
+                                return (
+                                    <div key={label} className="nx_VoiceSettings_eqBand">
+                                        <span className="nx_VoiceSettings_eqBandGain">
+                                            {gain > 0 ? "+" : ""}{gain % 1 === 0 ? gain.toFixed(0) : gain.toFixed(1)}
+                                        </span>
+                                        <div className="nx_VoiceSettings_eqSliderWrap">
+                                            <input
+                                                type="range"
+                                                className="nx_VoiceSettings_eqSlider"
+                                                min={-12}
+                                                max={12}
+                                                step={0.5}
+                                                value={gain}
+                                                onChange={(e) => onBandGainChange(i, Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <span className="nx_VoiceSettings_eqBandLabel">{label}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </Fragment>
+            )}
+
+            {/* ── AGC ── */}
             <SettingsToggleInput
                 name="nx-voice-agc"
                 label="自動音量調整（AGC）"
@@ -491,6 +626,35 @@ function NexusAudioProcessingSettings(): JSX.Element {
                 checked={agcEnabled}
                 onChange={onAgcChange}
             />
+
+            {/* ── EQ Help Modal ── */}
+            {showEqHelp && (
+                <div
+                    className="nx_VoiceSettings_eqHelpOverlay"
+                    onClick={() => setShowEqHelp(false)}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="ボイスEQについて"
+                >
+                    <div
+                        className="nx_VoiceSettings_eqHelpModal"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="nx_VoiceSettings_eqHelpHeader">
+                            <span>ボイスEQについて</span>
+                            <button
+                                type="button"
+                                className="nx_VoiceSettings_eqHelpClose"
+                                onClick={() => setShowEqHelp(false)}
+                                aria-label="閉じる"
+                            >✕</button>
+                        </div>
+                        <div className="nx_VoiceSettings_eqHelpBody">
+                            {EQ_HELP_CONTENT}
+                        </div>
+                    </div>
+                </div>
+            )}
         </SettingsSubsection>
     );
 }
