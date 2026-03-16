@@ -110,12 +110,13 @@ export function NexusVCRoomView({ roomId, isPopout = false }: NexusVCRoomViewPro
     /** Right-click on the view background — no volume slider. */
     const onViewContextMenu = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
-        setViewContextMenu({ left: e.clientX, top: e.clientY });
+        // メニューが開いている状態で右クリックしたら閉じるだけ（スポットライト切替を防ぐ）
+        setViewContextMenu((prev) => prev ? null : { left: e.clientX, top: e.clientY });
     }, []);
 
     /** Right-click on a watched screen share tile — includes volume slider. */
     const onShareContextMenu = useCallback((share: ScreenShareInfo, left: number, top: number) => {
-        setViewContextMenu({ left, top, share });
+        setViewContextMenu((prev) => prev ? null : { left, top, share });
     }, []);
 
     // Close context menu on click outside or Escape
