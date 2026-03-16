@@ -457,7 +457,7 @@ function NexusAudioProcessingSettings(): JSX.Element {
         () => SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true,
     );
     const [ncStrength, setNcStrength] = useState<number>(
-        () => SettingsStore.getValue("nexus_nc_strength") ?? 50,
+        () => SettingsStore.getValue("nexus_nc_strength") ?? 25,
     );
     const [eqEnabled, setEqEnabled] = useState<boolean>(
         () => SettingsStore.getValue("nexus_voice_eq_enabled") ?? true,
@@ -550,10 +550,10 @@ function NexusAudioProcessingSettings(): JSX.Element {
                             id="nx_nc_strength"
                             type="range"
                             min={0}
-                            max={100}
+                            max={70}
                             step={5}
                             value={ncStrength}
-                            style={sliderFill(ncStrength, 0, 100)}
+                            style={sliderFill(ncStrength, 0, 70)}
                             onChange={onNcStrengthChange}
                         />
                         <span className="nx_VoiceSettings_sliderValue">{ncStrength}%</span>

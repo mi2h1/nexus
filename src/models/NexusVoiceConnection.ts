@@ -1532,7 +1532,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             const timeBuffer = new Uint8Array(analyser.fftSize);
             const pollTimer = setInterval(() => {
                 const currentNcEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
-                const currentNcStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
+                const currentNcStrength = SettingsStore.getValue("nexus_nc_strength") ?? 25;
                 const currentEqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
                 const currentAgcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
 
@@ -1757,7 +1757,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // The post-gate additionally cuts residual noise below the voice threshold.
         if (this.postNcGainNode && this.audioContext) {
             const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
-            const ncStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
+            const ncStrength = SettingsStore.getValue("nexus_nc_strength") ?? 25;
             // Sync suppression level to DeepFilter AI (0-100 maps to dB attenuation limit)
             if (ncEnabled && this.ncNode && NexusVoiceConnection.deepfilterCore) {
                 NexusVoiceConnection.deepfilterCore.setSuppressionLevel(ncStrength);
