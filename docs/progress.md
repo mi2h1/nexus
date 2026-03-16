@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-17 (v0.2.25)
+> 最終更新: 2026-03-17 (v0.2.26)
 
 ## リポジトリ情報
 
@@ -128,6 +128,33 @@ nexus/                          # element-web フォーク
 
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 2026-03-17 (v0.2.26: DeepFilterNet3ノイキャン・UI改善)
+- **ノイキャン: RNNoise → DeepFilterNet3 完全置き換え**
+  - アプリ版（WebView2）でRNNoiseのAudioWorklet読み込みが失敗し動作していなかったため完全移行
+  - DeepFilterNet3（WASM + ONNXモデル）をself-host（`res/deep-filter/`）して CDN CORS 問題を回避
+  - VC接続中・マイクテスト（モニター）の両方でDeepFilterNet3が動作
+  - NC強度スライダー: 0〜70%・1刻み・デフォルト25%（70%超は声もキャンセルされるため上限設定）
+  - webpack CopyPlugin: RNNoiseエントリ削除 → `res/deep-filter/**` を `webapp/deep-filter/` へ
+  - `assetConfig: { cdnUrl: "/deep-filter" }` でローカルURL参照
+- **VUメーター改善**
+  - バー数: 20本 → 64本（細かく見えるよう倍増）
+  - モニターOFF時・VC未接続時はバーが光らないよう修正
+- **ボイスゲート開き時のポップ音解消**
+  - `setValueAtTime`（即座）→ `linearRampToValueAtTime(+10ms)` に変更
+- **個別音量スライダー: 400% → 300% 上限**
+  - 参加者音量・画面共有音量ともに `max=3.0`（1%刻みは維持）
+  - コンテキストメニュー幅を 220/240px → 260px に拡大
+- **VCコンテキストメニュー: 右クリックで閉じる**
+  - メニュー表示中に右クリックするとメニューを閉じる（グリッド/スポットライト切替を防止）
+- **ポップアウトVCウィンドウ: フルスクリーンボタン追加**
+  - 収納ボタンの右に配置、ポップアウト時のみ表示
+  - `portalContainer.ownerDocument` でポップアウト側のウィンドウを全画面化
+  - ESCキーによる解除も `fullscreenchange` で状態同期、解除時はアイコン切り替え
+- **自分の画面共有パネル: プレビュー非表示（リソース節約）**
+  - 1フレームスナップショット取得後すぐvideo解放（Discordと同仕様）
+  - スナップショット上に黒オーバーレイ+「リソース節約のためプレビューを非表示にしています」
+  - スポットライトのメイン表示で選択した時のみライブプレビューを表示（`showLocalPreview`）
 
 #### 2026-03-02 (v0.2.11: ユーザー指定の表示名カラー)
 - **ユーザーカラー機能**: 各ユーザーが自分の表示名の色を選択可能に（Discord のロールカラーに相当）
