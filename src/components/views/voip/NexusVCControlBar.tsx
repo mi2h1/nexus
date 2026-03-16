@@ -5,9 +5,9 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, useRef, useState, type JSX } from "react";
+import React, { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import classNames from "classnames";
-import { IconMicrophone, IconMicrophoneOff, IconHeadphones, IconHeadphonesOff, IconScreenShare, IconDeviceDesktopCog, IconScreenShareOff, IconSettings, IconPhoneOff, IconWindowMaximize, IconWindowMinimize } from "@tabler/icons-react";
+import { IconMicrophone, IconMicrophoneOff, IconHeadphones, IconHeadphonesOff, IconScreenShare, IconDeviceDesktopCog, IconScreenShareOff, IconSettings, IconPhoneOff, IconWindowMaximize, IconWindowMinimize, IconArrowsMaximize, IconArrowsMinimize } from "@tabler/icons-react";
 
 import { useNexusVoice } from "../../../hooks/useNexusVoice";
 import { NexusVoiceStore } from "../../../stores/NexusVoiceStore";
@@ -48,7 +48,25 @@ export function NexusVCControlBar({
 }: NexusVCControlBarProps): JSX.Element {
     const { isMicMuted, isOutputMuted, isScreenSharing } = useNexusVoice();
     const [showSharePanel, setShowSharePanel] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
     const shareButtonRef = useRef<HTMLButtonElement>(null);
+
+    // フルスクリーン状態の同期（ESCキーなどで解除された時）
+    useEffect(() => {
+        if (!isPopout) return;
+        const doc = document;
+        const onFsChange = (): void => setIsFullscreen(!!doc.fullscreenElement);
+        doc.addEventListener("fullscreenchange", onFsChange);
+        return () => doc.removeEventListener("fullscreenchange", onFsChange);
+    }, [isPopout]);
+
+    const onToggleFullscreen = useCallback(() => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+            document.exitFullscreen().catch(() => {});
+        }
+    }, []);
 
     const onToggleMic = useCallback(() => {
         NexusVoiceStore.instance.toggleMic();
@@ -191,6 +209,16 @@ export function NexusVCControlBar({
                         disableTooltip={isPopout}
                     >
                         <IconWindowMinimize size={20} />
+                    </AccessibleButton>
+                )}
+                {isPopout && (
+                    <AccessibleButton
+                        className="nx_VCControlBar_layoutButton"
+                        onClick={onToggleFullscreen}
+                        title={isFullscreen ? "フルスクリーン解除" : "フルスクリーン"}
+                        disableTooltip={isPopout}
+                    >
+                        {isFullscreen ? <IconArrowsMinimize size={20} /> : <IconArrowsMaximize size={20} />}
                     </AccessibleButton>
                 )}
             </div>
