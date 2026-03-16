@@ -284,6 +284,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private static readonly VOICE_GATE_RELEASE_MS = 300;
     /** Gain ramp duration for voice gate close (fade-out). */
     private static readonly VOICE_GATE_RAMP_SEC = 0.05;
+    /** Gain ramp duration for voice gate open (fade-in, eliminates pop on entry). */
+    private static readonly VOICE_GATE_OPEN_RAMP_SEC = 0.010;
     /** DelayNode lookahead so analyser detects speech before audio reaches the gate.
      *  15ms: gate opens 15ms before speech arrives → max word-start clipping = ~35ms.
      *  Lower value also reduces self-monitoring latency (was 50ms, which caused hollow sound). */
@@ -1751,8 +1753,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         const gateEnabled = SettingsStore.getValue("nexus_voice_gate_enabled");
         if (gateEnabled && this.inputGainNode && this.audioContext) {
             const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
-            this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-            this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
+            const now = this.audioContext.currentTime;
+            this.inputGainNode.gain.cancelScheduledValues(now);
+            this.inputGainNode.gain.setValueAtTime(this.inputGainNode.gain.value, now);
+            this.inputGainNode.gain.linearRampToValueAtTime(targetVol, now + NexusVoiceConnection.VOICE_GATE_OPEN_RAMP_SEC);
         }
     }
 
@@ -1977,8 +1981,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     this.broadcastSpeakingState(true);
                     if (gateEnabled && this.inputGainNode && this.audioContext) {
                         const targetVol = (SettingsStore.getValue("nexus_input_volume") ?? 100) / 100;
-                        this.inputGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-                        this.inputGainNode.gain.setValueAtTime(targetVol, this.audioContext.currentTime);
+                        const now = this.audioContext.currentTime;
+                        this.inputGainNode.gain.cancelScheduledValues(now);
+                        this.inputGainNode.gain.setValueAtTime(this.inputGainNode.gain.value, now);
+                        this.inputGainNode.gain.linearRampToValueAtTime(targetVol, now + NexusVoiceConnection.VOICE_GATE_OPEN_RAMP_SEC);
                     }
                 }
             } else if (voiceDb < closeThresholdDb) {
