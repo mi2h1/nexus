@@ -182,6 +182,9 @@ importers:
       css-tree:
         specifier: ^3.0.0
         version: 3.1.0
+      deepfilternet3-noise-filter:
+        specifier: ^1.2.1
+        version: 1.2.1(livekit-client@2.17.2(@types/dom-mediacapture-record@1.0.22))
       diff-dom:
         specifier: ^5.0.0
         version: 5.2.1
@@ -259,7 +262,7 @@ importers:
         version: 1.0.3
       matrix-js-sdk:
         specifier: github:matrix-org/matrix-js-sdk#develop
-        version: https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/d99363d288b8471e38892ec11fd9b37c062b85fe
+        version: https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/c2f9ad28fc1e694931536bbe64b2d4757dc0eb34
       matrix-widget-api:
         specifier: ^1.16.1
         version: 1.17.0
@@ -6052,6 +6055,12 @@ packages:
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
 
+  deepfilternet3-noise-filter@1.2.1:
+    resolution: {integrity: sha512-OAyrHTDlUHH+AhfpVNKYEOhVqb9cZpu0fdNThplA/tB/Ts4PF/UsI+abl2n1IbSxUkhiF0OqDejEhk1n42Oqpw==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      livekit-client: ^2.0.0
+
   deepmerge@4.3.1:
     resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
     engines: {node: '>=0.10.0'}
@@ -8036,8 +8045,8 @@ packages:
   matrix-events-sdk@0.0.1:
     resolution: {integrity: sha512-1QEOsXO+bhyCroIe2/A5OwaxHvBm7EsSQ46DEDn8RBIfQwN5HWBpFvyWWR4QY0KHPPnnJdI99wgRiAl7Ad5qaA==}
 
-  matrix-js-sdk@https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/d99363d288b8471e38892ec11fd9b37c062b85fe:
-    resolution: {tarball: https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/d99363d288b8471e38892ec11fd9b37c062b85fe}
+  matrix-js-sdk@https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/c2f9ad28fc1e694931536bbe64b2d4757dc0eb34:
+    resolution: {tarball: https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/c2f9ad28fc1e694931536bbe64b2d4757dc0eb34}
     version: 41.1.0
     engines: {node: '>=22.0.0'}
 
@@ -16619,6 +16628,10 @@ snapshots:
 
   deep-is@0.1.4: {}
 
+  deepfilternet3-noise-filter@1.2.1(livekit-client@2.17.2(@types/dom-mediacapture-record@1.0.22)):
+    dependencies:
+      livekit-client: 2.17.2(@types/dom-mediacapture-record@1.0.22)
+
   deepmerge@4.3.1: {}
 
   default-browser-id@5.0.1: {}
@@ -19155,7 +19168,7 @@ snapshots:
 
   matrix-events-sdk@0.0.1: {}
 
-  matrix-js-sdk@https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/d99363d288b8471e38892ec11fd9b37c062b85fe:
+  matrix-js-sdk@https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/c2f9ad28fc1e694931536bbe64b2d4757dc0eb34:
     dependencies:
       '@babel/runtime': 7.28.6
       '@matrix-org/matrix-sdk-crypto-wasm': 18.0.0
