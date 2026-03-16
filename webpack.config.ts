@@ -266,6 +266,9 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
                 // Make shared-components imports resolve to EW deps
                 "counterpart": getPackageRoot("counterpart"),
                 "@vector-im/compound-web": getPackageRoot("@vector-im/compound-web", ""),
+
+                // Vendor copy: pnpm peer-dep hoisting issue workaround
+                "deepfilternet3-noise-filter": path.resolve(__dirname, "src/vendor/deepfilternet3-noise-filter"),
             },
             fallback: {
                 // Mock out the NodeFS module: The opus decoder imports this wrongly.
