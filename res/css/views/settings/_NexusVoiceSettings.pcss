@@ -251,20 +251,16 @@ Please see LICENSE files in the repository root for full details.
     align-items: center;
 }
 
-/* help icon button — no border, no background, sits flush after label text */
+/* help icon button — full reset then only what's needed */
 .nx_VoiceSettings_eqHelpBtn {
+    all: unset;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
-    border: none;
-    padding: 0;
     margin-left: 5px;
     cursor: pointer;
     color: var(--cpd-color-icon-tertiary);
-    flex-shrink: 0;
-
-    svg { display: block; }
+    line-height: 1;
 
     &:hover { color: var(--cpd-color-icon-secondary); }
 }
