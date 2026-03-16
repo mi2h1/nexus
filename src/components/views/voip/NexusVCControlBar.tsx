@@ -51,22 +51,25 @@ export function NexusVCControlBar({
     const [isFullscreen, setIsFullscreen] = useState(false);
     const shareButtonRef = useRef<HTMLButtonElement>(null);
 
+    // ポップアウトウィンドウのdocument（portalContainerのownerDocument）
+    // portalContainerがない場合はメインのdocumentにフォールバック
+    const popoutDoc = portalContainer?.ownerDocument ?? document;
+
     // フルスクリーン状態の同期（ESCキーなどで解除された時）
     useEffect(() => {
         if (!isPopout) return;
-        const doc = document;
-        const onFsChange = (): void => setIsFullscreen(!!doc.fullscreenElement);
-        doc.addEventListener("fullscreenchange", onFsChange);
-        return () => doc.removeEventListener("fullscreenchange", onFsChange);
-    }, [isPopout]);
+        const onFsChange = (): void => setIsFullscreen(!!popoutDoc.fullscreenElement);
+        popoutDoc.addEventListener("fullscreenchange", onFsChange);
+        return () => popoutDoc.removeEventListener("fullscreenchange", onFsChange);
+    }, [isPopout, popoutDoc]);
 
     const onToggleFullscreen = useCallback(() => {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(() => {});
+        if (!popoutDoc.fullscreenElement) {
+            popoutDoc.documentElement.requestFullscreen().catch(() => {});
         } else {
-            document.exitFullscreen().catch(() => {});
+            popoutDoc.exitFullscreen().catch(() => {});
         }
-    }, []);
+    }, [popoutDoc]);
 
     const onToggleMic = useCallback(() => {
         NexusVoiceStore.instance.toggleMic();

@@ -15,6 +15,8 @@ interface ScreenShareTileProps {
     onStopWatching?: () => void;
     /** Callback for right-click on a remote screen share (used by unified context menu). */
     onShareContextMenu?: (share: ScreenShareInfo, left: number, top: number) => void;
+    /** スポットライトのメイン表示などで自分の画面共有もライブプレビューしたい場合に true を渡す */
+    showLocalPreview?: boolean;
 }
 
 /** Minimum freeze duration (ms) before triggering A/V resync. */
@@ -85,7 +87,7 @@ const LocalScreenShareTile: React.FC<{ share: ScreenShareInfo }> = ({ share }) =
  * Volume control is handled by NexusVoiceConnection via the registered element.
  */
 export const ScreenShareTile: React.FC<ScreenShareTileProps> = (props) => {
-    if (props.share.isLocal) return <LocalScreenShareTile share={props.share} />;
+    if (props.share.isLocal && !props.showLocalPreview) return <LocalScreenShareTile share={props.share} />;
     return <RemoteScreenShareTile {...props} />;
 };
 

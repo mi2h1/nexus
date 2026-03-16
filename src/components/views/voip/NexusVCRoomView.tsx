@@ -510,6 +510,7 @@ function SpotlightLayout({
                     <ScreenShareTile
                         share={effectiveTarget.share}
                         onShareContextMenu={onShareContextMenu}
+                        showLocalPreview={effectiveTarget.share.isLocal}
                     />
                 ) : effectiveTarget?.type === "member" ? (
                     <div className="nx_VCRoomView_spotlightAvatar">
