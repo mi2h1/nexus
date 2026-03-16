@@ -32,7 +32,7 @@ import {
     ScreenSharePresets,
     VideoPreset,
 } from "livekit-client";
-import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppressor";
+import { DeepFilterNet3Core } from "deepfilternet3-noise-filter";
 import { MicVAD } from "@ricky0123/vad-web";
 
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
@@ -246,13 +246,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private sourceNode: MediaStreamAudioSourceNode | null = null;
     private highPassFilter: BiquadFilterNode | null = null;
     private delayNode: DelayNode | null = null;
-    // ─── RNNoise noise cancellation ───────────────────────────
-    private rnnoiseNode: RnnoiseWorkletNode | null = null;
-    /** Cached WASM binary — shared across reconnects. */
-    private static rnnoiseWasmBinary: ArrayBuffer | null = null;
-    /** Whether AudioWorklet is supported in this environment (confirmed by a successful addModule). */
-    private static rnnoiseWorkletRegistered = false;
-    private static rnnoiseWorkletRegistrationAttempted = false;
+    // ─── DeepFilterNet3 noise cancellation ────────────────────
+    private ncNode: AudioWorkletNode | null = null;
+    /** Shared initialized core — cached after first initialize() so WASM/model aren't re-downloaded. */
+    private static deepfilterCore: DeepFilterNet3Core | null = null;
     // ─── Voice EQ ─────────────────────────────────────────────
     private eqNodes: BiquadFilterNode[] = [];
     // ─── Compressor (limiter) ─────────────────────────────────
@@ -269,13 +266,9 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private agcGainNode: GainNode | null = null;
     private agcCurrentGain = 1.0;
     private voiceGateTimer: ReturnType<typeof setInterval> | null = null;
-    /** Consecutive polls where raw mic has audio but post-RNNoise is silent (WASM failure detection). */
-    private rnnoiseFailedPollCount = 0;
     private _inputLevel = 0; // 0-100 internal linear level (AGC/threshold only)
     private _meterLevel = 0; // 0-100 dBFS log-scaled level emitted for display
     /** AnalyserNode tapped before RNNoise — reads true mic signal for the display meter. */
-    private rawLevelAnalyser: AnalyserNode | null = null;
-    private rawLevelBuffer: Uint8Array<ArrayBuffer> | null = null;
     /** Reusable buffer for analyser data — avoids allocation in hot polling loop. */
     private analyserBuffer: Uint8Array<ArrayBuffer> | null = null;
     private _voiceGateOpen = true;
@@ -1226,16 +1219,12 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.highPassFilter.frequency.value = 80;
         this.highPassFilter.Q.value = 0.7;
 
-        // RNNoise AI noise cancellation (optional — fails gracefully on WebView2)
+        // DeepFilterNet3 AI noise cancellation (optional — fails gracefully if unavailable)
         const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
         if (ncEnabled) {
-            await this.setupRnnoiseNode();
+            await this.setupDeepfilterNode();
         }
 
-        // RawLevelAnalyser — tapped BEFORE RNNoise so the display meter shows the
-        // true microphone signal (including background noise, not just post-NC speech).
-        this.rawLevelAnalyser = this.audioContext.createAnalyser();
-        this.rawLevelAnalyser.fftSize = 1024;
 
         // AnalyserNode — monitors input level (post-RNNoise, pre-delay for instant detection)
         // Used for voice gate frequency analysis (cleaned signal, no background noise).
@@ -1329,15 +1318,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
 
         this.sourceNode.connect(this.highPassFilter);
 
-        // Raw meter tap — BEFORE RNNoise so the display shows actual mic input
-        if (this.rawLevelAnalyser) {
-            this.highPassFilter.connect(this.rawLevelAnalyser);
-        }
-
-        // RNNoise sits between HPF and gate analyser (if available)
-        const postHpf: AudioNode = this.rnnoiseNode ?? this.highPassFilter;
-        if (this.rnnoiseNode) {
-            this.highPassFilter.connect(this.rnnoiseNode);
+        // DeepFilterNet3 sits between HPF and gate analyser (if available)
+        const postHpf: AudioNode = this.ncNode ?? this.highPassFilter;
+        if (this.ncNode) {
+            this.highPassFilter.connect(this.ncNode);
         }
 
         // Gate analyser taps post-RNNoise signal (cleaned) — side-tap, not in main chain
@@ -1368,68 +1352,48 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
      * because import.meta.url in the worklet resolves to blob:// which breaks the
      * Emscripten-generated relative WASM path resolution.
      */
-    private static async addRnnoiseWorkletModule(ctx: AudioContext): Promise<void> {
-        await ctx.audioWorklet.addModule("noise-suppressor/workletProcessor.js");
-    }
-
-    /**
-     * Try to set up the RNNoise AudioWorklet node.
-     * Gracefully falls back (rnnoiseNode stays null) if:
-     *   - WASM loading fails
-     *   - AudioWorklet module registration fails (e.g. Tauri/WebView2)
-     */
-    private async setupRnnoiseNode(): Promise<void> {
+    private async setupDeepfilterNode(): Promise<void> {
         if (!this.audioContext) return;
-
         try {
-            // Load WASM binary (cached across reconnects)
-            if (!NexusVoiceConnection.rnnoiseWasmBinary) {
-                NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
-                    url: "noise-suppressor/rnnoise.wasm",
-                    simdUrl: "noise-suppressor/rnnoise_simd.wasm",
-                });
+            if (!NexusVoiceConnection.deepfilterCore) {
+                const core = new DeepFilterNet3Core({ sampleRate: 48000 });
+                await core.initialize(); // downloads WASM + model from CDN (cached in browser after first load)
+                NexusVoiceConnection.deepfilterCore = core;
             }
-
-            // AudioWorklet registration is per-AudioContext — must call addModule on
-            // this.audioContext even if the probe context succeeded.
-            // rnnoiseWorkletRegistered = "supported by this browser/WebView"
-            // rnnoiseWorkletRegistrationAttempted = "a real (non-probe) attempt was made"
-            if (!NexusVoiceConnection.rnnoiseWorkletRegistered &&
-                NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
-                // A previous real attempt failed — environment doesn't support AudioWorklet
-                logger.warn("RNNoise worklet registration previously failed, skipping");
-                return;
-            }
-            // Register on this specific AudioContext (each context needs its own registration).
-            NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
-            await NexusVoiceConnection.addRnnoiseWorkletModule(this.audioContext);
-            NexusVoiceConnection.rnnoiseWorkletRegistered = true;
-            // Create worklet node
-            this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
-                maxChannels: 1,
-                wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
-            });
-            // AudioWorkletNode defaults to channelCount=2. Force mono to prevent
-            // a stereo pipeline with a silent R channel, which causes left-only
-            // audio on the receiving side when the track is published via LiveKit.
-            this.rnnoiseNode.channelCount = 1;
-            this.rnnoiseNode.channelCountMode = "explicit";
+            this.ncNode = await NexusVoiceConnection.deepfilterCore.createAudioWorkletNode(this.audioContext);
+            // Force mono — same reason as RNNoise: prevents silent R channel on LiveKit publish
+            this.ncNode.channelCount = 1;
+            this.ncNode.channelCountMode = "explicit";
         } catch (e) {
-            // Graceful fallback — NC simply won't be applied
-            logger.warn("RNNoise setup failed, continuing without noise cancellation:", e);
-            this.rnnoiseNode = null;
+            logger.warn("DeepFilterNet3 setup failed, continuing without noise cancellation:", e);
+            this.ncNode = null;
         }
     }
 
     /**
      * Prefetch VC resources at app startup (after login).
      * Runs in the background — failures are silently ignored.
-     * Warms up: OpenID token cache + RNNoise WASM.
+     * Warms up: OpenID token cache + DeepFilterNet3 WASM/model.
      */
     public static prefetch(client: MatrixClient): void {
         // Fire-and-forget — don't block the caller
         NexusVoiceConnection.prefetchOpenIdToken(client).catch(() => {});
-        NexusVoiceConnection.prefetchRnnoiseWasm().catch(() => {});
+        const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+        if (ncEnabled) {
+            NexusVoiceConnection.prefetchDeepfilterAssets().catch(() => {});
+        }
+    }
+
+    private static async prefetchDeepfilterAssets(): Promise<void> {
+        if (NexusVoiceConnection.deepfilterCore) return;
+        try {
+            const core = new DeepFilterNet3Core({ sampleRate: 48000 });
+            await core.initialize();
+            NexusVoiceConnection.deepfilterCore = core;
+            logger.info("DeepFilterNet3 assets prefetched");
+        } catch (e) {
+            logger.warn("DeepFilterNet3 prefetch failed:", e);
+        }
     }
 
     /**
@@ -1476,31 +1440,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 },
             });
 
-            // ── Worklet availability probe ────────────────────────────────────────
-            if (!NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted) {
-                NexusVoiceConnection.rnnoiseWorkletRegistrationAttempted = true;
-                if (!NexusVoiceConnection.rnnoiseWasmBinary) {
-                    try {
-                        NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
-                            url: "noise-suppressor/rnnoise.wasm",
-                            simdUrl: "noise-suppressor/rnnoise_simd.wasm",
-                        });
-                    } catch {
-                        // WASM unavailable — continue without RNNoise
-                    }
-                }
-                if (NexusVoiceConnection.rnnoiseWasmBinary) {
-                    const probeCtx = new AudioContext();
-                    try {
-                        await NexusVoiceConnection.addRnnoiseWorkletModule(probeCtx);
-                        NexusVoiceConnection.rnnoiseWorkletRegistered = true;
-                    } catch {
-                        logger.warn("Standalone: RNNoise AudioWorklet unavailable, continuing without NC");
-                    }
-                    probeCtx.close().catch(() => {});
-                }
-            }
-
             // ── Full VC-equivalent processing pipeline ────────────────────────────
             // Mirrors the main input pipeline so the user hears exactly what remote
             // participants hear. Settings are re-read each poll cycle.
@@ -1516,23 +1455,25 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             hpf.Q.value = 0.7;
             source.connect(hpf);
 
-            // RNNoise (optional)
-            let rnnoiseNode: RnnoiseWorkletNode | null = null;
-            if (NexusVoiceConnection.rnnoiseWorkletRegistered && NexusVoiceConnection.rnnoiseWasmBinary) {
+            // DeepFilterNet3 (optional — only when NC enabled in settings)
+            let dfNode: AudioWorkletNode | null = null;
+            const ncEnabledSM = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+            if (ncEnabledSM) {
                 try {
-                    await NexusVoiceConnection.addRnnoiseWorkletModule(ctx);
-                    rnnoiseNode = new RnnoiseWorkletNode(ctx, {
-                        maxChannels: 1,
-                        wasmBinary: NexusVoiceConnection.rnnoiseWasmBinary,
-                    });
-                    rnnoiseNode.channelCount = 1;
-                    rnnoiseNode.channelCountMode = "explicit";
-                    hpf.connect(rnnoiseNode);
+                    if (!NexusVoiceConnection.deepfilterCore) {
+                        const core = new DeepFilterNet3Core({ sampleRate: 48000 });
+                        await core.initialize();
+                        NexusVoiceConnection.deepfilterCore = core;
+                    }
+                    dfNode = await NexusVoiceConnection.deepfilterCore.createAudioWorkletNode(ctx);
+                    dfNode.channelCount = 1;
+                    dfNode.channelCountMode = "explicit";
+                    hpf.connect(dfNode);
                 } catch {
-                    rnnoiseNode = null;
+                    dfNode = null;
                 }
             }
-            const postHpf: AudioNode = rnnoiseNode ?? hpf;
+            const postHpf: AudioNode = dfNode ?? hpf;
 
             // Analyser side-tap (for postNcGate + AGC polling)
             const analyser = ctx.createAnalyser();
@@ -1611,7 +1552,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 const now = ctx.currentTime;
 
                 // PostNcGate
-                if (currentNcEnabled && currentNcStrength > 0 && rnnoiseNode !== null) {
+                if (currentNcEnabled && currentNcStrength > 0 && dfNode !== null) {
                     const thresholdDb = -70 + (currentNcStrength / 100) * 50;
                     if (voiceDb >= thresholdDb) {
                         postNcGain.gain.cancelScheduledValues(now);
@@ -1648,7 +1589,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     clearInterval(pollTimer);
                     outputGain.gain.value = 0;
                     stream.getTracks().forEach((t) => t.stop());
-                    rnnoiseNode?.destroy();
+                    dfNode?.disconnect();
                     ctx.close().catch(() => {});
                 },
             };
@@ -1658,21 +1599,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
     }
 
-    /**
-     * Prefetch RNNoise WASM binary so the first VC join doesn't need
-     * to download it. Runs silently in the background.
-     */
-    private static async prefetchRnnoiseWasm(): Promise<void> {
-        if (NexusVoiceConnection.rnnoiseWasmBinary) return;
-        try {
-            NexusVoiceConnection.rnnoiseWasmBinary = await loadRnnoise({
-                url: "noise-suppressor/rnnoise.wasm",
-                simdUrl: "noise-suppressor/rnnoise_simd.wasm",
-            });
-        } catch (e) {
-            logger.warn("Failed to prefetch RNNoise WASM:", e);
-        }
-    }
 
     /**
      * Prefetch and cache the OpenID token so the first VC join
@@ -1787,48 +1713,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         }
     }
 
-    /**
-     * Emergency bypass: disconnect RNNoise from the signal chain and connect
-     * the highPassFilter directly to the analyserNode and delayNode.
-     * Called when RNNoise is detected to be outputting silence (WASM init failure).
-     */
-    private bypassRnnoise(): void {
-        if (!this.rnnoiseNode || !this.highPassFilter || !this.delayNode || !this.analyserNode) return;
-        try {
-            this.highPassFilter.disconnect(this.rnnoiseNode);
-            this.rnnoiseNode.disconnect();
-            this.rnnoiseNode.destroy();
-        } catch {
-            // Ignore disconnect errors
-        }
-        this.rnnoiseNode = null;
-        this.rnnoiseFailedPollCount = 0;
-        // Reconnect HPF directly to the analyser tap and main chain delay
-        this.highPassFilter.connect(this.analyserNode);
-        this.highPassFilter.connect(this.delayNode);
-        logger.warn("RNNoise bypassed — audio pipeline restored via HPF direct path");
-    }
-
     private pollInputLevel(): void {
         if (!this.analyserNode) return;
 
-        // ── Pre-RNNoise raw RMS (rawLevelAnalyser) — RNNoise bypass検出のみに使用 ──
-        let rawRms = 0;
-        if (this.rawLevelAnalyser) {
-            const bufLen = this.rawLevelAnalyser.fftSize;
-            if (!this.rawLevelBuffer || this.rawLevelBuffer.length !== bufLen) {
-                this.rawLevelBuffer = new Uint8Array(bufLen) as Uint8Array<ArrayBuffer>;
-            }
-            this.rawLevelAnalyser.getByteTimeDomainData(this.rawLevelBuffer);
-            let rawSum = 0;
-            for (const s of this.rawLevelBuffer) {
-                const n = (s - 128) / 128;
-                rawSum += n * n;
-            }
-            rawRms = Math.sqrt(rawSum / this.rawLevelBuffer.length);
-        }
-
-        // ── Post-RNNoise level (analyserNode) — AGC・ゲート判定・メーター表示に使用 ─
+        // ── Post-NC level (analyserNode) — AGC・ゲート判定・メーター表示に使用 ─
         // Must measure here (pre-gate, pre-AGC) so AGC has a stable reference signal.
         // Using the output (post-compressor) would create a feedback loop.
         // メーターもこの値（post-NC）を使うことでゲートのしきい値と同じスケールになる。
@@ -1863,34 +1751,18 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             applyEqBands(this.eqNodes, eqEnabled, eqMode, simpleGains, customGains);
         }
 
-        // ── RNNoise silence detection ─────────────────────────────────────────
-        // If the user is clearly speaking but post-RNNoise output is near-silent,
-        // the WASM processor is not functioning (e.g. worklet WASM init failed silently).
-        // rawActive threshold is set to speech level (~-34dBFS) — NOT ambient noise level.
-        // Ambient noise (-50dBFS) being correctly suppressed by RNNoise to <0.005 rms must
-        // NOT trigger this bypass (that is working as intended, not a failure).
-        // Only bypass when the user is unmistakably speaking and RNNoise swallows their voice.
-        if (this.rnnoiseNode) {
-            const rawActive = rawRms > 0.02; // ~-34dBFS: user is clearly speaking (not just ambient noise)
-            const rnnoiseNearlySilent = rms < 0.005; // ~-46dBFS: voice is being swallowed
-            // Periodic diagnostics (every 10 polls = 500ms) to help debug
-            this.rnnoiseFailedPollCount = rawActive && rnnoiseNearlySilent
-                ? this.rnnoiseFailedPollCount + 1
-                : 0;
-            if (this.rnnoiseFailedPollCount > 20) { // 20 × 50ms = 1 second
-                logger.warn("RNNoise is suppressing all audio despite active mic input — disabling and bypassing");
-                this.bypassRnnoise();
-            }
-        }
 
-        // ── NC Strength post-gate ────────────────────────────────────────────
-        // Gates residual noise that RNNoise attenuates but doesn't fully eliminate.
-        // Only active when RNNoise is actually running (rnnoiseNode !== null) and strength > 0.
-        // Uses the same RMS from analyserNode (post-RNNoise pre-delay tap) for gate decisions.
+        // ── NC Strength — DeepFilterNet3 suppression level + post-gate ──────────
+        // DeepFilterNet3's attenuation limit is set directly from the NC strength slider.
+        // The post-gate additionally cuts residual noise below the voice threshold.
         if (this.postNcGainNode && this.audioContext) {
             const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
             const ncStrength = SettingsStore.getValue("nexus_nc_strength") ?? 50;
-            const postNcActive = ncEnabled && ncStrength > 0 && this.rnnoiseNode !== null;
+            // Sync suppression level to DeepFilter AI (0-100 maps to dB attenuation limit)
+            if (ncEnabled && this.ncNode && NexusVoiceConnection.deepfilterCore) {
+                NexusVoiceConnection.deepfilterCore.setSuppressionLevel(ncStrength);
+            }
+            const postNcActive = ncEnabled && ncStrength > 0 && this.ncNode !== null;
             if (postNcActive) {
                 const voiceDb = rms > 0 ? 20 * Math.log10(rms) : -96;
                 // Map strength 0-100 → threshold -70 to -20 dBFS
@@ -2172,11 +2044,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             this.delayNode.disconnect();
             this.delayNode = null;
         }
-        if (this.rnnoiseNode) {
-            this.rnnoiseNode.destroy();
-            this.rnnoiseNode = null;
+        if (this.ncNode) {
+            this.ncNode.disconnect();
+            this.ncNode = null;
         }
-        this.rnnoiseFailedPollCount = 0;
         this._postNcGateOpen = false;
         this.eqNodes = [];
         this.compressorNode = null;
@@ -2184,9 +2055,6 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.agcCurrentGain = 1.0;
         this._inputLevel = 0;
         this._meterLevel = 0;
-        this.rawLevelAnalyser?.disconnect();
-        this.rawLevelAnalyser = null;
-        this.rawLevelBuffer = null;
         this.analyserBuffer = null;
         this.postNcGainNode?.disconnect();
         this.postNcGainNode = null;

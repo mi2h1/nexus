@@ -539,7 +539,7 @@ function NexusAudioProcessingSettings(): JSX.Element {
                     <span className="nx_VoiceSettings_reconnectBadge">VC再接続が必要</span>
                 </Label>
                 <HelpMessage>
-                    RNNoise を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。音質に問題がある場合は OFF にしてください。
+                    DeepFilterNet3 を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。初回接続時にモデルのダウンロードが発生します。音質に問題がある場合は OFF にしてください。
                 </HelpMessage>
             </InlineField>
             {ncEnabled && (
