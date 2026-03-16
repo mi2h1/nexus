@@ -741,21 +741,11 @@ export default (env: string, argv: Record<string, any>): webpack.Configuration =
                         context: path.resolve(__dirname, "src/vector/mobile_guide"),
                         to: "mobile_guide",
                     },
-                    // RNNoise WASM + worklet processor for noise cancellation
+                    // DeepFilterNet3 WASM + model for noise cancellation (self-hosted to avoid CDN CORS)
                     {
-                        from: "dist/rnnoise/workletProcessor.js",
-                        context: path.resolve(__dirname, "node_modules/@sapphi-red/web-noise-suppressor"),
-                        to: "noise-suppressor/[name][ext]",
-                    },
-                    {
-                        from: "dist/rnnoise.wasm",
-                        context: path.resolve(__dirname, "node_modules/@sapphi-red/web-noise-suppressor"),
-                        to: "noise-suppressor/[name][ext]",
-                    },
-                    {
-                        from: "dist/rnnoise_simd.wasm",
-                        context: path.resolve(__dirname, "node_modules/@sapphi-red/web-noise-suppressor"),
-                        to: "noise-suppressor/[name][ext]",
+                        from: "**",
+                        context: path.resolve(__dirname, "res/deep-filter"),
+                        to: "deep-filter/[path][name][ext]",
                     },
                     // Silero VAD worklet + model
                     {

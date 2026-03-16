@@ -1356,7 +1356,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         if (!this.audioContext) return;
         try {
             if (!NexusVoiceConnection.deepfilterCore) {
-                const core = new DeepFilterNet3Core({ sampleRate: 48000 });
+                const core = new DeepFilterNet3Core({ sampleRate: 48000, assetConfig: { cdnUrl: "/deep-filter" } });
                 await core.initialize(); // downloads WASM + model from CDN (cached in browser after first load)
                 NexusVoiceConnection.deepfilterCore = core;
             }
@@ -1387,7 +1387,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private static async prefetchDeepfilterAssets(): Promise<void> {
         if (NexusVoiceConnection.deepfilterCore) return;
         try {
-            const core = new DeepFilterNet3Core({ sampleRate: 48000 });
+            const core = new DeepFilterNet3Core({ sampleRate: 48000, assetConfig: { cdnUrl: "/deep-filter" } });
             await core.initialize();
             NexusVoiceConnection.deepfilterCore = core;
             logger.info("DeepFilterNet3 assets prefetched");
@@ -1461,7 +1461,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             if (ncEnabledSM) {
                 try {
                     if (!NexusVoiceConnection.deepfilterCore) {
-                        const core = new DeepFilterNet3Core({ sampleRate: 48000 });
+                        const core = new DeepFilterNet3Core({ sampleRate: 48000, assetConfig: { cdnUrl: "/deep-filter" } });
                         await core.initialize();
                         NexusVoiceConnection.deepfilterCore = core;
                     }
