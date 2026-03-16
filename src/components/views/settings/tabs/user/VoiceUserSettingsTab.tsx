@@ -551,7 +551,7 @@ function NexusAudioProcessingSettings(): JSX.Element {
                             type="range"
                             min={0}
                             max={70}
-                            step={5}
+                            step={1}
                             value={ncStrength}
                             style={sliderFill(ncStrength, 0, 70)}
                             onChange={onNcStrengthChange}
