@@ -95,6 +95,23 @@
     }
 }
 
+/* 自分の画面共有プレビュー非表示オーバーレイ */
+.mx_NexusScreenShareTile_localOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgb(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--cpd-space-4x);
+}
+
+.mx_NexusScreenShareTile_localOverlay_text {
+    color: rgb(255, 255, 255, 0.75);
+    font: var(--cpd-font-body-sm-regular);
+    text-align: center;
+}
+
 .mx_NexusScreenSharePanel_resizeHandle {
     height: 4px;
     cursor: ns-resize;

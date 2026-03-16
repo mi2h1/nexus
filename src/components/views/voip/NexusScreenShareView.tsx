@@ -23,11 +23,73 @@ const FREEZE_THRESHOLD_MS = 500;
 const RESYNC_COOLDOWN_MS = 3000;
 
 /**
+ * 自分の画面共有タイル — スナップショット（1フレームのみ）+ プレビュー非表示オーバーレイ。
+ * video デコーダーを保持しないためリソースを節約できる。
+ */
+const LocalScreenShareTile: React.FC<{ share: ScreenShareInfo }> = ({ share }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !share.track) return;
+
+        const video = document.createElement("video");
+        video.muted = true;
+        video.playsInline = true;
+        video.srcObject = new MediaStream([share.track.mediaStreamTrack]);
+
+        let cancelled = false;
+        const captureFrame = (): void => {
+            if (cancelled) return;
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            if (w > 0 && h > 0) {
+                canvas.width = w;
+                canvas.height = h;
+                canvas.getContext("2d")?.drawImage(video, 0, 0, w, h);
+            }
+            video.pause();
+            video.srcObject = null;
+        };
+
+        if ("requestVideoFrameCallback" in video) {
+            (video as any).requestVideoFrameCallback(captureFrame);
+        } else {
+            (video as HTMLVideoElement).addEventListener("loadeddata", captureFrame, { once: true });
+        }
+        video.play().catch(() => {});
+
+        return () => {
+            cancelled = true;
+            video.pause();
+            video.srcObject = null;
+        };
+    }, [share.track]);
+
+    return (
+        <div className="mx_NexusScreenShareTile">
+            <canvas ref={canvasRef} className="mx_NexusScreenShareTile_video" />
+            <div className="mx_NexusScreenShareTile_localOverlay">
+                <span className="mx_NexusScreenShareTile_localOverlay_text">
+                    リソース節約のためプレビューを非表示にしています
+                </span>
+            </div>
+            <div className="mx_NexusScreenShareTile_label">あなたの画面</div>
+        </div>
+    );
+};
+
+/**
  * Individual screen share tile — combines video + audio tracks into a single
  * MediaStream on the <video> element for A/V sync.
  * Volume control is handled by NexusVoiceConnection via the registered element.
  */
-export const ScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopWatching, onShareContextMenu }) => {
+export const ScreenShareTile: React.FC<ScreenShareTileProps> = (props) => {
+    if (props.share.isLocal) return <LocalScreenShareTile share={props.share} />;
+    return <RemoteScreenShareTile {...props} />;
+};
+
+const RemoteScreenShareTile: React.FC<ScreenShareTileProps> = ({ share, onStopWatching, onShareContextMenu }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
 
     useEffect(() => {
