@@ -298,7 +298,7 @@ function NexusVoiceGateSettings(): JSX.Element {
 }
 
 // Number of bars in the VU meter
-const VU_BAR_COUNT = 20;
+const VU_BAR_COUNT = 32;
 
 /** Compute inline style for a range input: fills left of thumb with accent color. */
 function sliderFill(value: number, min: number, max: number): React.CSSProperties {
@@ -376,7 +376,8 @@ function NexusMicMonitorSettings(): JSX.Element {
                 </AccessibleButton>
                 <div className="nx_VoiceSettings_barMeter" aria-hidden="true">
                     {Array.from({ length: VU_BAR_COUNT }, (_, i) => {
-                        const litCount = Math.round((inputLevel / 100) * VU_BAR_COUNT);
+                        const level = monitorEnabled ? inputLevel : 0;
+                        const litCount = Math.round((level / 100) * VU_BAR_COUNT);
                         const isLit = i < litCount;
                         const hue = Math.round(50 + (i / (VU_BAR_COUNT - 1)) * 85);
                         return (
