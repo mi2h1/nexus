@@ -387,7 +387,7 @@ function NexusVCViewContextMenu(
                                 type="range"
                                 className="nx_VCViewContextMenu_slider"
                                 min="0"
-                                max="4"
+                                max="3"
                                 step="0.01"
                                 defaultValue={initialVolume}
                                 onChange={onVolumeChange}

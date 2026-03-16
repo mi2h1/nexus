@@ -221,10 +221,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     private audioContext: AudioContext | null = null;
     private _masterOutputVolume = 0; // 0-2 (0-200%), starts muted
     private outputAudioElements = new Map<string, HTMLAudioElement>();
-    private participantVolumes = new Map<string, number>(); // 0-4.0 (0-400%)
+    private participantVolumes = new Map<string, number>(); // 0-3.0 (0-300%)
     // ─── Screen share audio ──────────────────────────────────
     private screenShareVideoElements = new Map<string, HTMLVideoElement>();
-    private screenShareVolumes = new Map<string, number>(); // 0-4.0 (0-400%)
+    private screenShareVolumes = new Map<string, number>(); // 0-3.0 (0-300%)
     private screenShareSources = new Map<string, AudioNode>();
     private screenShareGains = new Map<string, GainNode>();
     // ─── Tauri output audio pipeline (>100% volume) ──────────
