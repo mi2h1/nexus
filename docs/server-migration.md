@@ -1,12 +1,12 @@
-# サーバー移行手順書 — lche2.xvps.jp
+# サーバー移行手順書 — [SERVER_DOMAIN]
 
-> 対象: 新サーバー (lche2.xvps.jp / 162.43.31.143) での Nexus インフラ構築
+> 対象: 新サーバー ([SERVER_DOMAIN] / [SERVER_IP]) での Nexus インフラ構築
 > 前提: Claude Code が新サーバーで稼働している状態
 
 ## 概要
 
-旧サーバー (lche.xvps.jp / 210.131.219.93) から新サーバーへ Nexus 関連サービスを移行する。
-コード・設定ファイル内のドメイン/IP は既に `lche2.xvps.jp` / `162.43.31.143` に更新済み。
+旧サーバー ([OLD_SERVER_DOMAIN] / [OLD_SERVER_IP]) から新サーバーへ Nexus 関連サービスを移行する。
+コード・設定ファイル内のドメイン/IP は既に `[SERVER_DOMAIN]` / `[SERVER_IP]` に更新済み。
 
 **移行対象** (Nexus のみ):
 - LiveKit SFU (nexus-livekit)
@@ -92,7 +92,7 @@ cd /root/dev/nexus
 
 ## Step 2: SSL 証明書の配置
 
-SSL 証明書が `lche2.xvps.jp` 用に発行されている前提。
+SSL 証明書が `[SERVER_DOMAIN]` 用に発行されている前提。
 
 ```bash
 # 証明書ディレクトリを作成
@@ -103,8 +103,8 @@ mkdir -p /etc/ssl/lche2
 # - /etc/ssl/lche2/privkey.pem    (秘密鍵)
 #
 # certbot で取得した場合:
-# cp /etc/letsencrypt/live/lche2.xvps.jp/fullchain.pem /etc/ssl/lche2/
-# cp /etc/letsencrypt/live/lche2.xvps.jp/privkey.pem /etc/ssl/lche2/
+# cp /etc/letsencrypt/live/[SERVER_DOMAIN]/fullchain.pem /etc/ssl/lche2/
+# cp /etc/letsencrypt/live/[SERVER_DOMAIN]/privkey.pem /etc/ssl/lche2/
 
 # パーミッション確認（Docker の nginx が読めること）
 chmod 644 /etc/ssl/lche2/fullchain.pem
@@ -193,23 +193,23 @@ docker ps
 ### 6-2. JWT エンドポイント
 
 ```bash
-curl -k https://lche2.xvps.jp:7891/healthz
+curl -k https://[SERVER_DOMAIN]:7891/healthz
 # または単純に接続確認
-curl -k -o /dev/null -w "%{http_code}" https://lche2.xvps.jp:7891/
+curl -k -o /dev/null -w "%{http_code}" https://[SERVER_DOMAIN]:7891/
 ```
 
 ### 6-3. LiveKit WebSocket
 
 ```bash
 # WebSocket 接続テスト（upgrade が返ること）
-curl -k -I -H "Upgrade: websocket" -H "Connection: Upgrade" https://lche2.xvps.jp:7880/
+curl -k -I -H "Upgrade: websocket" -H "Connection: Upgrade" https://[SERVER_DOMAIN]:7880/
 ```
 
 ### 6-4. ブラウザ確認
 
 1. https://mi2h1.github.io/nexus/ を開く
 2. ログイン → VC チャンネルに参加
-3. ブラウザの開発者ツール Network タブで `lche2.xvps.jp` への接続を確認
+3. ブラウザの開発者ツール Network タブで `[SERVER_DOMAIN]` への接続を確認
 4. 2台のブラウザで同じ VC に入り音声通話を確認
 
 ---
@@ -221,8 +221,8 @@ curl -k -I -H "Upgrade: websocket" -H "Connection: Upgrade" https://lche2.xvps.j
 # /etc/letsencrypt/renewal-hooks/deploy/nexus-ssl.sh
 cat > /etc/letsencrypt/renewal-hooks/deploy/nexus-ssl.sh << 'SCRIPT'
 #!/bin/bash
-cp /etc/letsencrypt/live/lche2.xvps.jp/fullchain.pem /etc/ssl/lche2/
-cp /etc/letsencrypt/live/lche2.xvps.jp/privkey.pem /etc/ssl/lche2/
+cp /etc/letsencrypt/live/[SERVER_DOMAIN]/fullchain.pem /etc/ssl/lche2/
+cp /etc/letsencrypt/live/[SERVER_DOMAIN]/privkey.pem /etc/ssl/lche2/
 docker exec nexus-nginx nginx -s reload
 SCRIPT
 chmod +x /etc/letsencrypt/renewal-hooks/deploy/nexus-ssl.sh
@@ -259,7 +259,7 @@ docker logs nexus-jwt --tail 50
 # LiveKit ログ確認
 docker logs nexus-livekit --tail 50
 ```
-- ICE candidate エラー → `livekit.yaml` の `node_ip: 162.43.31.143` を確認
+- ICE candidate エラー → `livekit.yaml` の `node_ip: [SERVER_IP]` を確認
 - ポートが閉じている → ファイアウォールで 7882/udp が開いているか確認
 
 ### コンテナが起動しない
@@ -273,5 +273,5 @@ docker compose logs
 
 ## 旧サーバーの停止 — ✅ 完了
 
-旧サーバー (lche.xvps.jp) の Nexus コンテナは 2026-02-26 に停止済み。
+旧サーバー ([OLD_SERVER_DOMAIN]) の Nexus コンテナは 2026-02-26 に停止済み。
 コード内の旧ドメイン/IP への参照も全て削除済み。

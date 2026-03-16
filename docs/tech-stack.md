@@ -34,7 +34,7 @@
 | matrix.org | Matrix ホームサーバー（公開サーバー利用） | 無料 |
 | GitHub Pages | クライアントホスティング | 無料 |
 | GitHub Actions | CI/CD（ビルド & デプロイ） | 無料 |
-| LiveKit SFU (自前 VPS) | VC・画面共有の SFU インフラ (lche2.xvps.jp) | VPS 費用 |
+| LiveKit SFU (自前 VPS) | VC・画面共有の SFU インフラ ([SERVER_DOMAIN]) | VPS 費用 |
 | lk-jwt-service (カスタムビルド) | Matrix OpenID → LiveKit JWT 変換 + ユーザーホワイトリスト + ユーザーカラー保存 | 同上 |
 | Cloudflare Workers | LiveKit JWT 取得用 CORS プロキシ（フォールバック） | 無料 |
 

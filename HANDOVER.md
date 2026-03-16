@@ -62,11 +62,11 @@ GitHub Actions → GitHub Pages (Web版)
 GitHub Actions → Tauri 2 ビルド → Windows/Mac ネイティブアプリ
 
 Matrix サーバー: matrix.org（公開サーバー利用）
-SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
+SFU: 自前 LiveKit ([SERVER_DOMAIN]) ← 2026-02-25 構築
   フォールバック: Element の LiveKit Cloud (CORS プロキシ経由)
 ```
 
-### VPS (lche2.xvps.jp / 162.43.31.143)
+### VPS ([SERVER_DOMAIN] / [SERVER_IP])
 - AMD EPYC 3コア / 3.8GB RAM / 28GB ディスク
 - **Docker コンテナ** (3つ): `infra/livekit/docker-compose.yml` で管理
   - `nexus-livekit` — LiveKit SFU (WebRTC メディア中継)
@@ -89,7 +89,7 @@ SFU: 自前 LiveKit (lche2.xvps.jp) ← 2026-02-25 構築
 | matrix-js-sdk | Matrix プロトコル + MatrixRTC シグナリング |
 | livekit-client | VC・画面共有（SFU 直接接続） |
 | Tauri 2 | ネイティブデスクトップアプリ（src-tauri/） |
-| LiveKit SFU | 自前ホスト（lche2.xvps.jp, Docker） |
+| LiveKit SFU | 自前ホスト（[SERVER_DOMAIN], Docker） |
 | lk-jwt-service | Element製 JWT ブリッジ（OpenID → LiveKit JWT）+ ユーザーカラー保存 |
 | Cloudflare Workers | CORS プロキシ（フォールバック用） |
 | pnpm 10.x | パッケージマネージャ |
@@ -207,10 +207,10 @@ Phase 0: AudioContext 生成（同期、ユーザージェスチャー内）
 Phase 1: Promise.all([getJwt(), createLocalAudioTrack()])
   └─ getJwt():
      ├─ getCachedOpenIdToken() — キャッシュヒット時は matrix.org スキップ
-     ├─ 優先: 自前 JWT サービス (https://lche2.xvps.jp:7891/sfu/get)
+     ├─ 優先: 自前 JWT サービス (https://[SERVER_DOMAIN]:7891/sfu/get)
      └─ フォールバック: Element の JWT via CORS プロキシ
 Phase 3+4: 並列実行
-  ├─ livekitRoom.connect(url, jwt) — wss://lche2.xvps.jp:7880
+  ├─ livekitRoom.connect(url, jwt) — wss://[SERVER_DOMAIN]:7880
   └─ buildInputPipeline() — HPF + [RNNoise] + EQ + AGC + Compressor + dest
 Phase 5: publishTrack(processedTrack)
 
