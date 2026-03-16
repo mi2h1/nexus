@@ -298,7 +298,7 @@ function NexusVoiceGateSettings(): JSX.Element {
 }
 
 // Number of bars in the VU meter
-const VU_BAR_COUNT = 32;
+const VU_BAR_COUNT = 64;
 
 /** Compute inline style for a range input: fills left of thumb with accent color. */
 function sliderFill(value: number, min: number, max: number): React.CSSProperties {
