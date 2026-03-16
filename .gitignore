@@ -54,3 +54,7 @@ storybook-static
 # Tauri
 src-tauri/target/
 src-tauri/gen/
+
+# ローカル専用ドキュメント
+CLAUDE.md
+HANDOVER.md
