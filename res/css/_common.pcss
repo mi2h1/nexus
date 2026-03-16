@@ -596,9 +596,10 @@ legend {
         .mx_AccessSecretStorageDialog button,
         .mx_InviteDialog_section button,
         .mx_InviteDialog_editor button,
+        .nx_VoiceSettings_eqHelpBtn,
         [class|="maplibregl"]
     ),
-.mx_Dialog_buttons button:not(.mx_Dialog_nonDialogButton, .mx_AccessibleButton),
+.mx_Dialog_buttons button:not(.mx_Dialog_nonDialogButton, .mx_AccessibleButton, .nx_VoiceSettings_eqHelpBtn),
 .mx_Dialog input[type="submit"],
 .mx_Dialog_buttons input[type="submit"] {
     @mixin mx_DialogButton;
@@ -623,7 +624,8 @@ legend {
         .mx_ThemeChoicePanel_CustomTheme button,
         .mx_UnpinAllDialog button,
         .mx_ShareDialog button,
-        .mx_EncryptionUserSettingsTab button
+        .mx_EncryptionUserSettingsTab button,
+        .nx_VoiceSettings_eqHelpBtn
     ):last-child {
     margin-right: 0px;
 }
@@ -639,10 +641,11 @@ legend {
         .mx_ShareDialog button,
         .mx_EncryptionUserSettingsTab button,
         .mx_InviteDialog_section button,
-        .mx_InviteDialog_editor button
+        .mx_InviteDialog_editor button,
+        .nx_VoiceSettings_eqHelpBtn
     ):focus,
 .mx_Dialog input[type="submit"]:focus,
-.mx_Dialog_buttons button:not(.mx_Dialog_nonDialogButton, .mx_AccessibleButton):focus,
+.mx_Dialog_buttons button:not(.mx_Dialog_nonDialogButton, .mx_AccessibleButton, .nx_VoiceSettings_eqHelpBtn):focus,
 .mx_Dialog_buttons input[type="submit"]:focus {
     filter: brightness($focus-brightness);
 }
@@ -657,7 +660,8 @@ legend {
         .mx_ThemeChoicePanel_CustomTheme button,
         .mx_UnpinAllDialog button,
         .mx_ShareDialog button,
-        .mx_EncryptionUserSettingsTab button
+        .mx_EncryptionUserSettingsTab button,
+        .nx_VoiceSettings_eqHelpBtn
     ),
 .mx_Dialog_buttons input[type="submit"].mx_Dialog_primary {
     color: var(--cpd-color-text-on-solid-primary);
@@ -676,7 +680,8 @@ legend {
         .mx_ThemeChoicePanel_CustomTheme button,
         .mx_UnpinAllDialog button,
         .mx_ShareDialog button,
-        .mx_EncryptionUserSettingsTab button
+        .mx_EncryptionUserSettingsTab button,
+        .nx_VoiceSettings_eqHelpBtn
     ),
 .mx_Dialog_buttons input[type="submit"].danger {
     background-color: var(--cpd-color-bg-critical-primary);
@@ -699,10 +704,11 @@ legend {
         .mx_ThemeChoicePanel_CustomTheme button,
         .mx_UnpinAllDialog button,
         .mx_ShareDialog button,
-        .mx_EncryptionUserSettingsTab button
+        .mx_EncryptionUserSettingsTab button,
+        .nx_VoiceSettings_eqHelpBtn
     ):disabled,
 .mx_Dialog input[type="submit"]:disabled,
-.mx_Dialog_buttons button:not(.mx_Dialog_nonDialogButton, .mx_AccessibleButton):disabled,
+.mx_Dialog_buttons button:not(.mx_Dialog_nonDialogButton, .mx_AccessibleButton, .nx_VoiceSettings_eqHelpBtn):disabled,
 .mx_Dialog_buttons input[type="submit"]:disabled {
     background-color: $light-fg-color;
     border: solid 1px $light-fg-color;
