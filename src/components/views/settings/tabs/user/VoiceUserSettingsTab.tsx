@@ -11,6 +11,7 @@ import React, { type JSX, type ReactNode, useState, useCallback, useRef, useEffe
 import { logger } from "matrix-js-sdk/src/logger";
 import { type EmptyObject } from "matrix-js-sdk/src/matrix";
 import { Form, SettingsToggleInput, ToggleInput, InlineField, HelpMessage, Label } from "@vector-im/compound-web";
+import { HelpIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { _t } from "../../../../../languageHandler";
 import MediaDeviceHandler, { type IMediaDevices, MediaDeviceKindEnum } from "../../../../../MediaDeviceHandler";
@@ -567,24 +568,28 @@ function NexusAudioProcessingSettings(): JSX.Element {
                         onClick={(e) => { e.preventDefault(); setShowEqHelp(true); }}
                         title="ボイスEQについて"
                         aria-label="ボイスEQについて"
-                    >?</button>
+                    >
+                        <HelpIcon width={16} height={16} />
+                    </button>
                 </Label>
                 <HelpMessage>声の周波数特性を調整してマイク音質を改善します。</HelpMessage>
             </InlineField>
 
             {eqEnabled && (
                 <Fragment>
-                    {/* Mode selector */}
-                    <div className="nx_VoiceSettings_eqModeSelector">
+                    {/* Mode selector — pill segmented control */}
+                    <div className="nx_VoiceSettings_eqModeSelector" role="radiogroup" aria-label="EQモード">
                         {(["auto", "simple", "custom"] as const).map((m) => (
-                            <AccessibleButton
-                                key={m}
-                                kind={eqMode === m ? "primary" : "secondary"}
-                                className="nx_VoiceSettings_eqModeBtn"
-                                onClick={() => onEqModeChange(m)}
-                            >
+                            <label key={m} className={`nx_VoiceSettings_eqModeOption${eqMode === m ? " nx_VoiceSettings_eqModeOption--selected" : ""}`}>
+                                <input
+                                    type="radio"
+                                    name="nx-eq-mode"
+                                    value={m}
+                                    checked={eqMode === m}
+                                    onChange={() => onEqModeChange(m)}
+                                />
                                 {m === "auto" ? "オート" : m === "simple" ? "シンプル" : "カスタム"}
-                            </AccessibleButton>
+                            </label>
                         ))}
                     </div>
 
