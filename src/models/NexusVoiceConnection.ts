@@ -60,20 +60,21 @@ interface ScreenSharePresetConfig {
 }
 
 // Reusable fallback layers (shared across presets to avoid allocating duplicates)
-const SS_480P15 = new VideoPreset(854, 480, 500_000, 15);
-const SS_720P15 = new VideoPreset(1280, 720, 1_000_000, 15);
-const SS_720P30 = new VideoPreset(1280, 720, 2_000_000, 30);
+const SS_480P15  = new VideoPreset(854,  480,   500_000, 15);
+const SS_480P30  = new VideoPreset(854,  480,   800_000, 30);
+const SS_720P15  = new VideoPreset(1280, 720,  1_000_000, 15);
+const SS_720P30  = new VideoPreset(1280, 720,  2_000_000, 30);
 const SS_1080P30 = new VideoPreset(1920, 1080, 4_000_000, 30);
 
 export const SCREEN_SHARE_PRESETS: Record<ScreenShareQuality, ScreenSharePresetConfig> = {
     low:      { label: "低画質",   description: "720p / 15fps",  width: 1280, height: 720,  fps: 15, maxBitrate: 1_000_000,
-                simulcastLayers: [SS_480P15] },
+                simulcastLayers: [SS_480P15, SS_480P30] },
     standard: { label: "標準",     description: "720p / 30fps",  width: 1280, height: 720,  fps: 30, maxBitrate: 2_000_000,
-                simulcastLayers: [SS_480P15, SS_720P15] },
+                simulcastLayers: [SS_480P15, SS_480P30, SS_720P15] },
     high:     { label: "高画質",   description: "1080p / 30fps", width: 1920, height: 1080, fps: 30, maxBitrate: 4_000_000,
-                simulcastLayers: [SS_480P15, SS_720P15, SS_720P30] },
+                simulcastLayers: [SS_480P15, SS_480P30, SS_720P15, SS_720P30] },
     ultra:    { label: "配信向け", description: "1080p / 60fps", width: 1920, height: 1080, fps: 60, maxBitrate: 6_000_000,
-                simulcastLayers: [SS_480P15, SS_720P15, SS_720P30, SS_1080P30] },
+                simulcastLayers: [SS_480P15, SS_480P30, SS_720P15, SS_720P30, SS_1080P30] },
 };
 
 // VC sound effects
