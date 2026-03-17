@@ -425,7 +425,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 this.getJwt(),
                 createLocalAudioTrack({
                     echoCancellation: true,
-                    noiseSuppression: false, // OFF — Win11 OS-level noise suppression と二重処理を防ぐ
+                    // "simple" mode uses browser/OS NS; "ai" and "off" disable it to avoid double-processing
+                    noiseSuppression: (SettingsStore.getValue("nexus_nc_mode") ?? "ai") === "simple",
                     autoGainControl: false,
                     sampleRate: 48000,
                     channelCount: 1,
@@ -1220,8 +1221,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this.highPassFilter.Q.value = 0.7;
 
         // DeepFilterNet3 AI noise cancellation (optional — fails gracefully if unavailable)
-        const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
-        if (ncEnabled) {
+        const ncMode = (SettingsStore.getValue("nexus_nc_mode") ?? "ai") as string;
+        if (ncMode === "ai") {
             await this.setupDeepfilterNode();
         }
 
@@ -1378,8 +1379,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
     public static prefetch(client: MatrixClient): void {
         // Fire-and-forget — don't block the caller
         NexusVoiceConnection.prefetchOpenIdToken(client).catch(() => {});
-        const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
-        if (ncEnabled) {
+        const ncMode = (SettingsStore.getValue("nexus_nc_mode") ?? "ai") as string;
+        if (ncMode === "ai") {
             NexusVoiceConnection.prefetchDeepfilterAssets().catch(() => {});
         }
     }
@@ -1455,10 +1456,10 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             hpf.Q.value = 0.7;
             source.connect(hpf);
 
-            // DeepFilterNet3 (optional — only when NC enabled in settings)
+            // DeepFilterNet3 (optional — only in AI NC mode)
             let dfNode: AudioWorkletNode | null = null;
-            const ncEnabledSM = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
-            if (ncEnabledSM) {
+            const ncModeSM = (SettingsStore.getValue("nexus_nc_mode") ?? "ai") as string;
+            if (ncModeSM === "ai") {
                 try {
                     if (!NexusVoiceConnection.deepfilterCore) {
                         const core = new DeepFilterNet3Core({ sampleRate: 48000, assetConfig: { cdnUrl: "/deep-filter" } });
@@ -1531,7 +1532,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // Polling — mirrors main pipeline poll logic
             const timeBuffer = new Uint8Array(analyser.fftSize);
             const pollTimer = setInterval(() => {
-                const currentNcEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+                const currentNcMode = (SettingsStore.getValue("nexus_nc_mode") ?? "ai") as string;
+                const currentNcEnabled = currentNcMode === "ai";
                 const currentNcStrength = SettingsStore.getValue("nexus_nc_strength") ?? 25;
                 const currentEqEnabled = SettingsStore.getValue("nexus_voice_eq_enabled") ?? true;
                 const currentAgcEnabled = SettingsStore.getValue("nexus_voice_agc_enabled") ?? true;
@@ -1756,7 +1758,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         // DeepFilterNet3's attenuation limit is set directly from the NC strength slider.
         // The post-gate additionally cuts residual noise below the voice threshold.
         if (this.postNcGainNode && this.audioContext) {
-            const ncEnabled = SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true;
+            const ncMode = (SettingsStore.getValue("nexus_nc_mode") ?? "ai") as string;
+            const ncEnabled = ncMode === "ai";
             const ncStrength = SettingsStore.getValue("nexus_nc_strength") ?? 25;
             // Sync suppression level to DeepFilter AI (0-100 maps to dB attenuation limit)
             if (ncEnabled && this.ncNode && NexusVoiceConnection.deepfilterCore) {

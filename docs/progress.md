@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-17 (v0.2.26)
+> 最終更新: 2026-03-17 (v0.2.27)
 
 ## リポジトリ情報
 
@@ -128,6 +128,15 @@ nexus/                          # element-web フォーク
 
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 2026-03-17 (v0.2.27: ノイズ抑制 3モードセレクター)
+- **ノイズ抑制モード選択 UI**: ボイスEQと同じピル形セグメントで「オフ / シンプル / AI ノイズキャンセリング」の3択に変更
+  - **オフ**: noiseSuppression: false + DeepFilter 無効
+  - **シンプル**: noiseSuppression: true（ブラウザ/OS標準 NS）+ DeepFilter 無効
+  - **AI ノイズキャンセリング**: noiseSuppression: false + DeepFilterNet3（従来通り）
+  - NC強度スライダーは「AI ノイズキャンセリング」選択時のみ表示（値は他モードに切り替えても保持）
+  - 設定キー `nexus_nc_mode`（`"off" | "simple" | "ai"`、デフォルト `"ai"`）を新設
+  - 旧 `nexus_noise_cancellation_enabled` は型定義を残しつつロジック上は未使用に
 
 #### 2026-03-17 (v0.2.26: DeepFilterNet3ノイキャン・UI改善)
 - **ノイキャン: RNNoise → DeepFilterNet3 完全置き換え**

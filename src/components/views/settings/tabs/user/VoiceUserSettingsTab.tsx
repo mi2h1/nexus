@@ -451,10 +451,9 @@ const EQ_HELP_CONTENT = (
 
 /** EQ / AGC / NC strength toggle settings. */
 function NexusAudioProcessingSettings(): JSX.Element {
-    const ncToggleId = useId();
     const eqToggleId = useId();
-    const [ncEnabled, setNcEnabled] = useState<boolean>(
-        () => SettingsStore.getValue("nexus_noise_cancellation_enabled") ?? true,
+    const [ncMode, setNcMode] = useState<"off" | "simple" | "ai">(
+        () => (SettingsStore.getValue("nexus_nc_mode") ?? "ai") as "off" | "simple" | "ai",
     );
     const [ncStrength, setNcStrength] = useState<number>(
         () => SettingsStore.getValue("nexus_nc_strength") ?? 25,
@@ -476,10 +475,9 @@ function NexusAudioProcessingSettings(): JSX.Element {
     );
     const [showEqHelp, setShowEqHelp] = useState(false);
 
-    const onNcChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const enabled = e.target.checked;
-        setNcEnabled(enabled);
-        SettingsStore.setValue("nexus_noise_cancellation_enabled", null, SettingLevel.DEVICE, enabled);
+    const onNcModeChange = useCallback((mode: "off" | "simple" | "ai") => {
+        setNcMode(mode);
+        SettingsStore.setValue("nexus_nc_mode", null, SettingLevel.DEVICE, mode);
     }, []);
 
     const onNcStrengthChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -530,19 +528,39 @@ function NexusAudioProcessingSettings(): JSX.Element {
     return (
         <SettingsSubsection heading="音声処理" stretchContent>
             {/* ── NC ── */}
-            <InlineField
-                name="nx-noise-cancellation"
-                control={<ToggleInput id={ncToggleId} checked={ncEnabled} onChange={onNcChange} />}
-            >
-                <Label htmlFor={ncToggleId}>
-                    AI ノイズキャンセリング
-                    <span className="nx_VoiceSettings_reconnectBadge">VC再接続が必要</span>
-                </Label>
-                <HelpMessage>
-                    DeepFilterNet3 を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。初回接続時にモデルのダウンロードが発生します。音質に問題がある場合は OFF にしてください。
-                </HelpMessage>
-            </InlineField>
-            {ncEnabled && (
+            <div className="nx_VoiceSettings_ncSection">
+                <div className="nx_VoiceSettings_ncHeader">
+                    <span className="nx_VoiceSettings_ncTitle">
+                        ノイズ抑制
+                        <span className="nx_VoiceSettings_reconnectBadge">VC再接続が必要</span>
+                    </span>
+                </div>
+                <div className="nx_VoiceSettings_eqModeSelector" role="radiogroup" aria-label="ノイズ抑制モード">
+                    {(["off", "simple", "ai"] as const).map((m) => (
+                        <label key={m} className={`nx_VoiceSettings_eqModeOption${ncMode === m ? " nx_VoiceSettings_eqModeOption--selected" : ""}`}>
+                            <input
+                                type="radio"
+                                name="nx-nc-mode"
+                                value={m}
+                                checked={ncMode === m}
+                                onChange={() => onNcModeChange(m)}
+                            />
+                            {m === "off" ? "オフ" : m === "simple" ? "シンプル" : "AI ノイズキャンセリング"}
+                        </label>
+                    ))}
+                </div>
+                {ncMode === "simple" && (
+                    <p className="nx_VoiceSettings_ncHelpText">
+                        ブラウザ / OS 標準のノイズ抑制を使用します。軽量で安定しており、幅広い環境で動作します。
+                    </p>
+                )}
+                {ncMode === "ai" && (
+                    <p className="nx_VoiceSettings_ncHelpText">
+                        DeepFilterNet3 を使用して、キーボード音・ファン音・環境音などの背景ノイズを除去します。初回接続時にモデルのロードが発生します。
+                    </p>
+                )}
+            </div>
+            {ncMode === "ai" && (
                 <div className="nx_VoiceSettings_slider">
                     <label htmlFor="nx_nc_strength">NC 強度</label>
                     <div className="nx_VoiceSettings_sliderRow">
