@@ -1,6 +1,6 @@
 # 進捗・作業ログ — progress.md
 
-> 最終更新: 2026-03-17 (v0.2.27)
+> 最終更新: 2026-03-17 (v0.2.28)
 
 ## リポジトリ情報
 
@@ -128,6 +128,12 @@ nexus/                          # element-web フォーク
 
 参考: [Discord Voice Connections Docs](https://docs.discord.com/developers/topics/voice-connections)
 Discord の Docs で真似できる部分・超えられる部分は積極的に実装する方針。
+
+#### 2026-03-17 (v0.2.28: 入出力デバイス選択修正)
+- **入出力デバイス選択が反映されない問題を修正**
+  - 出力デバイス: `setSinkId()` で選択デバイスにルーティング（Tauri: `outputAudioContext.setSinkId()`、ブラウザ: `<audio>.setSinkId()`）
+  - 接続時に現在の選択を適用、設定変更時も即時反映（`AudioOutputChanged` イベント購読）
+  - 入力デバイス: `createLocalAudioTrack()` に `deviceId` を渡すよう修正
 
 #### 2026-03-17 (v0.2.27: ノイズ抑制 3モードセレクター)
 - **ノイズ抑制モード選択 UI**: ボイスEQと同じピル形セグメントで「オフ / シンプル / AI ノイズキャンセリング」の3択に変更
