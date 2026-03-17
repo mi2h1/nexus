@@ -38,6 +38,7 @@ import { MicVAD } from "@ricky0123/vad-web";
 import { CallEvent, ConnectionState, type CallEventHandlerMap, type ParticipantState, type ScreenShareInfo } from "./Call";
 import SettingsStore from "../settings/SettingsStore";
 import { isTauri, corsFreePost } from "../utils/tauriHttp";
+import MediaDeviceHandler, { MediaDeviceHandlerEvent } from "../MediaDeviceHandler";
 import type { NativeVideoCaptureStream, NativeAudioCaptureStream } from "../utils/NexusNativeCapture";
 
 const logger = rootLogger.getChild("NexusVoiceConnection");
@@ -419,6 +420,11 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                 this.outputMasterGain.connect(this.outputAudioContext.destination);
             }
 
+            // Apply selected output device to audio context / elements, and listen for changes.
+            const initialOutput = MediaDeviceHandler.getAudioOutput();
+            if (initialOutput) this.applyOutputDevice(initialOutput);
+            MediaDeviceHandler.instance.on(MediaDeviceHandlerEvent.AudioOutputChanged, this.onAudioOutputChanged);
+
             // ── Phase 1: Parallel pre-fetch ──────────────────────────
             // JWT and mic access run concurrently to minimize total wall-clock time.
             const [{ jwt, url }, audioTrack] = await Promise.all([
@@ -430,6 +436,7 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
                     autoGainControl: false,
                     sampleRate: 48000,
                     channelCount: 1,
+                    deviceId: MediaDeviceHandler.getAudioInput() || undefined,
                 }),
             ]);
             this.localAudioTrack = audioTrack;
@@ -2129,6 +2136,8 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
         this._activeSpeakers = new Set();
         this._participantStates = new Map();
 
+        MediaDeviceHandler.instance.off(MediaDeviceHandlerEvent.AudioOutputChanged, this.onAudioOutputChanged);
+
         // Disconnect LiveKit room
         if (this.livekitRoom) {
             this.livekitRoom.off(LivekitRoomEvent.TrackSubscribed, this.onTrackSubscribed);
@@ -2151,6 +2160,29 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             });
         }
     }
+
+    // ─── Private: Output Device Routing ─────────────────────────────────────────
+
+    /**
+     * Route all current (and future) audio output to `deviceId`.
+     * - Tauri path: `outputAudioContext.setSinkId()` (Web Audio handles all participants).
+     * - Browser path: `audio.setSinkId()` on every participant <audio> element.
+     */
+    private applyOutputDevice(deviceId: string): void {
+        if (this.outputAudioContext && "setSinkId" in this.outputAudioContext) {
+            (this.outputAudioContext as any).setSinkId(deviceId).catch(() => {});
+        } else {
+            for (const audio of this.outputAudioElements.values()) {
+                if ("setSinkId" in audio) {
+                    (audio as any).setSinkId(deviceId).catch(() => {});
+                }
+            }
+        }
+    }
+
+    private onAudioOutputChanged = (deviceId: string): void => {
+        this.applyOutputDevice(deviceId);
+    };
 
     // ─── Private: Remote Audio ───────────────────────────────
 
@@ -2247,6 +2279,14 @@ export class NexusVoiceConnection extends TypedEventEmitter<CallEvent, CallEvent
             // remote WebRTC audio through MediaStreamAudioSourceNode.
             const audio = new Audio();
             audio.srcObject = new MediaStream([track.mediaStreamTrack]);
+            // Route to the user-selected output device (browser path only;
+            // Tauri path uses outputAudioContext.setSinkId instead).
+            if (!this.outputAudioContext) {
+                const selectedOutput = MediaDeviceHandler.getAudioOutput();
+                if (selectedOutput && "setSinkId" in audio) {
+                    (audio as any).setSinkId(selectedOutput).catch(() => {});
+                }
+            }
 
             // Restore persisted volume if available
             const resolvedUserId = this.resolveIdentityToUserId(participant.identity);
