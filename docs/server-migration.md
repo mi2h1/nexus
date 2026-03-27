@@ -96,19 +96,19 @@ SSL 証明書が `[SERVER_DOMAIN]` 用に発行されている前提。
 
 ```bash
 # 証明書ディレクトリを作成
-mkdir -p /etc/ssl/lche2
+mkdir -p /etc/ssl/nexus
 
 # 証明書を配置（以下のファイルが必要）
-# - /etc/ssl/lche2/fullchain.pem  (フルチェーン証明書)
-# - /etc/ssl/lche2/privkey.pem    (秘密鍵)
+# - /etc/ssl/nexus/fullchain.pem  (フルチェーン証明書)
+# - /etc/ssl/nexus/privkey.pem    (秘密鍵)
 #
 # certbot で取得した場合:
-# cp /etc/letsencrypt/live/[SERVER_DOMAIN]/fullchain.pem /etc/ssl/lche2/
-# cp /etc/letsencrypt/live/[SERVER_DOMAIN]/privkey.pem /etc/ssl/lche2/
+# cp /etc/letsencrypt/live/[SERVER_DOMAIN]/fullchain.pem /etc/ssl/nexus/
+# cp /etc/letsencrypt/live/[SERVER_DOMAIN]/privkey.pem /etc/ssl/nexus/
 
 # パーミッション確認（Docker の nginx が読めること）
-chmod 644 /etc/ssl/lche2/fullchain.pem
-chmod 600 /etc/ssl/lche2/privkey.pem
+chmod 644 /etc/ssl/nexus/fullchain.pem
+chmod 600 /etc/ssl/nexus/privkey.pem
 ```
 
 ---
@@ -221,8 +221,8 @@ curl -k -I -H "Upgrade: websocket" -H "Connection: Upgrade" https://[SERVER_DOMA
 # /etc/letsencrypt/renewal-hooks/deploy/nexus-ssl.sh
 cat > /etc/letsencrypt/renewal-hooks/deploy/nexus-ssl.sh << 'SCRIPT'
 #!/bin/bash
-cp /etc/letsencrypt/live/[SERVER_DOMAIN]/fullchain.pem /etc/ssl/lche2/
-cp /etc/letsencrypt/live/[SERVER_DOMAIN]/privkey.pem /etc/ssl/lche2/
+cp /etc/letsencrypt/live/[SERVER_DOMAIN]/fullchain.pem /etc/ssl/nexus/
+cp /etc/letsencrypt/live/[SERVER_DOMAIN]/privkey.pem /etc/ssl/nexus/
 docker exec nexus-nginx nginx -s reload
 SCRIPT
 chmod +x /etc/letsencrypt/renewal-hooks/deploy/nexus-ssl.sh
@@ -252,7 +252,7 @@ docker logs nexus-nginx --tail 50
 docker logs nexus-jwt --tail 50
 ```
 - CORS エラー → `nginx.conf` の `Access-Control-Allow-Origin` を確認
-- SSL エラー → 証明書パス `/etc/ssl/lche2/` にファイルがあるか確認
+- SSL エラー → 証明書パス `/etc/ssl/nexus/` にファイルがあるか確認
 
 ### WebRTC 接続が確立しない
 ```bash
@@ -267,7 +267,7 @@ docker logs nexus-livekit --tail 50
 docker compose logs
 ```
 - `bind: address already in use` → 該当ポートを使っているプロセスを確認 (`ss -tlnp`)
-- 証明書が見つからない → `/etc/ssl/lche2/` に `fullchain.pem` と `privkey.pem` があるか確認
+- 証明書が見つからない → `/etc/ssl/nexus/` に `fullchain.pem` と `privkey.pem` があるか確認
 
 ---
 
