@@ -32,7 +32,9 @@
         "silent": true
       },
       "nsis": {
-        "languages": ["Japanese"]
+        "languages": [
+          "Japanese"
+        ]
       }
     }
   },
