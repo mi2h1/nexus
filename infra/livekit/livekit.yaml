@@ -1,5 +1,5 @@
 # LiveKit SFU configuration for Nexus
-# Domain: lche2.xvps.jp
+# Domain: nexus.xvps.jp
 
 port: 7880
 rtc:
